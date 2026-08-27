@@ -32,6 +32,11 @@ jobs:
             # fields), so beta tags build NSIS only; stable tags build both.
             args: ${{ contains(github.ref_name, '-beta.') && '--bundles nsis' || '' }}
     runs-on: ${{ matrix.platform }}
+    env:
+      # `secrets` is not a recognized context in step-level `if` (GitHub
+      # rejected the whole workflow file for it) — so the presence check is
+      # computed here, where secrets ARE allowed, and steps test the flag.
+      HAVE_MAC_CERTS: ${{ secrets.MAC_CERTS != '' }}
     steps:
       - name: Refuse to run on a non-tag ref
         if: ${{ github.ref_type != 'tag' }}
@@ -59,19 +64,22 @@ jobs:
       # suite's empty-≠-absent lesson, again. The secret NAMES are the
       # Electron-era MAC_CERTS*, mapped onto tauri's APPLE_* env.
       - name: Arm macOS code signing (certificate secret present)
-        if: ${{ runner.os == 'macOS' && secrets.MAC_CERTS != '' }}
+        if: ${{ runner.os == 'macOS' && env.HAVE_MAC_CERTS == 'true' }}
         shell: bash
+        env:
+          MAC_CERTS: ${{ secrets.MAC_CERTS }}
+          MAC_CERTS_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
         run: |
           {
             echo "APPLE_CERTIFICATE<<CERT_EOF"
-            echo "${{ secrets.MAC_CERTS }}"
+            echo "$MAC_CERTS"
             echo "CERT_EOF"
-            echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.MAC_CERTS_PASSWORD }}"
+            echo "APPLE_CERTIFICATE_PASSWORD=$MAC_CERTS_PASSWORD"
             echo "APPLE_SIGNING_IDENTITY=Developer ID Application: Richard Fossland (784GN847G4)"
           } >> "$GITHUB_ENV"
 
       - name: Ad-hoc signing fallback (no certificate secret)
-        if: ${{ runner.os == 'macOS' && secrets.MAC_CERTS == '' }}
+        if: ${{ runner.os == 'macOS' && env.HAVE_MAC_CERTS != 'true' }}
         shell: bash
         run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
 

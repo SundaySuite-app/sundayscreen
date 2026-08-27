@@ -54,6 +54,9 @@ async fn check_feed(app: &tauri::AppHandle, channel: UpdateChannel) -> UpdateSta
     };
     let updater = match app
         .updater_builder()
+        // No timeout would let a captive portal hang the manual check for
+        // minutes with the button disabled (F9-funn U#13).
+        .timeout(std::time::Duration::from_secs(15))
         .endpoints(vec![url])
         .and_then(|b| b.build())
     {
@@ -113,9 +116,12 @@ pub async fn update_check(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult
 }
 
 /// Download, install and relaunch. A WRITE — failures REJECT so the panel
-/// never claims an update it cannot back up.
+/// never claims an update it cannot back up. Returns a STATUS for the one
+/// non-restart outcome (the feed answered "nothing" between check and
+/// install — F9-funn B#10a: that used to resolve as a fabricated success);
+/// a successful install restarts the app and never resolves.
 #[tauri::command]
-pub async fn update_install(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult<()> {
+pub async fn update_install(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult<UpdateStatus> {
     #[cfg(not(feature = "updater"))]
     {
         let _ = (app, db);
@@ -131,6 +137,7 @@ pub async fn update_install(app: tauri::AppHandle, db: State<'_, Db>) -> AppResu
             .map_err(|e| crate::error::AppError::Internal(format!("feed url: {e}")))?;
         let updater = app
             .updater_builder()
+            .timeout(std::time::Duration::from_secs(15))
             .endpoints(vec![url])
             .and_then(|b| b.build())
             .map_err(|e| crate::error::AppError::Internal(format!("updater build: {e}")))?;
@@ -139,7 +146,7 @@ pub async fn update_install(app: tauri::AppHandle, db: State<'_, Db>) -> AppResu
             .await
             .map_err(|e| crate::error::AppError::Internal(format!("update check: {e}")))?;
         let Some(update) = update else {
-            return Ok(()); // already up to date — an honest no-op
+            return Ok(UpdateStatus::UpToDate);
         };
         update
             .download_and_install(|_, _| {}, || {})

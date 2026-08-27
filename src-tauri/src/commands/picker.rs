@@ -35,26 +35,32 @@ fn entropy() -> u64 {
     uuid::Uuid::new_v4().as_u128() as u64
 }
 
+/// The whole draw runs in ONE transaction (gransking F9, funn #2): the
+/// read-modify-write over `draw_state` must not interleave with a concurrent
+/// draw, or two clicks could draw the same pupil "once" each — and a
+/// reshuffle's clear could erase the other click's freshly recorded draw.
 pub async fn draw_for(
     pool: &SqlitePool,
     class_id: &str,
     no_repeat: bool,
     rng: u64,
 ) -> AppResult<DrawResult> {
-    let members = store::list_members(pool, class_id).await?;
+    let mut tx = pool.begin().await?;
+
+    let members = store::list_members(&mut *tx, class_id).await?;
     if members.is_empty() {
         return Err(AppError::Validation("class has no members".into()));
     }
     let all_ids: Vec<String> = members.iter().map(|m| m.id.clone()).collect();
 
     let (candidates, reshuffled) = if no_repeat {
-        let drawn: HashSet<String> = store::drawn_member_ids(pool, class_id)
+        let drawn: HashSet<String> = store::drawn_member_ids(&mut *tx, class_id)
             .await?
             .into_iter()
             .collect();
         let p = draw_pool(&all_ids, &drawn);
         if p.reshuffled {
-            store::clear_drawn(pool, class_id).await?;
+            store::clear_drawn(&mut *tx, class_id).await?;
         }
         (p.pool, p.reshuffled)
     } else {
@@ -68,11 +74,13 @@ pub async fn draw_for(
         .expect("chosen id came from the member list");
 
     let remaining = if no_repeat {
-        store::insert_drawn(pool, class_id, &chosen_id).await?;
+        store::insert_drawn(&mut *tx, class_id, &chosen_id).await?;
         candidates.len() as i64 - 1
     } else {
         all_ids.len() as i64
     };
+
+    tx.commit().await?;
 
     Ok(DrawResult {
         member,

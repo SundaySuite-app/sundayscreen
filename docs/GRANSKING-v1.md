@@ -1,0 +1,101 @@
+# Gransking før v1 (fase F9) — protokoll og kjennelser
+
+> Gjennomført 2026-08-27. Tre fiendtlige granskere (skjøter, Rust, UX/CSP/
+> offline) + målrettede robusthets-journeys. Funnliste med kjennelser nederst.
+
+## Kjennelser (verifisert i denne granskingen)
+
+| #   | Påstand                                             | Kjennelse    | Belegg                                                                                                                                                                                     |
+| --- | --------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Null nettkall utenom updateren                      | ✅           | grep: ingen fetch/XHR/WS/http i `app/`; ingen reqwest i `src-tauri/` (updater-pluginen eier sin HTTP). CSP `connect-src 'self' ipc: http://ipc.localhost` blokkerer alt annet i webviewen. |
+| 2   | Updateren feiler stille offline                     | ✅           | Boot-sjekken svelger alle varianter (`update/mod.rs::spawn_boot_check`, logger info); manuell sjekk returnerer STATUS, aldri exception.                                                    |
+| 3   | Elevnavn kun i lokal SQLite                         | ✅           | Ingen tracing-linje logger navn/klasse; ingen telemetri finnes; DB under `app_data_dir()`.                                                                                                 |
+| 4   | Oppløsningsbytte midt i økta reflowes proporsjonalt | ✅           | `e2e/robustness.spec.ts` (1024×768 → 1920×1080 → tilbake, per-akse-proporsjon + på-flaten).                                                                                                |
+| 5   | 500-navns liste                                     | ✅           | e2e: teller «500 navn», lagrer, trekker («499 igjen»). Backend-cap 1000 (`members::MEMBERS_MAX`).                                                                                          |
+| 6   | Dobbeltklikk-storm på trekkeren                     | ✅           | e2e: 10 force-klikk → nøyaktig ETT trekk (knappen disables under spinn).                                                                                                                   |
+| 7   | kill −9 under lagring gir aldri revet layout        | ✅ (DB-nivå) | Replace-all i ÉN transaksjon; rollback-test `replace_widgets_for_a_missing_class_fails_and_rolls_back`; ekte prosess-kill dekkes av riggtesten.                                            |
+| 8   | Dvale under nedtelling                              | ✅ (logikk)  | Mål-epoch by construction; 21 delte vektorer inkl. sen oppvåkning (stille etter 60 s) og bakover-klokkehopp. Ekte dvale dekkes av riggtesten.                                              |
+| 9   | Nedgradering sletter aldri nyere widgets            | ✅           | `unknown_kind_rows_survive_a_save_and_are_skipped_by_load` (DB-bevist).                                                                                                                    |
+| 10  | Sletting av aktiv klasse                            | ✅           | Backend repointer + frontend bootstrapper; testet begge lag.                                                                                                                               |
+| 11  | CSP-paritet index.html ↔ tauri.conf                 | ✅           | `app/security-sync.test.ts` + CI-grep av `dist/` for dynamisk kodeevaluering.                                                                                                              |
+| 12  | Fullskjerm stjeler aldri fokus-flyt                 | ✅ (design)  | Borderless, aldri always-on-top/exclusive; Escape/F11 i appen. Live-verifiseres på rigg.                                                                                                   |
+
+## UNVERIFIED — overlatt til riggtesten (F10), med vilje
+
+- Windows-DPI 125/150 % på ekte maskin (logikken er oppløsningsagnostisk og
+  e2e-testet via viewport, men ekte WebView2-DPI må ses).
+- Ekte dvale/vekking på macOS og Windows med løpende timer.
+- kill −9 av selve appen midt i autosave (DB-laget er bevist; prosessnivået
+  ses på rigg).
+- `set_simple_fullscreen` på ekte projektor (speiling + utvidet skrivebord).
+- Updater ende-til-ende (krever første publiserte release + secrets).
+
+## Riggtest-protokoll (F10, 👤)
+
+1. Installer beta på klasseroms-maskinen (Mac og/eller Windows).
+2. Koble projektor — helst én 4:3 og én 16:9. Dra vinduet dit, F11.
+3. Kjør én full undervisningstime: timer 10 min m/ lyd, navnetrekker gjennom
+   hele klassen, trafikklys ved aktivitetsbytter, tekstbeskjed.
+4. Lukk lokket 2 min midt i nedtellingen → åpne: riktig rest? chime-regelen?
+5. Task-manager-kill midt i redigering → start på nytt: layouten intakt?
+6. Windows: sett skalering 125 % mens appen kjører.
+7. Noter ALT som skurrer, uansett hvor smått.
+
+## Funn fra granskerne — 39 totalt, alle med kjennelse
+
+Tre granskere: **S** (skjøter frontend↔backend, 8 funn), **B** (Rust, 12
+funn), **U** (UX/CSP/offline, 19 funn). 30 FIKSET samme dag, 9 UTSATT/AVVIST
+med begrunnelse. Kryssdekning: S#1=U-tema, S#2=U#8, S#7=U#4 — talt én gang i
+fiksene.
+
+### FIKSET (verifisert med gates + journeys etter fiks)
+
+| Funn                                                                                            | Alvor       | Fiks                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| S#1 settings-snapshot reverserte aktiv klasse (flytt vindu etter bytte → restart i feil klasse) | **høy**     | Frontend-synk av `activeClassId` i switch/init + backend settings-MUTEX (`settings::update`/`lock`/`save_with`); regresjonjourney i classes.spec |
+| U#1 lagringsfeil usynlige (console.warn)                                                        | **høy**     | `saveError`-signal → sticky feilchip i skallet                                                                                                   |
+| U#2 toast-maskineri uten skjermflate                                                            | **høy**     | Toast-host montert i `#overlays` (to Preact-trær som lovet); `setShimNotifier({t, toast})`                                                       |
+| S#2/U#8 layout-writes kunne committe i feil rekkefølge                                          | middels     | Skrivekø: hver write starter ETTER forrige og leser ferskeste state ved skrivetid                                                                |
+| S#3 z-hull gjorde widget u-hevbar                                                               | middels     | `nextZ()` (maks+1), tett re-indeks ved sletting, bringToFront mot maks                                                                           |
+| S#4 tolerant load + replace-all = én-endrings-wipe                                              | middels     | `layoutLoad` rejecter; `layoutHydrated`-port blokkerer lagring + egen chip                                                                       |
+| S#5 F11 under geometri-lagring persisterte monitor-rekt                                         | middels     | Re-sjekk av fullscreen ETTER awaits i saveGeometry                                                                                               |
+| S#6 stale config-closures (terning/trekker/grupper)                                             | middels     | `updateWidgetConfigBy(id, updater)` — merge mot NÅVÆRENDE config, no-op om slettet                                                               |
+| S#7/U#4 fersk installasjon persisterte aldri fullskjerm                                         | middels     | Geometri fanges FØR fullskjerm-på; syntetisert WindowState lagres                                                                                |
+| S#8a/b/c harness-divergenser (settings-blob, reconcile-id, tom klasse)                          | middels     | Mini-backenden speiler nå ekte semantikk; S#1-klassen er observerbar i e2e                                                                       |
+| B#1 replace_members fabrikkerte suksess                                                         | middels     | `class_id`-predikat + rows_affected-sjekk → transaksjonen ruller tilbake                                                                         |
+| B#2 trekking var ikke-transaksjonell RMW                                                        | middels     | Hele trekket i ÉN transaksjon (Executor-generiske store-fns)                                                                                     |
+| B#3/B#4 settings-RMW-kappløp + dobbel default-klasse                                            | middels/lav | Samme mutex; ensure_active holder låsen gjennom hele bootstrap                                                                                   |
+| B#7 garbage language → «følg OS» i stedet for nb                                                | lav         | `lenient_language` faller til dokumentert default                                                                                                |
+| B#8 monitor-Err ≡ tom + ingen maksklamper                                                       | lav         | Err → hopp over restore; `MAX_WINDOW_DIM/POS` i validate                                                                                         |
+| B#9 korrupt DB = usynlig krasj                                                                  | middels     | Backup (`.corrupt-<ts>`, inkl. -wal/-shm) + gjenskap + ny boot                                                                                   |
+| B#10a install fabrikkerte suksess ved tomt feed                                                 | lav         | `update_install → UpdateStatus` (UpToDate er ærlig svar); U#14 busy-state                                                                        |
+| B#11 manglende FK-indeks draw_state.member_id                                                   | lav         | Migrasjon 0002                                                                                                                                   |
+| B#12 store/små bokstaver nullstilte trekkerunden                                                | lav         | Case-foldet matchenøkkel i reconcile (ny spelling lagres)                                                                                        |
+| U#3 fullskjerm-toggle kunne lyve + fange F11                                                    | middels     | Splittet feilhåndtering: vindu avgjør signalet; persist har egen catch                                                                           |
+| U#5 klassebytte fra meny feilet i stillhet                                                      | middels     | catch → toast                                                                                                                                    |
+| U#6 kanalvelger loy ved feil                                                                    | middels     | Revert av signal i catch                                                                                                                         |
+| U#9 usynlige kontroller var klikkbare                                                           | middels     | `visibility: hidden` + `pointer-events: none` i skjult tilstand                                                                                  |
+| U#10 touch-mål under 36 px                                                                      | middels     | 36 px minimum på settings-knapper, slett (36), steppere (36)                                                                                     |
+| U#11 innstillingsrad klippet ved min-størrelse                                                  | middels     | Raden wrapper; klokke/tidtaker-minima hevet                                                                                                      |
+| U#12 lang tekst klippet i begge ender                                                           | lav         | scroll + margin:auto-mønsteret                                                                                                                   |
+| U#13 updater uten timeout (captive portal)                                                      | middels     | 15 s timeout på begge buildere                                                                                                                   |
+| U#15 perMachine-NSIS + updater = admin-krav                                                     | middels     | `installMode: currentUser`                                                                                                                       |
+| U#18 bokmål: «Timer»→«Tidtaker», «mindre»→«færre», F11-hint fjernet                             | lav         | Katalogene + e2e oppdatert                                                                                                                       |
+| U#7 trekker/gruppe-feil kun i konsoll                                                           | lav         | Dekket av toast-flaten (U#2) via shim + switch-catch                                                                                             |
+
+### UTSATT / AVVIST — med begrunnelse
+
+| Funn                                                                | Kjennelse                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B#5/U#17 nedgradering mister nyere felter i KJENT kind/settings     | **UTSATT → v1.1** (ADR-007): krever `flatten`-ekstrafelt i hele config-vokabularet; ingen eldre klient finnes i felt før v1.0, så hullet er uobserverbart i praksis fram til v1.1 — som skal skipe fiksen FØR første config-utvidelse. |
+| B#6 timer-tilstandsfamilie kan blandes via core-API                 | **AVVIST**: `mode` brukes kun av Start per kontrakt; frontend (eneste driver) resetter til Idle ved modusbytte. Dokumentert i timer.rs.                                                                                                |
+| B#10b/c feiltaksonomi offline-vs-intern + versjonspinning i install | **UTSATT → v1.1**: statusen er ærlig («fikk ikke sjekket»); pinning krever plugin-støtte for å installere en NAVNGITT versjon.                                                                                                         |
+| U#16 devCsp dekker ikke `TAURI_DEV_HOST`-HMR (port 1434)            | **AVVIST (dev-only)**: fjernutvikling mot device er ikke i bruk; dokumentert her.                                                                                                                                                      |
+| U#19 lastDrawn/lastResult beholder fjernede elevnavn i config       | **UTSATT → v1.1**: fortsatt kun lokal SQLite (PRIVACy-løftet holder); en wipe-ved-navnelagring krysser widget/klasse-grensen og fortjener egen design.                                                                                 |
+
+## ADR-007 (kort): downgrade-tolerance for CONFIG-INNHOLD
+
+v1 beviser toleransen på kind-nivå (ukjent kind overlever). Felt-nivå
+(`#[serde(flatten)] extra`-map per variant + settings) er VEDTATT som første
+oppgave i v1.1, FØR noen config-utvidelse skiper — da finnes det eldre
+klienter i felt, og først da kan hullet observeres.

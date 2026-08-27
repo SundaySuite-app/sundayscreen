@@ -181,14 +181,18 @@ pub struct MemberRow {
     pub sort_index: i64,
 }
 
-/// A class's members, in display order.
-pub async fn list_members(pool: &SqlitePool, class_id: &str) -> AppResult<Vec<MemberRow>> {
+/// A class's members, in display order. Generic over the executor so the
+/// picker can read them inside its draw transaction (F9-funn #2).
+pub async fn list_members<'e, E>(executor: E, class_id: &str) -> AppResult<Vec<MemberRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let rows = sqlx::query(
         "SELECT id, name, sort_index FROM class_member
          WHERE class_id = ?1 ORDER BY sort_index, created_at",
     )
     .bind(class_id)
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     Ok(rows
         .into_iter()
@@ -236,12 +240,25 @@ pub async fn replace_members(
         let sort_index = i as i64;
         match &spec.id {
             Some(id) => {
-                sqlx::query("UPDATE class_member SET name = ?1, sort_index = ?2 WHERE id = ?3")
-                    .bind(&spec.name)
-                    .bind(sort_index)
-                    .bind(id)
-                    .execute(&mut *tx)
-                    .await?;
+                // The class_id predicate + rows_affected check are the F9
+                // finding-#1 fix: a kept id whose row vanished (a racing
+                // save, or a spec pointing into another class) must FAIL the
+                // whole transaction — never answer a fabricated "saved".
+                let res = sqlx::query(
+                    "UPDATE class_member SET name = ?1, sort_index = ?2
+                     WHERE id = ?3 AND class_id = ?4",
+                )
+                .bind(&spec.name)
+                .bind(sort_index)
+                .bind(id)
+                .bind(class_id)
+                .execute(&mut *tx)
+                .await?;
+                if res.rows_affected() == 0 {
+                    return Err(crate::error::AppError::Internal(format!(
+                        "member row {id} vanished mid-save — retry the save"
+                    )));
+                }
                 out.push(MemberRow {
                     id: id.clone(),
                     name: spec.name.clone(),
@@ -277,10 +294,13 @@ pub async fn replace_members(
 // ── The picker's draw state ──────────────────────────────────────────────────
 
 /// Member ids drawn in the current round, for a class.
-pub async fn drawn_member_ids(pool: &SqlitePool, class_id: &str) -> AppResult<Vec<String>> {
+pub async fn drawn_member_ids<'e, E>(executor: E, class_id: &str) -> AppResult<Vec<String>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let rows = sqlx::query("SELECT member_id FROM draw_state WHERE class_id = ?1")
         .bind(class_id)
-        .fetch_all(pool)
+        .fetch_all(executor)
         .await?;
     Ok(rows
         .into_iter()
@@ -289,7 +309,10 @@ pub async fn drawn_member_ids(pool: &SqlitePool, class_id: &str) -> AppResult<Ve
 }
 
 /// Remember that a member has been drawn this round. Idempotent.
-pub async fn insert_drawn(pool: &SqlitePool, class_id: &str, member_id: &str) -> AppResult<()> {
+pub async fn insert_drawn<'e, E>(executor: E, class_id: &str, member_id: &str) -> AppResult<()>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     sqlx::query(
         "INSERT INTO draw_state (class_id, member_id, drawn_at) VALUES (?1, ?2, ?3)
          ON CONFLICT(class_id, member_id) DO NOTHING",
@@ -297,16 +320,19 @@ pub async fn insert_drawn(pool: &SqlitePool, class_id: &str, member_id: &str) ->
     .bind(class_id)
     .bind(member_id)
     .bind(now_ms())
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(())
 }
 
 /// Start a fresh round.
-pub async fn clear_drawn(pool: &SqlitePool, class_id: &str) -> AppResult<()> {
+pub async fn clear_drawn<'e, E>(executor: E, class_id: &str) -> AppResult<()>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     sqlx::query("DELETE FROM draw_state WHERE class_id = ?1")
         .bind(class_id)
-        .execute(pool)
+        .execute(executor)
         .await?;
     Ok(())
 }

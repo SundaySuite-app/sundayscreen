@@ -59,11 +59,12 @@ async fn snapshot_for(pool: &SqlitePool, class: ClassRow) -> AppResult<ClassSnap
 /// calling this (the sequencing seam in state/layout.ts).
 pub async fn switch_for(pool: &SqlitePool, class_id: &str) -> AppResult<ClassSnapshot> {
     let class = require_class(pool, class_id).await?;
-    let mut s = settings::load(pool).await?;
-    if s.active_class_id.as_deref() != Some(class_id) {
+    // Serialized RMW (F9-funn B#3): a plain load→save here silently reverted
+    // any settings field a concurrent save had just written.
+    settings::update(pool, |s| {
         s.active_class_id = Some(class_id.to_string());
-        settings::save(pool, s).await?;
-    }
+    })
+    .await?;
     snapshot_for(pool, class).await
 }
 
@@ -77,11 +78,13 @@ pub async fn delete_for(pool: &SqlitePool, class_id: &str) -> AppResult<()> {
             id: class_id.to_string(),
         });
     }
-    let mut s = settings::load(pool).await?;
-    if s.active_class_id.as_deref() == Some(class_id) {
-        s.active_class_id = store::first_class(pool).await?.map(|c| c.id);
-        settings::save(pool, s).await?;
-    }
+    let fallback = store::first_class(pool).await?.map(|c| c.id);
+    settings::update(pool, |s| {
+        if s.active_class_id.as_deref() == Some(class_id) {
+            s.active_class_id = fallback.clone();
+        }
+    })
+    .await?;
     Ok(())
 }
 
@@ -114,6 +117,9 @@ pub async fn members_set_for(
 #[tauri::command]
 pub async fn class_ensure_active(db: State<'_, Db>, default_name: String) -> AppResult<ClassRow> {
     let pool = db.pool();
+    // The whole bootstrap holds the settings lock (F9-funn B#4): two
+    // concurrent ensures must not both see "no class" and mint two defaults.
+    let guard = settings::lock().await;
     let mut s = settings::load(pool).await?;
 
     if let Some(id) = &s.active_class_id {
@@ -131,7 +137,7 @@ pub async fn class_ensure_active(db: State<'_, Db>, default_name: String) -> App
     };
 
     s.active_class_id = Some(class.id.clone());
-    settings::save(pool, s).await?;
+    settings::save_with(pool, s, &guard).await?;
     Ok(class)
 }
 

@@ -9,12 +9,25 @@
 
 use sqlx::SqlitePool;
 use sundayscreen_core::settings::Settings;
+use tokio::sync::{Mutex, MutexGuard};
 
 use crate::db::store;
 use crate::error::AppResult;
 
 /// The `app_setting` key the whole settings blob lives under.
 pub const SETTINGS_KEY: &str = "settings";
+
+/// The settings write lock (gransking F9, funn B#3/B#4): the blob is stored
+/// whole, so every read-modify-write must be serialized or a concurrent
+/// save silently reverts the other writer's field. `save` takes it; RMW
+/// callers hold it across their read AND write via [`lock`] + [`save_with`].
+static SETTINGS_LOCK: Mutex<()> = Mutex::const_new(());
+
+/// Acquire the settings write lock. Hold the guard across a
+/// load→mutate→[`save_with`] sequence.
+pub async fn lock() -> MutexGuard<'static, ()> {
+    SETTINGS_LOCK.lock().await
+}
 
 /// Load the settings: read the stored JSON (or fall back to defaults when the
 /// key is absent), merge it over the defaults so older/partial blobs never
@@ -29,12 +42,33 @@ pub async fn load(pool: &SqlitePool) -> AppResult<Settings> {
     Ok(settings)
 }
 
-/// Validate then persist the settings, returning the stored (validated) value.
-pub async fn save(pool: &SqlitePool, mut settings: Settings) -> AppResult<Settings> {
+/// Validate then persist the settings, returning the stored (validated)
+/// value. Takes the write lock itself — for plain whole-object saves.
+pub async fn save(pool: &SqlitePool, settings: Settings) -> AppResult<Settings> {
+    let guard = lock().await;
+    save_with(pool, settings, &guard).await
+}
+
+/// [`save`] for callers that ALREADY hold the write lock (the `_proof`
+/// parameter is exactly that — a compile-time reminder, not data).
+pub async fn save_with(
+    pool: &SqlitePool,
+    mut settings: Settings,
+    _proof: &MutexGuard<'static, ()>,
+) -> AppResult<Settings> {
     settings.validate();
     let json = serde_json::to_string(&settings)?;
     store::set_setting(pool, SETTINGS_KEY, &json).await?;
     Ok(settings)
+}
+
+/// Serialized read-modify-write: load, mutate, save — all under the lock,
+/// so no concurrent writer's field can be reverted by a stale blob.
+pub async fn update(pool: &SqlitePool, mutate: impl FnOnce(&mut Settings)) -> AppResult<Settings> {
+    let guard = lock().await;
+    let mut settings = load(pool).await?;
+    mutate(&mut settings);
+    save_with(pool, settings, &guard).await
 }
 
 #[cfg(test)]

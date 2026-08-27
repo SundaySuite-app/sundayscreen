@@ -9,6 +9,7 @@ import {
   switchClass,
 } from "../state/classes";
 import { activeClass } from "../state/layout";
+import { toast } from "../ui/toast";
 import styles from "./ClassSwitcher.module.css";
 
 export function ClassSwitcher() {
@@ -46,7 +47,14 @@ export function ClassSwitcher() {
                 role="menuitem"
                 class={styles.item}
                 data-current={cls.id === current?.id || undefined}
-                onClick={() => void switchClass(cls.id)}
+                onClick={() =>
+                  switchClass(cls.id).catch((e) => {
+                    // The panel path surfaces this via run(); the toolbar
+                    // path must not fail into silence (F9-funn U#5).
+                    console.warn("[switcher] class switch failed", e);
+                    toast("error", t("manage.actionFailed"));
+                  })
+                }
               >
                 {cls.name}
               </button>

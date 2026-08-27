@@ -49,7 +49,9 @@ export function TextWidget({ widget }: { widget: WidgetInstance }) {
       style={{ fontSize: `${8 * cfg.fontScale}cqmin` }}
       onClick={() => setEditing(true)}
     >
-      {empty ? t("widget.text.placeholder") : cfg.content}
+      <span class={styles.inner}>
+        {empty ? t("widget.text.placeholder") : cfg.content}
+      </span>
     </button>
   );
 }

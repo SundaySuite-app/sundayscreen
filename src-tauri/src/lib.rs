@@ -58,11 +58,35 @@ pub fn run() {
                 format!("creating app data dir: {e}")
             })?;
             let db_path = db_dir.join("sundayscreen.sqlite");
-            let pool =
-                tauri::async_runtime::block_on(db::store::open_pool(&db_path)).map_err(|e| {
-                    tracing::error!(db = %db_path.display(), "opening database failed: {e}");
-                    format!("opening database: {e}")
-                })?;
+            // A corrupt database must not be an invisible crash on a machine
+            // with no terminal (F9-funn B#9): back the file up and boot
+            // fresh. Losing layouts is bad; an app that silently never opens
+            // again is worse — and the backup keeps the bytes for rescue.
+            let pool = match tauri::async_runtime::block_on(db::store::open_pool(&db_path)) {
+                Ok(pool) => pool,
+                Err(first_err) => {
+                    tracing::error!(
+                        db = %db_path.display(),
+                        "opening database failed — backing it up and recreating: {first_err}"
+                    );
+                    let stamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    for suffix in ["", "-wal", "-shm"] {
+                        let src = db_dir.join(format!("sundayscreen.sqlite{suffix}"));
+                        if src.exists() {
+                            let dst =
+                                db_dir.join(format!("sundayscreen.sqlite{suffix}.corrupt-{stamp}"));
+                            let _ = std::fs::rename(&src, &dst);
+                        }
+                    }
+                    tauri::async_runtime::block_on(db::store::open_pool(&db_path)).map_err(|e| {
+                        tracing::error!("recreating database also failed: {e}");
+                        format!("opening database: {e}")
+                    })?
+                }
+            };
 
             // Restore the saved window geometry BEFORE the shell paints, so
             // the projector setup comes back without a visible jump.

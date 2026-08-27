@@ -9,8 +9,22 @@ import { Surface } from "./screen/Surface";
 import { Toolbar } from "./screen/Toolbar";
 import { classMenuOpen, managePanelOpen } from "./state/classes";
 import { chromeActivity, chromeVisible } from "./state/chrome";
-import { undoRemove, undoSlot } from "./state/layout";
+import {
+  layoutHydrated,
+  saveError,
+  undoRemove,
+  undoSlot,
+} from "./state/layout";
 import { hydrated, hydrateError } from "./state/settings";
+
+/** The one persistent error chip — priority-ordered so the shell never
+ *  stacks several (and the degraded browser boot shows exactly one). */
+function chipText(): string | null {
+  if (hydrateError.value) return t("boot.hydrateError");
+  if (!layoutHydrated.value && hydrated.value) return t("layout.loadFailed");
+  if (saveError.value) return t("layout.saveFailed");
+  return null;
+}
 
 export function Shell() {
   if (!hydrated.value) {
@@ -30,9 +44,9 @@ export function Shell() {
   return (
     <main class={styles.shell}>
       <Surface />
-      {hydrateError.value && (
+      {chipText() !== null && (
         <p class={styles.errorChip} data-status="error">
-          {t("boot.hydrateError")}
+          {chipText()}
         </p>
       )}
       {undoSlot.value && (

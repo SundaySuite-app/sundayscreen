@@ -115,8 +115,8 @@
     }
   },
   "chrome": {
-    "fullscreenOn": "Fullscreen (F11)",
-    "fullscreenOff": "Exit fullscreen (F11)",
+    "fullscreenOn": "Fullscreen",
+    "fullscreenOff": "Exit fullscreen",
     "show": "Show the toolbar"
   },
   "update": {
@@ -130,5 +130,12 @@
     "install": "Update and restart",
     "error": "Could not check right now — try again when online",
     "disabled": "Updates are disabled in this build"
+  },
+  "layout": {
+    "loadFailed": "Could not read the board from storage — changes will not be saved until the app restarts.",
+    "saveFailed": "Could not save the board — the latest changes may be lost."
+  },
+  "toast": {
+    "dismiss": "Dismiss"
   }
 }

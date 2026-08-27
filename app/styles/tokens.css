@@ -64,6 +64,7 @@
   --shadow-widget-active: 0 10px 34px rgba(35, 39, 47, 0.16);
   --shadow-chrome: 0 -4px 20px rgba(35, 39, 47, 0.08);
   --shadow-dialog: 0 24px 70px rgba(35, 39, 47, 0.25);
+  --shadow-toast: 0 12px 36px rgba(35, 39, 47, 0.2);
 
   /* ── Radii — widgets are friendly, rounded cards ─────────────────────── */
   --r-sm: 10px;

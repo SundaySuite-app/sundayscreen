@@ -75,7 +75,11 @@ const FIXTURE_GATE: FixtureGate = {
   // Vite inlines this as the literal `false` in a production build, so a
   // shipped SundayScreen cannot be driven by fixtures.
   devBuild: !!import.meta.env?.DEV,
-  requested: new URLSearchParams(location.search).has(FIXTURE_QUERY_PARAM),
+  // `typeof location` guard: the node unit gate imports this module
+  // transitively (state/chrome → here) and has no DOM.
+  requested:
+    typeof location !== "undefined" &&
+    new URLSearchParams(location.search).has(FIXTURE_QUERY_PARAM),
 };
 const FIXTURES_HONORED = fixturesHonored(FIXTURE_GATE);
 
@@ -198,8 +202,12 @@ const api = {
       },
     ),
 
+  // A READ whose rejection TRAVELS (unlike the call()-family): the layout
+  // store must know the load failed and block saving — a tolerant `[]` here
+  // plus replace-all writes was a one-edit wipe of the stored layout
+  // (F9-funn S#4).
   layoutLoad: async (classId: string): Promise<WidgetInstance[]> =>
-    call<WidgetInstance[]>("layout_load", { classId }, []),
+    invoke<WidgetInstance[]>("layout_load", { classId }),
 
   // WRITE — rejection travels (see saveSettings).
   layoutSave: async (
@@ -250,12 +258,15 @@ const api = {
     invoke<void>("window_set_fullscreen", { fullscreen }),
 
   // The manual update check answers with a STATUS (errors included) — the
-  // panel shows it; only a broken IPC rejects. Install is a WRITE: on
-  // success the app restarts and the promise never resolves.
+  // panel shows it; only a broken IPC rejects. Install is a WRITE: a
+  // successful install restarts the app (never resolves); the one non-
+  // restart outcome is "the feed emptied since the check" — an honest
+  // status, not a fabricated success.
   updateCheck: async (): Promise<UpdateStatus> =>
     invoke<UpdateStatus>("update_check"),
 
-  updateInstall: async (): Promise<void> => invoke<void>("update_install"),
+  updateInstall: async (): Promise<UpdateStatus> =>
+    invoke<UpdateStatus>("update_install"),
 };
 
 export type Api = typeof api;
@@ -266,4 +277,7 @@ declare global {
   }
 }
 
-window.api = api;
+// Same node-gate guard as above: in the browser this ALWAYS runs.
+if (typeof window !== "undefined") {
+  window.api = api;
+}

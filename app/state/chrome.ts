@@ -3,8 +3,11 @@
 // half.
 
 import { signal } from "@preact/signals";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+import { isTauri } from "@lib/api-shim";
 import { inRevealZone, shouldHide } from "../screen/chrome-core";
+import type { WindowState } from "../bindings/WindowState";
 import { settings } from "./settings";
 import { classMenuOpen, managePanelOpen } from "./classes";
 
@@ -43,22 +46,60 @@ export function initChrome(): () => void {
   };
 }
 
-/** Flip fullscreen: optimistic signal, revert if the backend refuses (a
- *  plain browser has no window to manage). The flag is persisted with the
- *  window state so boot restores the projector setup. */
+/** The current WINDOWED geometry, read live. `null` outside Tauri or on any
+ *  read failure. Used to seed the persisted state the first time fullscreen
+ *  is entered on a fresh install (F9-funn S#7/U#4). */
+async function captureGeometry(): Promise<WindowState | null> {
+  if (!isTauri()) return null;
+  try {
+    const win = getCurrentWebviewWindow();
+    const factor = await win.scaleFactor();
+    const pos = (await win.outerPosition()).toLogical(factor);
+    const size = (await win.outerSize()).toLogical(factor);
+    return {
+      x: pos.x,
+      y: pos.y,
+      w: size.width,
+      h: size.height,
+      fullscreen: false,
+    };
+  } catch (e) {
+    console.warn("[chrome] geometry capture failed", e);
+    return null;
+  }
+}
+
+/**
+ * Flip fullscreen. The two operations have SEPARATE failure handling
+ * (F9-funn U#3): the window toggle decides the signal — a failed settings
+ * persist must never make the UI lie about what the window is doing, nor
+ * trap F11 in a revert loop.
+ */
 export async function toggleFullscreen(): Promise<void> {
   const next = !fullscreen.peek();
-  fullscreen.value = next;
+  // Fresh install entering fullscreen: capture the windowed geometry
+  // BEFORE the toggle, or there is nothing truthful to persist.
+  let baseline = settings.peek().window;
+  if (next && !baseline) baseline = await captureGeometry();
+
   try {
     await window.api.windowSetFullscreen(next);
+  } catch (e) {
+    console.warn("[chrome] fullscreen toggle failed", e);
+    return;
+  }
+  fullscreen.value = next;
+
+  try {
     const s = settings.peek();
-    if (s.window) {
-      const withFlag = { ...s, window: { ...s.window, fullscreen: next } };
+    const win = baseline ?? s.window;
+    if (win) {
+      const withFlag = { ...s, window: { ...win, fullscreen: next } };
       settings.value = withFlag;
       await window.api.saveSettings(withFlag);
     }
   } catch (e) {
-    console.warn("[chrome] fullscreen toggle failed", e);
-    fullscreen.value = !next;
+    // The window state itself is correct — only the persistence failed.
+    console.warn("[chrome] persisting the fullscreen flag failed", e);
   }
 }

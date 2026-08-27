@@ -18,7 +18,7 @@
     "label": {
       "text": "Tekst",
       "clock": "Klokke",
-      "timer": "Timer",
+      "timer": "Tidtaker",
       "namepicker": "Navnetrekker",
       "groups": "Grupper",
       "dice": "Terning",
@@ -98,7 +98,7 @@
   "dice": {
     "roll": "Kast",
     "more": "Én terning til",
-    "fewer": "Én terning mindre",
+    "fewer": "Én terning færre",
     "sum": "Sum: {n}"
   },
   "traffic": {
@@ -115,8 +115,8 @@
     }
   },
   "chrome": {
-    "fullscreenOn": "Fullskjerm (F11)",
-    "fullscreenOff": "Avslutt fullskjerm (F11)",
+    "fullscreenOn": "Fullskjerm",
+    "fullscreenOff": "Avslutt fullskjerm",
     "show": "Vis verktøylinja"
   },
   "update": {
@@ -130,5 +130,12 @@
     "install": "Oppdater og start på nytt",
     "error": "Fikk ikke sjekket nå — prøv igjen når du er på nett",
     "disabled": "Oppdatering er slått av i denne builden"
+  },
+  "layout": {
+    "loadFailed": "Fikk ikke lest tavla fra lagringen — endringer lagres ikke før appen har startet på nytt.",
+    "saveFailed": "Klarte ikke å lagre tavla — siste endringer kan gå tapt."
+  },
+  "toast": {
+    "dismiss": "Lukk"
   }
 }

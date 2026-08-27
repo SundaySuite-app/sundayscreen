@@ -8,7 +8,11 @@ import { useState } from "preact/hooks";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tf } from "../../i18n";
 import { members } from "../../state/classes";
-import { activeClass, updateWidgetConfig } from "../../state/layout";
+import {
+  activeClass,
+  updateWidgetConfig,
+  updateWidgetConfigBy,
+} from "../../state/layout";
 import styles from "./groups.module.css";
 
 export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
@@ -24,10 +28,12 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
     setBusy(true);
     try {
       const groups = await window.api.groupsSplit(cls.id, cfg.mode, cfg.n);
-      updateWidgetConfig(widget.id, {
-        ...cfg,
-        lastResult: groups.map((g) => g.map((m) => m.name)),
-      });
+      // Merge into the CURRENT config (F9-funn S#6).
+      updateWidgetConfigBy(widget.id, (c) =>
+        c.kind === "groups"
+          ? { ...c, lastResult: groups.map((g) => g.map((m) => m.name)) }
+          : c,
+      );
     } catch (e) {
       console.warn("[groups] split failed", e);
     } finally {

@@ -46,6 +46,12 @@ fn default_window_h() -> f64 {
 pub const MIN_WINDOW_W: f64 = 960.0;
 pub const MIN_WINDOW_H: f64 = 600.0;
 
+/// Upper bounds on a restorable geometry (F9-funn B#8): finite-but-absurd
+/// hand-edited values (`w: 1e12`) passed the old clamp. Generous — an 8K
+/// video wall fits — but bounded.
+pub const MAX_WINDOW_DIM: f64 = 20_000.0;
+pub const MAX_WINDOW_POS: f64 = 100_000.0;
+
 /// Which release feed this install follows. The lowercase tag IS the feed's
 /// path segment (`/v1/update/sundayscreen/{stable|beta}`) — a renamed
 /// variant is a renamed live URL.
@@ -116,6 +122,17 @@ where
     Ok(serde_json::from_value(raw).unwrap_or(true))
 }
 
+/// [`lenient`] for the language: the documented default is `Some("no")`, but
+/// the generic fallback is `Option::default()` = `None` ("follow the OS") —
+/// a different outcome for garbage than for an absent field (F9-funn B#7).
+fn lenient_language<'de, D>(de: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(de)?;
+    Ok(serde_json::from_value(raw).unwrap_or_else(|_| default_language()))
+}
+
 /// The complete settings model.
 ///
 /// Every field carries `#[serde(default)]` so a partial or older JSON blob
@@ -127,7 +144,7 @@ where
 pub struct Settings {
     /// UI language code (e.g. `"no"`). `None` means "follow the OS" — the
     /// frontend resolves that to an active locale.
-    #[serde(default = "default_language", deserialize_with = "lenient")]
+    #[serde(default = "default_language", deserialize_with = "lenient_language")]
     pub language: Option<String>,
     /// The class whose name list + layout is on screen. `None` until the first
     /// class exists; the frontend then opens the manage panel.
@@ -187,9 +204,17 @@ impl Settings {
     /// be observed by a caller nor persisted.
     pub fn validate(&mut self) {
         if let Some(w) = &mut self.window {
-            // A non-finite geometry is not a geometry — drop the whole state
-            // and let the config default win.
-            if !(w.x.is_finite() && w.y.is_finite() && w.w.is_finite() && w.h.is_finite()) {
+            // A non-finite or absurd geometry is not a geometry — drop the
+            // whole state and let the config default win.
+            let sane = w.x.is_finite()
+                && w.y.is_finite()
+                && w.w.is_finite()
+                && w.h.is_finite()
+                && w.x.abs() <= MAX_WINDOW_POS
+                && w.y.abs() <= MAX_WINDOW_POS
+                && w.w <= MAX_WINDOW_DIM
+                && w.h <= MAX_WINDOW_DIM;
+            if !sane {
                 self.window = None;
             } else {
                 w.w = w.w.max(MIN_WINDOW_W);
@@ -262,6 +287,33 @@ mod tests {
         let w = s.window.unwrap();
         assert_eq!(w.w, MIN_WINDOW_W);
         assert_eq!(w.h, MIN_WINDOW_H);
+    }
+
+    #[test]
+    fn a_garbage_language_takes_the_documented_default_not_follow_os() {
+        // F9-funn B#7: garbage must land on Some("no"), same as absent.
+        let s = Settings::from_json_merged(r#"{ "language": 42 }"#);
+        assert_eq!(s.language.as_deref(), Some("no"));
+        // An explicit null still means "follow the OS".
+        let s = Settings::from_json_merged(r#"{ "language": null }"#);
+        assert_eq!(s.language, None);
+    }
+
+    #[test]
+    fn validate_drops_an_absurd_but_finite_geometry() {
+        // F9-funn B#8: finite nonsense must not survive the clamp.
+        let mut s = Settings {
+            window: Some(WindowState {
+                x: 50_000_000.0,
+                y: 0.0,
+                w: 1e12,
+                h: 800.0,
+                fullscreen: false,
+            }),
+            ..Default::default()
+        };
+        s.validate();
+        assert_eq!(s.window, None);
     }
 
     #[test]

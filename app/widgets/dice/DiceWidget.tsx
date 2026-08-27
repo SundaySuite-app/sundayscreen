@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tf } from "../../i18n";
-import { updateWidgetConfig } from "../../state/layout";
+import { updateWidgetConfig, updateWidgetConfigBy } from "../../state/layout";
 import styles from "./dice.module.css";
 
 const ROLL_MS = 600;
@@ -100,7 +100,11 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
       const final = Array.from({ length: count }, randomDie);
       setPreview(null);
       setRolling(false);
-      updateWidgetConfig(widget.id, { ...cfg, lastRoll: final });
+      // Merge into the CURRENT config (F9-funn S#6): a count change made
+      // during the scramble must not be reverted by this stale closure.
+      updateWidgetConfigBy(widget.id, (c) =>
+        c.kind === "dice" ? { ...c, lastRoll: final } : c,
+      );
     }, ROLL_MS);
   };
 

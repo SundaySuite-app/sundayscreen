@@ -18,6 +18,10 @@ async function saveGeometry(): Promise<void> {
     const factor = await win.scaleFactor();
     const pos = (await win.outerPosition()).toLogical(factor);
     const size = (await win.outerSize()).toLogical(factor);
+    // Re-check AFTER the awaits (F9-funn S#5): an F11 during the reads
+    // would otherwise persist the MONITOR rect as windowed geometry and
+    // clobber the toggle's own save.
+    if (fullscreen.peek()) return;
     const s = settings.peek();
     const next = {
       ...s,

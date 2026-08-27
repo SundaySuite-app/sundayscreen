@@ -7,13 +7,8 @@ import { batch, signal } from "@preact/signals";
 
 import type { Class } from "../bindings/Class";
 import type { Member } from "../bindings/Member";
-import {
-  activeClass,
-  flushPending,
-  initLayout,
-  selectedWidgetId,
-  widgets,
-} from "./layout";
+import { activeClass, adoptSnapshot, flushPending, initLayout } from "./layout";
+import { settings } from "./settings";
 
 export const classes = signal<Class[]>([]);
 export const members = signal<Member[]>([]);
@@ -34,10 +29,11 @@ export async function switchClass(id: string): Promise<void> {
   await flushPending();
   const snap = await window.api.classSwitch(id);
   batch(() => {
-    activeClass.value = snap.class;
-    widgets.value = snap.widgets;
+    adoptSnapshot(snap.class, snap.widgets);
     members.value = snap.members;
-    selectedWidgetId.value = null;
+    // Keep the settings signal's activeClassId in step (F9-funn S#1) — a
+    // later whole-object save must not repoint the backend at the old class.
+    settings.value = { ...settings.peek(), activeClassId: snap.class.id };
   });
 }
 

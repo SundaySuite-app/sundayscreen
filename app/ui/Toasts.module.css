@@ -1,0 +1,50 @@
+.stack {
+  position: fixed;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: min(420px, calc(100vw - 2 * var(--sp-4)));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  box-shadow: var(--shadow-toast, var(--shadow-dialog));
+  font-size: var(--fs-base);
+  color: var(--ink);
+}
+
+.toast[data-kind="error"] {
+  border-color: var(--bad-line);
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.toast[data-kind="warn"] {
+  border-color: var(--warn-line);
+  background: var(--warn-soft);
+}
+
+.msg {
+  flex: 1;
+}
+
+.close {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  line-height: 1;
+  cursor: pointer;
+}

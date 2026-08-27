@@ -33,15 +33,23 @@ pub fn clean_name(raw: &str) -> Option<String> {
     Some(trimmed.chars().take(NAME_MAX_CHARS).collect())
 }
 
+/// The matching key: trimmed and case-folded, so fixing "KARI" → "Kari" in
+/// the textarea is a SPELLING fix, not a new pupil — her id (and therefore
+/// her drawn-this-round state) survives, and the new spelling is what gets
+/// stored. (Gransking F9, funn #12.)
+fn match_key(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
 /// Reconcile the wanted names against the existing `(id, name)` rows (in
 /// display order). Order of the result IS the new display order. Input names
 /// are cleaned; empty lines vanish; the list is capped at [`MEMBERS_MAX`].
 pub fn reconcile(existing: &[(String, String)], wanted: &[String]) -> Vec<MemberSpec> {
-    // name → queue of unused existing ids, in display order.
-    let mut free: std::collections::HashMap<&str, std::collections::VecDeque<&str>> =
+    // match key → queue of unused existing ids, in display order.
+    let mut free: std::collections::HashMap<String, std::collections::VecDeque<&str>> =
         std::collections::HashMap::new();
     for (id, name) in existing {
-        free.entry(name.as_str())
+        free.entry(match_key(name))
             .or_default()
             .push_back(id.as_str());
     }
@@ -52,7 +60,7 @@ pub fn reconcile(existing: &[(String, String)], wanted: &[String]) -> Vec<Member
         .take(MEMBERS_MAX)
         .map(|name| {
             let id = free
-                .get_mut(name.as_str())
+                .get_mut(&match_key(&name))
                 .and_then(|q| q.pop_front())
                 .map(|s| s.to_string());
             MemberSpec { id, name }
@@ -125,6 +133,15 @@ mod tests {
     fn a_trimmed_name_still_matches_its_existing_id() {
         let specs = reconcile(&ex(&[("a", "Kari")]), &want(&["  Kari "]));
         assert_eq!(specs[0].id.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn a_capitalization_fix_keeps_the_id_and_takes_the_new_spelling() {
+        // Gransking F9, funn #12: "KARI" → "Kari" is a spelling fix — her
+        // draw state must survive it.
+        let specs = reconcile(&ex(&[("a", "KARI")]), &want(&["Kari"]));
+        assert_eq!(specs[0].id.as_deref(), Some("a"));
+        assert_eq!(specs[0].name, "Kari");
     }
 
     #[test]

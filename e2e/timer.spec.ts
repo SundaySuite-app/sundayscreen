@@ -10,7 +10,7 @@ test("a countdown runs, warns near zero, and finishes", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Timer", exact: true }).click();
+  await page.getByRole("button", { name: "Tidtaker" }).click();
   const timer = page.locator('[data-widget-kind="timer"]');
   await expect(timer.getByText("05:00")).toBeVisible();
 
@@ -36,7 +36,7 @@ test("pause freezes the derived remainder; resume continues", async ({
   await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Timer", exact: true }).click();
+  await page.getByRole("button", { name: "Tidtaker" }).click();
   const timer = page.locator('[data-widget-kind="timer"]');
   await timer.getByRole("button", { name: "Start" }).click();
   await page.clock.fastForward(90_000);
@@ -57,7 +57,7 @@ test("the stopwatch counts up and banks across pauses", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Timer", exact: true }).click();
+  await page.getByRole("button", { name: "Tidtaker" }).click();
   const timer = page.locator('[data-widget-kind="timer"]');
   await timer.hover();
   await timer.getByRole("button", { name: "Stoppeklokke" }).click();
@@ -80,7 +80,7 @@ test("duration buttons adjust the config and it persists", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Timer", exact: true }).click();
+  await page.getByRole("button", { name: "Tidtaker" }).click();
   const timer = page.locator('[data-widget-kind="timer"]');
   await timer.getByRole("button", { name: "Ett minutt til" }).click();
   await timer.getByRole("button", { name: "Ett minutt til" }).click();

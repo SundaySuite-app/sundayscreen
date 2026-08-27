@@ -30,6 +30,7 @@ export async function installFixtures(
       >;
       layouts: Record<string, unknown[]>;
       drawn?: Record<string, string[]>;
+      settings?: Record<string, unknown>;
       nextId: number;
     }
 
@@ -55,24 +56,54 @@ export async function installFixtures(
       (args ?? {})[key];
 
     (window as unknown as Record<string, unknown>).__SUNDAYSCREEN_FIXTURES__ = {
+      // The blob is stored WHOLE, like the real backend (F9-funn S8a) — a
+      // stale frontend snapshot must be able to clobber it here too, or the
+      // e2e tier cannot catch that bug class.
       settings_get: () => {
         const db = load();
         return {
           language: "no",
-          activeClassId: db.activeClassId,
           snapEnabled: true,
           window: null,
           updateChannel: "stable",
+          ...(db.settings ?? {}),
+          activeClassId: db.activeClassId,
         };
       },
+      settings_save: (args?: Record<string, unknown>) => {
+        const db = load();
+        const blob = (args?.settings ?? {}) as Record<string, unknown>;
+        db.settings = blob;
+        // Mirror the real clobber semantics: the blob's activeClassId wins.
+        if (
+          typeof blob.activeClassId === "string" ||
+          blob.activeClassId === null
+        ) {
+          db.activeClassId =
+            (blob.activeClassId as string | null) ?? db.activeClassId;
+        }
+        save(db);
+        return blob;
+      },
       update_check: { phase: "upToDate" },
-      settings_save: (args?: Record<string, unknown>) => args?.settings,
       app_info: { name: "SundayScreen", version: "0.0.0-e2e" },
 
-      class_ensure_active: () => {
+      class_ensure_active: (args?: Record<string, unknown>) => {
         const db = load();
-        const found =
+        let found =
           db.classes.find((c) => c.id === db.activeClassId) ?? db.classes[0];
+        if (!found) {
+          // Like the real backend: bootstrap a default class (F9-funn S8c).
+          found = {
+            id: mint(db),
+            name: String(arg(args, "defaultName") ?? "Min klasse"),
+            sortIndex: 0,
+            createdAt: 0,
+          };
+          db.classes.push(found);
+          db.members[found.id] = [];
+          db.layouts[found.id] = [];
+        }
         db.activeClassId = found.id;
         save(db);
         return found;
@@ -115,6 +146,7 @@ export async function installFixtures(
         const cls = db.classes.find((c) => c.id === arg(args, "classId"));
         if (!cls) throw new Error("not_found");
         db.activeClassId = cls.id;
+        if (db.settings) db.settings.activeClassId = cls.id;
         save(db);
         return {
           class: cls,
@@ -126,16 +158,30 @@ export async function installFixtures(
       members_get: (args?: Record<string, unknown>) =>
         load().members[String(arg(args, "classId"))] ?? [],
       members_set: (args?: Record<string, unknown>) => {
+        // Identity by (trimmed, case-folded) name, first-to-first, and the
+        // drawn state of removed rows pruned — the REAL reconcile semantics
+        // (F9-funn S8b), so no-repeat journeys assert true behaviour.
         const db = load();
+        db.drawn ??= {};
         const classId = String(arg(args, "classId"));
         const names = ((arg(args, "names") as string[]) ?? [])
           .map((n) => n.trim())
           .filter((n) => n.length > 0);
-        db.members[classId] = names.map((name, i) => ({
-          id: `m-${classId}-${i}`,
-          name,
-          sortIndex: i,
-        }));
+        const freeIds = new Map<string, string[]>();
+        for (const m of db.members[classId] ?? []) {
+          const key = m.name.trim().toLowerCase();
+          freeIds.set(key, [...(freeIds.get(key) ?? []), m.id]);
+        }
+        db.members[classId] = names.map((name, i) => {
+          const key = name.toLowerCase();
+          const queue = freeIds.get(key);
+          const kept = queue?.shift();
+          return { id: kept ?? mint(db), name, sortIndex: i };
+        });
+        const liveIds = new Set(db.members[classId].map((m) => m.id));
+        db.drawn[classId] = (db.drawn[classId] ?? []).filter((id) =>
+          liveIds.has(id),
+        );
         save(db);
         return db.members[classId];
       },

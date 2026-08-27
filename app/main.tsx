@@ -27,9 +27,13 @@ import { loadClasses, loadMembers } from "./state/classes";
 import { initChrome } from "./state/chrome";
 import { activeClass, initLayout } from "./state/layout";
 import { hydrateSettings, settings } from "./state/settings";
+import { toast } from "./ui/toast";
+import { Toasts } from "./ui/Toasts";
 
-// 2. The shell's own translator into the shim, before anything can fail.
-setShimNotifier({ t });
+// 2. The shell's own surfaces into the shim, before anything can fail — the
+// toast host is what makes the shim's failure pipeline actually REACH the
+// screen (F9-funn U#2).
+setShimNotifier({ t, toast });
 
 const host = document.getElementById("app");
 if (!host) {
@@ -44,8 +48,10 @@ if (!overlayHost) {
   );
 }
 
-// 3.
+// 3. TWO trees: the shell in #app, the toasts in #overlays — siblings, so
+// no future inert-dialog in #app can disable its own error surface.
 render(<Shell />, host);
+render(<Toasts />, overlayHost);
 
 // The chrome's global listeners — idempotent installs whose cleanups we
 // never need (the shell lives as long as the window).

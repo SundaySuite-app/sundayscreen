@@ -49,14 +49,19 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Updater artifact signing (the feed's signature chain).
+          # Updater artifact signing (the feed's signature chain). The key is
+          # PASSWORDLESS — no PASSWORD env on purpose: an empty-string env is
+          # not the same as an absent one (the suite's APPLE_ID lesson), so
+          # the variable simply does not exist here.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # macOS code signing. The secret NAMES are the suite's Electron-era
-          # ones (MAC_CERTS*), mapped onto tauri-action's APPLE_* env.
+          # ones (MAC_CERTS*), mapped onto tauri-action's APPLE_* env. Until
+          # the owner adds MAC_CERTS, the identity falls back to "-" (AD-HOC
+          # signing) — a hardcoded Developer ID with no certificate in the
+          # runner keychain would fail the whole build.
           APPLE_CERTIFICATE: ${{ secrets.MAC_CERTS }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: "Developer ID Application: Richard Fossland (784GN847G4)"
+          APPLE_SIGNING_IDENTITY: "${{ secrets.MAC_CERTS != '' && 'Developer ID Application: Richard Fossland (784GN847G4)' || '-' }}"
           # Notarization is DELIBERATELY off: Apple's notary answers 403
           # ("required agreement missing") until the updated PLA is accepted
           # for team 784GN847G4. When the owner has accepted it, uncomment:

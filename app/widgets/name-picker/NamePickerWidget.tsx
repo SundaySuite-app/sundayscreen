@@ -8,7 +8,11 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tn } from "../../i18n";
 import { members } from "../../state/classes";
-import { activeClass, updateWidgetConfig } from "../../state/layout";
+import {
+  activeClass,
+  updateWidgetConfig,
+  updateWidgetConfigBy,
+} from "../../state/layout";
 import styles from "./name-picker.module.css";
 
 /** How long the name-spin lasts. */
@@ -60,10 +64,11 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
           remaining: result.remaining,
           reshuffled: result.reshuffled,
         });
-        updateWidgetConfig(widget.id, {
-          ...cfg,
-          lastDrawn: result.member.name,
-        });
+        // Merge into the CURRENT config (F9-funn S#6): a no-repeat toggle
+        // during the spin must not be reverted by this stale closure.
+        updateWidgetConfigBy(widget.id, (c) =>
+          c.kind === "namepicker" ? { ...c, lastDrawn: result.member.name } : c,
+        );
       }, SPIN_MS);
     } catch (e) {
       console.warn("[picker] draw failed", e);

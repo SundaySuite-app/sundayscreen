@@ -84,6 +84,30 @@ test("deleting a class requires typing its name", async ({ page }) => {
   );
 });
 
+test("a settings write after a class switch does not revert the active class", async ({
+  page,
+}) => {
+  // Gransking F9, funn S#1 (høy): a stale whole-object settings save used to
+  // repoint the backend at the previous class — switch, touch any setting,
+  // restart, wrong class.
+  await installFixtures(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+  await page.getByPlaceholder("Ny klasse …").fill("8A");
+  await page.getByRole("button", { name: "Legg til" }).click();
+
+  // Any settings write — the update channel is the cheapest.
+  await page.getByRole("button", { name: "Beta", exact: true }).click();
+  await page.getByRole("button", { name: "Lukk" }).click();
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Bytt klasse" })).toHaveText(
+    /8A/,
+  );
+});
+
 test("renaming a class updates the switcher", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");

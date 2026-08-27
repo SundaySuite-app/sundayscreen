@@ -39,6 +39,7 @@ export function ManagePanel() {
   const [error, setError] = useState<string | null>(null);
   const [updStatus, setUpdStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   // Re-seed the textarea whenever the ACTIVE CLASS changes (a switch inside
   // the panel) — not on every members change, or typing would fight the
@@ -63,12 +64,34 @@ export function ManagePanel() {
   const deletingClass = classes.value.find((c) => c.id === deletingId);
 
   const setChannel = (channel: "stable" | "beta") => {
-    const s = settings.peek();
-    if (s.updateChannel === channel) return;
-    const next = { ...s, updateChannel: channel };
+    const prev = settings.peek();
+    if (prev.updateChannel === channel) return;
+    const next = { ...prev, updateChannel: channel };
     settings.value = next;
     setUpdStatus(null);
-    run(window.api.saveSettings(next));
+    setError(null);
+    // A failed save must REVERT the highlight (F9-funn U#6) — a receipt
+    // that lies is worse than the error.
+    window.api.saveSettings(next).catch((e) => {
+      console.warn("[manage] channel save failed", e);
+      settings.value = prev;
+      setError(t("manage.actionFailed"));
+    });
+  };
+
+  const install = async () => {
+    setInstalling(true);
+    setError(null);
+    try {
+      // A successful install restarts the app — this resolves only for the
+      // honest "the feed emptied since the check" answer.
+      setUpdStatus(await window.api.updateInstall());
+    } catch (e) {
+      console.warn("[manage] update install failed", e);
+      setError(t("manage.actionFailed"));
+    } finally {
+      setInstalling(false);
+    }
   };
 
   const checkUpdate = async () => {
@@ -311,7 +334,8 @@ export function ManagePanel() {
               </span>
               <button
                 class={styles.installBtn}
-                onClick={() => run(window.api.updateInstall())}
+                disabled={installing}
+                onClick={() => void install()}
               >
                 {t("update.install")}
               </button>

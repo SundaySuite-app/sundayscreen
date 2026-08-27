@@ -44,22 +44,29 @@ pub fn restore_window_state(app: &tauri::AppHandle, settings: &Settings) {
         return;
     };
 
-    let monitors: Vec<MonitorRect> = window
-        .available_monitors()
-        .unwrap_or_default()
-        .iter()
-        .map(|m| {
-            let scale = m.scale_factor();
-            let pos = m.position().to_logical::<f64>(scale);
-            let size = m.size().to_logical::<f64>(scale);
-            MonitorRect {
-                x: pos.x,
-                y: pos.y,
-                w: size.width,
-                h: size.height,
-            }
-        })
-        .collect();
+    // Err ≠ empty (F9-funn B#8): a FAILED enumeration must not collapse into
+    // "no monitors, trust anything" — that inverts the clamp exactly on the
+    // rigs it exists for. On error, skip the restore and keep the default.
+    let monitors: Vec<MonitorRect> = match window.available_monitors() {
+        Ok(list) => list
+            .iter()
+            .map(|m| {
+                let scale = m.scale_factor();
+                let pos = m.position().to_logical::<f64>(scale);
+                let size = m.size().to_logical::<f64>(scale);
+                MonitorRect {
+                    x: pos.x,
+                    y: pos.y,
+                    w: size.width,
+                    h: size.height,
+                }
+            })
+            .collect(),
+        Err(e) => {
+            tracing::warn!("monitor enumeration failed — skipping window restore: {e}");
+            return;
+        }
+    };
 
     if !restorable(state, &monitors) {
         tracing::info!(

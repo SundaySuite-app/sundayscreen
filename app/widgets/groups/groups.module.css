@@ -95,8 +95,8 @@
 }
 
 .step {
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--surface);

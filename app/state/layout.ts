@@ -3,8 +3,16 @@
 // The signals are the WORKING TRUTH; `layout_save` mirrors them to SQLite as
 // a replace-all in one transaction. Discrete commits (add, delete, a click
 // that changes config) save IMMEDIATELY; streaming edits (typing in the text
-// widget) debounce 500 ms. `flushPending` is the class-switch seam (F3): it
-// resolves once nothing is waiting to be written.
+// widget) debounce 500 ms.
+//
+// Three F9 hardenings live here:
+//   - writes are SERIALIZED (funn S#2/U#8): each starts only after the
+//     previous settled, and reads the freshest state at write time, so two
+//     replace-alls can never commit out of order and resurrect a deletion;
+//   - a FAILED load blocks saving (funn S#4): a tolerant `[]` fallback plus
+//     replace-all writes was a one-edit wipe of the stored layout;
+//   - a FAILED save is VISIBLE (funn U#1): the sticky `saveError` chip, not
+//     a console line.
 
 import { signal } from "@preact/signals";
 
@@ -15,18 +23,55 @@ import type { WidgetInstance } from "../bindings/WidgetInstance";
 import { t } from "../i18n";
 import { placeNew } from "../screen/coords-core";
 import { WIDGET_REGISTRY, type WidgetKind } from "../widgets/registry";
+import { settings } from "./settings";
 import { surfaceSize } from "./surface";
 
 export const activeClass = signal<Class | null>(null);
 export const widgets = signal<WidgetInstance[]>([]);
 export const selectedWidgetId = signal<string | null>(null);
 
+/** Did the stored layout actually LOAD? While false, every save is refused —
+ *  a replace-all against a layout we never read would wipe it. */
+export const layoutHydrated = signal(false);
+
+/** Is the store refusing/failing to persist right now? Drives the sticky
+ *  error chip in the shell. */
+export const saveError = signal(false);
+
 /** Load (or bootstrap) the active class and its layout. Called once on boot,
  *  AFTER the locale is set — the default class name is translated copy. */
 export async function initLayout(): Promise<void> {
   const cls = await window.api.classEnsureActive(t("class.defaultName"));
   activeClass.value = cls;
-  widgets.value = await window.api.layoutLoad(cls.id);
+  // Keep the settings signal's activeClassId in step (F9-funn S#1): every
+  // whole-object settings save carries this field, and a stale copy would
+  // quietly repoint the backend at the previous class.
+  const s = settings.peek();
+  if (s.activeClassId !== cls.id) {
+    settings.value = { ...s, activeClassId: cls.id };
+  }
+  try {
+    widgets.value = await window.api.layoutLoad(cls.id);
+    layoutHydrated.value = true;
+  } catch (e) {
+    console.warn("[layout] layout_load failed — saving is blocked", e);
+    widgets.value = [];
+    layoutHydrated.value = false;
+  }
+}
+
+/** Adopt a class snapshot from a successful switch. */
+export function adoptSnapshot(cls: Class, list: WidgetInstance[]): void {
+  activeClass.value = cls;
+  widgets.value = list;
+  layoutHydrated.value = true;
+  selectedWidgetId.value = null;
+}
+
+/** The next z on top of the current stack — NOT the list length: deletions
+ *  leave holes and length-based z collided with survivors (F9-funn S#3). */
+function nextZ(): number {
+  return widgets.value.reduce((max, w) => Math.max(max, w.z), -1) + 1;
 }
 
 export function addWidget(kind: WidgetKind): void {
@@ -39,7 +84,7 @@ export function addWidget(kind: WidgetKind): void {
   const inst: WidgetInstance = {
     id: crypto.randomUUID(),
     rect,
-    z: widgets.value.length,
+    z: nextZ(),
     config: def.defaultConfig(),
   };
   widgets.value = [...widgets.value, inst];
@@ -58,7 +103,12 @@ let undoTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function removeWidget(id: string): void {
   const removed = widgets.value.find((w) => w.id === id);
-  widgets.value = widgets.value.filter((w) => w.id !== id);
+  // Re-index densely so no later add can collide with a survivor's z.
+  widgets.value = widgets.value
+    .filter((w) => w.id !== id)
+    .slice()
+    .sort((a, b) => a.z - b.z)
+    .map((w, i) => ({ ...w, z: i }));
   if (selectedWidgetId.value === id) selectedWidgetId.value = null;
   if (removed) {
     undoSlot.value = { widget: removed };
@@ -76,10 +126,7 @@ export function undoRemove(): void {
   if (!slot) return;
   undoSlot.value = null;
   if (undoTimer !== undefined) clearTimeout(undoTimer);
-  widgets.value = [
-    ...widgets.value,
-    { ...slot.widget, z: widgets.value.length },
-  ];
+  widgets.value = [...widgets.value, { ...slot.widget, z: nextZ() }];
   saveNow();
 }
 
@@ -95,7 +142,8 @@ export function bringToFront(id: string): void {
   selectedWidgetId.value = id;
   const list = widgets.value;
   const target = list.find((w) => w.id === id);
-  if (!target || target.z === list.length - 1) return;
+  const maxZ = list.reduce((max, w) => Math.max(max, w.z), -1);
+  if (!target || target.z === maxZ) return;
   const rest = [...list].filter((w) => w.id !== id).sort((a, b) => a.z - b.z);
   widgets.value = [
     ...rest.map((w, i) => ({ ...w, z: i })),
@@ -116,6 +164,22 @@ export function updateWidgetConfig(
   else saveNow();
 }
 
+/**
+ * Config update at the END of something async (a draw's spin, a roll's
+ * scramble, a split's round-trip): the updater receives the widget's
+ * CURRENT config, so an edit made during the wait is merged, not reverted
+ * (F9-funn S#6) — and a widget deleted meanwhile is a clean no-op.
+ */
+export function updateWidgetConfigBy(
+  id: string,
+  update: (config: WidgetConfig) => WidgetConfig,
+  opts: { debounce?: boolean } = {},
+): void {
+  const current = widgets.value.find((w) => w.id === id);
+  if (!current) return;
+  updateWidgetConfig(id, update(current.config), opts);
+}
+
 // ── The persister ───────────────────────────────────────────────────────────
 
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -124,17 +188,24 @@ let inflight: Promise<void> = Promise.resolve();
 /** How long a streaming edit may sit unwritten. */
 export const SAVE_DEBOUNCE_MS = 500;
 
+/** Queue one write AFTER every earlier one, reading the freshest class and
+ *  widget state at WRITE time (replace-all is idempotent, so the latest
+ *  state is always the right thing to write). */
 function flush(): Promise<void> {
-  const cls = activeClass.peek();
-  if (!cls) return Promise.resolve();
-  const snapshot = widgets.peek();
-  const write = window.api.layoutSave(cls.id, snapshot).catch((e) => {
-    // A failed save must not crash the shell — but it is never silent:
-    // the shim's failure ring remembers it, and the console says so.
-    console.warn("[layout] layout_save failed", e);
+  const write = inflight.then(async () => {
+    if (!layoutHydrated.peek()) return;
+    const cls = activeClass.peek();
+    if (!cls) return;
+    try {
+      await window.api.layoutSave(cls.id, widgets.peek());
+      saveError.value = false;
+    } catch (e) {
+      console.warn("[layout] layout_save failed", e);
+      saveError.value = true;
+    }
   });
-  inflight = inflight.then(() => write);
-  return write.then(() => undefined);
+  inflight = write;
+  return write;
 }
 
 /** Save immediately (a discrete commit: pointerup, add, delete, a click). */

@@ -1,0 +1,102 @@
+.clock {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+}
+
+.digital {
+  font-size: 30cqmin;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.seconds {
+  font-size: 16cqmin;
+  color: var(--ink-2);
+}
+
+.date {
+  font-size: 8cqmin;
+  color: var(--ink-2);
+}
+
+.analog {
+  width: 72cqmin;
+  height: 72cqmin;
+}
+
+.face {
+  fill: var(--raised);
+  stroke: var(--line-2);
+  stroke-width: 3;
+}
+
+.tick {
+  stroke: var(--ink-3);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.tickMajor {
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.hourHand {
+  stroke: var(--ink);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.minuteHand {
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.secondHand {
+  stroke: var(--gold);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.hub {
+  fill: var(--ink);
+}
+
+.settings {
+  position: absolute;
+  bottom: var(--sp-2);
+  display: flex;
+  gap: var(--sp-1);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.clock:hover .settings {
+  opacity: 1;
+}
+
+.toggleBtn {
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.toggleBtn[data-current] {
+  color: var(--ink);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}

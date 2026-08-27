@@ -16,7 +16,9 @@
   "widget": {
     "delete": "Remove",
     "label": {
-      "text": "Text"
+      "text": "Text",
+      "clock": "Clock",
+      "timer": "Timer"
     },
     "text": {
       "placeholder": "Write a message …"
@@ -48,5 +50,22 @@
     "pasteHint": "One name per line — paste from Excel if you like.",
     "savedReceipt": "Saved",
     "actionFailed": "Something went wrong — try again."
+  },
+  "timer": {
+    "start": "Start",
+    "pause": "Pause",
+    "resume": "Resume",
+    "reset": "Reset",
+    "plusMinute": "One more minute",
+    "minusMinute": "One minute less",
+    "sound": "Sound alert",
+    "modeCountdown": "Countdown",
+    "modeStopwatch": "Stopwatch"
+  },
+  "clock": {
+    "digital": "Digital",
+    "analog": "Analog",
+    "seconds": "Seconds",
+    "date": "Date"
   }
 }

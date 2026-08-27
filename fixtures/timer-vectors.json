@@ -1,0 +1,215 @@
+{
+  "_comment": "Shared timer-transition test vectors. Asserted by BOTH cargo (crates/sundayscreen-core/src/timer.rs) and vitest (app/widgets/timer/timer-core.test.ts) — the divergence gate between the Rust specification and the TS execution. A case is either an ACTION (action + mode + durationMs) or a TICK (tick: true); expectSound defaults to false.",
+  "cases": [
+    {
+      "name": "start arms the target at now + duration",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 1000,
+      "state": { "phase": "idle" },
+      "action": { "type": "start" },
+      "expect": { "phase": "running", "targetEpochMs": 6000 }
+    },
+    {
+      "name": "start from finished starts fresh",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 9000,
+      "state": { "phase": "finished", "atEpochMs": 6000 },
+      "action": { "type": "start" },
+      "expect": { "phase": "running", "targetEpochMs": 14000 }
+    },
+    {
+      "name": "start while running restarts with the full duration",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 3000,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "action": { "type": "start" },
+      "expect": { "phase": "running", "targetEpochMs": 8000 }
+    },
+    {
+      "name": "pause freezes the derived remainder",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 2500,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "action": { "type": "pause" },
+      "expect": { "phase": "paused", "remainingMs": 3500 }
+    },
+    {
+      "name": "pause after the target clamps to zero, never negative",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 7000,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "action": { "type": "pause" },
+      "expect": { "phase": "paused", "remainingMs": 0 }
+    },
+    {
+      "name": "resume re-arms the target from now",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 10000,
+      "state": { "phase": "paused", "remainingMs": 3500 },
+      "action": { "type": "resume" },
+      "expect": { "phase": "running", "targetEpochMs": 13500 }
+    },
+    {
+      "name": "reset from running goes idle",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 3000,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "action": { "type": "reset" },
+      "expect": { "phase": "idle" }
+    },
+    {
+      "name": "reset from a stopwatch state goes idle too",
+      "mode": "stopwatch",
+      "durationMs": 0,
+      "nowMs": 3000,
+      "state": {
+        "phase": "swRunning",
+        "startedEpochMs": 1000,
+        "accumulatedMs": 0
+      },
+      "action": { "type": "reset" },
+      "expect": { "phase": "idle" }
+    },
+    {
+      "name": "pause in idle is a no-op",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 3000,
+      "state": { "phase": "idle" },
+      "action": { "type": "pause" },
+      "expect": { "phase": "idle" }
+    },
+    {
+      "name": "resume while running is a no-op",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 3000,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "action": { "type": "resume" },
+      "expect": { "phase": "running", "targetEpochMs": 6000 }
+    },
+    {
+      "name": "tick before the target changes nothing",
+      "nowMs": 5999,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "tick": true,
+      "expect": { "phase": "running", "targetEpochMs": 6000 },
+      "expectSound": false
+    },
+    {
+      "name": "tick at the target finishes AT the target and chimes",
+      "nowMs": 6000,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "tick": true,
+      "expect": { "phase": "finished", "atEpochMs": 6000 },
+      "expectSound": true
+    },
+    {
+      "name": "tick just after the target still chimes",
+      "nowMs": 6900,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "tick": true,
+      "expect": { "phase": "finished", "atEpochMs": 6000 },
+      "expectSound": true
+    },
+    {
+      "name": "waking up 59.9s late still chimes (inside the grace)",
+      "nowMs": 65900,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "tick": true,
+      "expect": { "phase": "finished", "atEpochMs": 6000 },
+      "expectSound": true
+    },
+    {
+      "name": "waking up long after the target finishes SILENTLY",
+      "nowMs": 66001,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "tick": true,
+      "expect": { "phase": "finished", "atEpochMs": 6000 },
+      "expectSound": false
+    },
+    {
+      "name": "tick on a paused timer is inert",
+      "nowMs": 999999,
+      "state": { "phase": "paused", "remainingMs": 1200 },
+      "tick": true,
+      "expect": { "phase": "paused", "remainingMs": 1200 },
+      "expectSound": false
+    },
+    {
+      "name": "tick on a stopwatch is inert — there is no zero to cross",
+      "nowMs": 999999,
+      "state": {
+        "phase": "swRunning",
+        "startedEpochMs": 1000,
+        "accumulatedMs": 500
+      },
+      "tick": true,
+      "expect": {
+        "phase": "swRunning",
+        "startedEpochMs": 1000,
+        "accumulatedMs": 500
+      },
+      "expectSound": false
+    },
+    {
+      "name": "stopwatch start begins at zero from now",
+      "mode": "stopwatch",
+      "durationMs": 0,
+      "nowMs": 4000,
+      "state": { "phase": "idle" },
+      "action": { "type": "start" },
+      "expect": {
+        "phase": "swRunning",
+        "startedEpochMs": 4000,
+        "accumulatedMs": 0
+      }
+    },
+    {
+      "name": "stopwatch pause banks the elapsed time",
+      "mode": "stopwatch",
+      "durationMs": 0,
+      "nowMs": 10000,
+      "state": {
+        "phase": "swRunning",
+        "startedEpochMs": 4000,
+        "accumulatedMs": 2000
+      },
+      "action": { "type": "pause" },
+      "expect": { "phase": "swPaused", "accumulatedMs": 8000 }
+    },
+    {
+      "name": "stopwatch resume continues from the banked total",
+      "mode": "stopwatch",
+      "durationMs": 0,
+      "nowMs": 20000,
+      "state": { "phase": "swPaused", "accumulatedMs": 8000 },
+      "action": { "type": "resume" },
+      "expect": {
+        "phase": "swRunning",
+        "startedEpochMs": 20000,
+        "accumulatedMs": 8000
+      }
+    },
+    {
+      "name": "a clock that jumped BACKWARDS cannot bank negative stopwatch time",
+      "mode": "stopwatch",
+      "durationMs": 0,
+      "nowMs": 3000,
+      "state": {
+        "phase": "swRunning",
+        "startedEpochMs": 4000,
+        "accumulatedMs": 2000
+      },
+      "action": { "type": "pause" },
+      "expect": { "phase": "swPaused", "accumulatedMs": 2000 }
+    }
+  ]
+}

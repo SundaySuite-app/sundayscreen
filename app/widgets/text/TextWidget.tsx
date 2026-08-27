@@ -10,7 +10,11 @@ import { saveNow, updateWidgetConfig } from "../../state/layout";
 import styles from "./text.module.css";
 
 export function TextWidget({ widget }: { widget: WidgetInstance }) {
-  const cfg = widget.config; // kind "text" — the registry routed us here
+  const cfg = widget.config;
+  // The registry routed us here, so the kind is stable for this instance —
+  // the early return can never flip between renders (hook order is safe),
+  // and TS narrows the config union for everything below.
+  if (cfg.kind !== "text") return null;
   const [editing, setEditing] = useState(false);
 
   const commit = (content: string, opts: { debounce: boolean }) => {

@@ -50,6 +50,41 @@ fn default_font_scale() -> f64 {
     1.0
 }
 
+/// Which way the timer counts. Serialised lowercase — part of the persisted
+/// config vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "TimerMode.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum TimerMode {
+    #[default]
+    Countdown,
+    Stopwatch,
+}
+
+/// The clock widget's face.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "ClockFace.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum ClockFace {
+    #[default]
+    Digital,
+    Analog,
+}
+
+fn default_timer_duration_ms() -> f64 {
+    300_000.0 // 5 minutes
+}
+fn default_warn_at_ms() -> f64 {
+    60_000.0
+}
+fn default_sound_on() -> bool {
+    true
+}
+
+/// Shortest and longest countdown the config will persist.
+pub const TIMER_MIN_MS: f64 = 5_000.0;
+pub const TIMER_MAX_MS: f64 = 86_400_000.0; // 24 h
+
 /// Per-kind widget configuration. The serde tag IS the `kind` column value —
 /// a renamed variant is a broken database.
 ///
@@ -71,6 +106,24 @@ pub enum WidgetConfig {
         #[serde(default)]
         align: TextAlign,
     },
+    Clock {
+        #[serde(default)]
+        face: ClockFace,
+        #[serde(default)]
+        show_seconds: bool,
+        #[serde(default)]
+        show_date: bool,
+    },
+    Timer {
+        #[serde(default = "default_timer_duration_ms")]
+        duration_ms: f64,
+        #[serde(default = "default_warn_at_ms")]
+        warn_at_ms: f64,
+        #[serde(default = "default_sound_on")]
+        sound_on: bool,
+        #[serde(default)]
+        mode: TimerMode,
+    },
 }
 
 impl WidgetConfig {
@@ -78,6 +131,8 @@ impl WidgetConfig {
     pub fn kind(&self) -> &'static str {
         match self {
             WidgetConfig::Text { .. } => "text",
+            WidgetConfig::Clock { .. } => "clock",
+            WidgetConfig::Timer { .. } => "timer",
         }
     }
 
@@ -89,6 +144,17 @@ impl WidgetConfig {
                 content: String::new(),
                 font_scale: default_font_scale(),
                 align: TextAlign::default(),
+            }),
+            "clock" => Some(WidgetConfig::Clock {
+                face: ClockFace::default(),
+                show_seconds: false,
+                show_date: false,
+            }),
+            "timer" => Some(WidgetConfig::Timer {
+                duration_ms: default_timer_duration_ms(),
+                warn_at_ms: default_warn_at_ms(),
+                sound_on: default_sound_on(),
+                mode: TimerMode::default(),
             }),
             _ => None,
         }
@@ -109,6 +175,21 @@ impl WidgetConfig {
                 if content.chars().count() > TEXT_CONTENT_MAX_CHARS {
                     *content = content.chars().take(TEXT_CONTENT_MAX_CHARS).collect();
                 }
+            }
+            WidgetConfig::Clock { .. } => {}
+            WidgetConfig::Timer {
+                duration_ms,
+                warn_at_ms,
+                ..
+            } => {
+                if !duration_ms.is_finite() {
+                    *duration_ms = default_timer_duration_ms();
+                }
+                *duration_ms = duration_ms.clamp(TIMER_MIN_MS, TIMER_MAX_MS);
+                if !warn_at_ms.is_finite() {
+                    *warn_at_ms = default_warn_at_ms();
+                }
+                *warn_at_ms = warn_at_ms.clamp(0.0, *duration_ms);
             }
         }
     }
@@ -332,7 +413,10 @@ mod tests {
             content,
             font_scale,
             ..
-        } = c;
+        } = c
+        else {
+            panic!("still a text config");
+        };
         assert_eq!(content.chars().count(), TEXT_CONTENT_MAX_CHARS);
         assert_eq!(font_scale, 1.0);
 
@@ -342,8 +426,57 @@ mod tests {
             align: TextAlign::Left,
         };
         big.clamp();
-        let WidgetConfig::Text { font_scale, .. } = big;
+        let WidgetConfig::Text { font_scale, .. } = big else {
+            panic!("still a text config");
+        };
         assert_eq!(font_scale, 6.0);
+    }
+
+    #[test]
+    fn timer_clamp_bounds_duration_and_warn() {
+        let mut t = WidgetConfig::Timer {
+            duration_ms: f64::NAN,
+            warn_at_ms: 999_999_999.0,
+            sound_on: true,
+            mode: TimerMode::Countdown,
+        };
+        t.clamp();
+        let WidgetConfig::Timer {
+            duration_ms,
+            warn_at_ms,
+            ..
+        } = t
+        else {
+            panic!("still a timer config");
+        };
+        assert_eq!(duration_ms, 300_000.0, "NaN takes the default");
+        assert!(warn_at_ms <= duration_ms, "warn can never exceed duration");
+
+        let mut tiny = WidgetConfig::Timer {
+            duration_ms: 1.0,
+            warn_at_ms: 0.0,
+            sound_on: false,
+            mode: TimerMode::Stopwatch,
+        };
+        tiny.clamp();
+        let WidgetConfig::Timer { duration_ms, .. } = tiny else {
+            panic!("still a timer config");
+        };
+        assert_eq!(duration_ms, TIMER_MIN_MS);
+    }
+
+    #[test]
+    fn clock_and_timer_kinds_round_trip_defaults() {
+        for kind in ["clock", "timer"] {
+            let cfg = WidgetConfig::default_for(kind).expect(kind);
+            assert_eq!(cfg.kind(), kind);
+            let json = serde_json::to_string(&cfg).unwrap();
+            assert_eq!(
+                serde_json::from_str::<WidgetConfig>(&json).unwrap(),
+                cfg,
+                "{kind} default survives a JSON round-trip"
+            );
+        }
     }
 
     #[test]
@@ -354,7 +487,10 @@ mod tests {
             content,
             font_scale,
             align,
-        } = inst.config;
+        } = inst.config
+        else {
+            panic!("kind column said text");
+        };
         assert_eq!(content, "");
         assert_eq!(font_scale, 1.0);
         assert_eq!(align, TextAlign::Center);

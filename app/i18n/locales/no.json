@@ -16,7 +16,9 @@
   "widget": {
     "delete": "Fjern",
     "label": {
-      "text": "Tekst"
+      "text": "Tekst",
+      "clock": "Klokke",
+      "timer": "Timer"
     },
     "text": {
       "placeholder": "Skriv en beskjed …"
@@ -48,5 +50,22 @@
     "pasteHint": "Ett navn per linje — lim gjerne inn fra Excel.",
     "savedReceipt": "Lagret",
     "actionFailed": "Noe gikk galt — prøv igjen."
+  },
+  "timer": {
+    "start": "Start",
+    "pause": "Pause",
+    "resume": "Fortsett",
+    "reset": "Nullstill",
+    "plusMinute": "Ett minutt til",
+    "minusMinute": "Ett minutt mindre",
+    "sound": "Lydvarsel",
+    "modeCountdown": "Nedtelling",
+    "modeStopwatch": "Stoppeklokke"
+  },
+  "clock": {
+    "digital": "Digital",
+    "analog": "Analog",
+    "seconds": "Sekunder",
+    "date": "Dato"
   }
 }

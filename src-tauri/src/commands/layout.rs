@@ -126,7 +126,9 @@ mod tests {
         let loaded = load_for(&pool, &class.id).await.unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].id, "w1");
-        let WidgetConfig::Text { content, .. } = &loaded[0].config;
+        let WidgetConfig::Text { content, .. } = &loaded[0].config else {
+            panic!("kind was text");
+        };
         assert_eq!(content, "Husk gymtøy!");
     }
 

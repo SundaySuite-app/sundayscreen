@@ -90,5 +90,6 @@ epoch-ms, FK håndhevet.
 - **F7** Chrome/auto-hide + fullskjerm + vindusminne + bundlet Inter ✅
 - **F8** Updater (suite-ringer, stille feiling) + pakking + release.yml ✅
 - **F9** Gransking — 39 funn, 30 fikset (docs/GRANSKING-v1.md) ✅
-- **F10** `v0.9.0-beta.1` → 👤 riggtest i klasserom → `v1.0.0`
+- **F10** `v0.9.0-beta.1` publisert + promotert til beta-ringen (08-27) ✅
+  → 👤 riggtest i klasserom → `v1.0.0`
 - **F11** Nettside-kort + nedlastingsfunksjon på sundaysuite.app

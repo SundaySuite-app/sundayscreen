@@ -2,18 +2,22 @@
 
 > Ting bare eieren kan gjøre. Oppdateres per fase.
 
-## Før første release-tag (F10)
+## Signering (når som helst — neste tag plukker det opp)
 
-- [ ] GitHub-secrets på `SundaySuite-app/sundayscreen`:
-  - `MAC_CERTS` + `MAC_CERTS_PASSWORD` (samme eksport som de andre appene)
-  - `TAURI_SIGNING_PRIVATE_KEY` = innholdet av
-    `~/.tauri/sundayscreen_updater.key` (generert i F8, uten passordfrase)
-  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = tom streng
+- [x] `TAURI_SIGNING_PRIVATE_KEY` — satt som repo-secret 08-27 (innholdet av
+      `~/.tauri/sundayscreen_updater.key`; nøkkelen er passordløs, og
+      workflowen setter BEVISST ingen `…_PASSWORD`-env — tom ≠ fraværende).
+- [ ] `MAC_CERTS` + `MAC_CERTS_PASSWORD` (samme eksport som de andre appene).
+      Til de finnes er macOS-bygget ad-hoc-signert (høyreklikk → Åpne).
 - [ ] Apple-avtalen (PLA) er fortsatt ikke akseptert for team 784GN847G4 →
       notarisering forblir av til den er det (samme som Rec/Stage/Edit);
       linjene står klare i release.yml.
 
 ## Før v1.0 (F10)
+
+**v0.9.0-beta.1 er ute (08-27):** publisert på GitHub og promotert til
+beta-ringen. Nedlasting:
+<https://github.com/SundaySuite-app/sundayscreen/releases/tag/v0.9.0-beta.1>
 
 - [ ] **Riggtest i klasserom:** installer beta på klasseroms-maskinen, koble
       projektor (helst også en 4:3), bruk appen én hel undervisningstime

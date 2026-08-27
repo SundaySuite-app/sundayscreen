@@ -29,9 +29,9 @@ ikke `-beta.N` i ProductVersion).
 
 - **Updater-signering:** nøkkelparet ligger i `~/.tauri/sundayscreen_updater.key`
   (+ `.pub`) på eiers Mac, generert UTEN passordfrase. Pubkey står i
-  tauri.conf.json. 👤 Legg privatnøkkelens INNHOLD som repo-secret
-  `TAURI_SIGNING_PRIVATE_KEY` og sett `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-  til tom streng.
+  tauri.conf.json; privatnøkkelen er repo-secret `TAURI_SIGNING_PRIVATE_KEY`
+  (satt 08-27). Workflowen setter INGEN `…_PASSWORD`-env — nøkkelen er
+  passordløs, og en tom env-variabel er ikke det samme som en fraværende.
 - **macOS-kodesignering:** secrets `MAC_CERTS` / `MAC_CERTS_PASSWORD` (samme
   eksport som resten av suiten); `APPLE_SIGNING_IDENTITY` er hardkodet i
   workflowen.
@@ -44,3 +44,30 @@ ikke `-beta.N` i ProductVersion).
 ## Usignert førstegangsåpning (macOS)
 
 Til notariseringen er på plass: høyreklikk appen → Åpne → Åpne.
+
+## Verifisere feeden (og en felle)
+
+`latest.json` fra tauri-action peker på `api.github.com/...​/assets/<id>`-URL-er
+(manifestet lastes opp mens releasen ennå er utkast). En NAKEN `curl` på en
+slik URL gir 200 med JSON-metadata — det ser ut som om updateren ville lastet
+ned søppel, men er falsk alarm: tauri-plugin-updater sender
+`Accept: application/octet-stream`, som gir selve binæren. Test derfor slik:
+
+    curl -sL -H 'Accept: application/octet-stream' -o /dev/null \
+      -w '%{http_code} %{size_download}\n' <url-fra-manifestet>
+
+Størrelsen skal matche release-artefakten byte for byte. Hele suiten (Rec,
+Sync) serverer samme URL-form i prod.
+
+## Lærdommer fra første slipp (v0.9.0-beta.1, 08-27)
+
+- Workflowen MÅ ha `permissions: contents: write` — standardtokenet er
+  read-only her, og utkast-opprettelsen får ellers 403.
+- `secrets`-konteksten er ULOVLIG i steg-`if` («Unrecognized named-value»).
+  GitHub forkaster da HELE workflow-fila, og hvert push-event spawner en
+  insta-feilet kjøring. Tilstedeværelses-sjekker legges i jobb-`env`.
+- En tom `APPLE_CERTIFICATE`-env går likevel inn i keychain-importen og
+  feller bygget — signing-env settes derfor via `$GITHUB_ENV` i et
+  betinget steg, med ad-hoc `-` som fallback-identitet.
+- Entrypoint-vakter i .mjs må sammenligne via `pathToFileURL` — repo-stien
+  har mellomrom, og `import.meta.url` prosentkoder dem.

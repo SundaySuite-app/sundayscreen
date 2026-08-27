@@ -6,11 +6,14 @@
   z-index: var(--z-chrome);
   display: flex;
   align-items: center;
-  gap: var(--sp-5);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-3) var(--sp-5);
   padding: var(--sp-2) var(--sp-5);
+  max-width: calc(100% - 2 * var(--sp-5));
   background: var(--raised);
   border: 1px solid var(--line);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-chrome);
 }
 
@@ -23,6 +26,8 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: var(--sp-2);
 }
 

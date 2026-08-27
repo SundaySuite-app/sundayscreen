@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0-beta.1] — 2026-08-27
+
+Første beta — hele v1-verktøysettet, gransket:
+
+- 8 widgets: tekst, klokke (digital/analog), tidtaker/stoppeklokke (m/
+  lydvarsel og varselfarge), trafikklys, arbeidssymboler, navnetrekker (m/
+  «ingen gjentak»-runder), gruppegenerator, terning.
+- Klasseprofiler: egen navneliste + eget skjermoppsett per klasse, atomisk
+  bytte på to klikk; lim-inn-navneliste fra Excel.
+- Auto-hide-verktøylinje, F11-fullskjerm, vindusminne, bundlet Inter.
+- Auto-oppdatering på suitens beta/stable-ringer (stille offline).
+- F9-gransking: 39 funn fra tre fiendtlige granskere, 30 fikset (se
+  docs/GRANSKING-v1.md).
+
+Kjente begrensninger: macOS-bygget er ad-hoc-signert til `MAC_CERTS` er på
+plass (høyreklikk → Åpne første gang); ikke notarisert (Apple-PLA).
+
 ## [Unreleased]
 
 ### F1–F5 (2026-08-27)

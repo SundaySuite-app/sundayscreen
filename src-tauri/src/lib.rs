@@ -6,6 +6,7 @@ pub mod commands;
 pub mod db;
 pub mod error;
 pub mod settings;
+pub mod window;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -58,6 +59,14 @@ pub fn run() {
                     tracing::error!(db = %db_path.display(), "opening database failed: {e}");
                     format!("opening database: {e}")
                 })?;
+
+            // Restore the saved window geometry BEFORE the shell paints, so
+            // the projector setup comes back without a visible jump.
+            match tauri::async_runtime::block_on(settings::load(&pool)) {
+                Ok(loaded) => window::restore_window_state(app.handle(), &loaded),
+                Err(e) => tracing::warn!("settings load for window restore failed: {e}"),
+            }
+
             app.manage(db::Db::new(pool));
             Ok(())
         })
@@ -78,6 +87,7 @@ pub fn run() {
             commands::picker::picker_draw,
             commands::picker::picker_reset,
             commands::picker::groups_split,
+            window::window_set_fullscreen,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

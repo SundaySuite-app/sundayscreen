@@ -7,7 +7,8 @@ import { t } from "./i18n";
 import { ManagePanel } from "./manage/ManagePanel";
 import { Surface } from "./screen/Surface";
 import { Toolbar } from "./screen/Toolbar";
-import { managePanelOpen } from "./state/classes";
+import { classMenuOpen, managePanelOpen } from "./state/classes";
+import { chromeActivity, chromeVisible } from "./state/chrome";
 import { undoRemove, undoSlot } from "./state/layout";
 import { hydrated, hydrateError } from "./state/settings";
 
@@ -43,6 +44,16 @@ export function Shell() {
         </div>
       )}
       <Toolbar />
+      {!chromeVisible.value &&
+        !managePanelOpen.value &&
+        !classMenuOpen.value && (
+          <button
+            class={styles.chromeHandle}
+            aria-label={t("chrome.show")}
+            title={t("chrome.show")}
+            onClick={chromeActivity}
+          />
+        )}
       {managePanelOpen.value && <ManagePanel />}
     </main>
   );

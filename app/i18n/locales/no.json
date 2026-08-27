@@ -113,5 +113,10 @@
       "collaborate": "Samarbeid",
       "raisehand": "Rekk opp hånda"
     }
+  },
+  "chrome": {
+    "fullscreenOn": "Fullskjerm (F11)",
+    "fullscreenOff": "Avslutt fullskjerm (F11)",
+    "show": "Vis verktøylinja"
   }
 }

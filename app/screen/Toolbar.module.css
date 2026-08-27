@@ -15,6 +15,32 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-chrome);
+  transition:
+    transform 220ms ease,
+    opacity 220ms ease;
+}
+
+.toolbar[data-hidden] {
+  transform: translate(-50%, calc(100% + var(--sp-6)));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.iconBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--fs-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.iconBtn:hover {
+  border-color: var(--gold-line);
+  color: var(--ink);
 }
 
 .brand {

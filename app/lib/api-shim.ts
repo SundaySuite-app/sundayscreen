@@ -238,6 +238,11 @@ const api = {
     n: number,
   ): Promise<Member[][]> =>
     invoke<Member[][]>("groups_split", { classId, mode, n }),
+
+  // WRITE-ish (window management) — rejection travels so the chrome can
+  // revert its optimistic flag in a plain browser.
+  windowSetFullscreen: async (fullscreen: boolean): Promise<void> =>
+    invoke<void>("window_set_fullscreen", { fullscreen }),
 };
 
 export type Api = typeof api;

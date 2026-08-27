@@ -91,3 +91,26 @@
 .snackbarAction:hover {
   color: var(--ink);
 }
+
+/* The always-there way back to the toolbar: a small pill hugging the
+   bottom edge while the chrome is hidden. */
+.chromeHandle {
+  position: absolute;
+  bottom: var(--sp-2);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--line-2);
+  opacity: 0.55;
+  cursor: pointer;
+  z-index: var(--z-chrome);
+}
+
+.chromeHandle:hover {
+  opacity: 1;
+  background: var(--gold);
+  border-color: var(--gold-line);
+}

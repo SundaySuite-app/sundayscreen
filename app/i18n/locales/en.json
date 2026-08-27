@@ -113,5 +113,10 @@
       "collaborate": "Collaborate",
       "raisehand": "Raise your hand"
     }
+  },
+  "chrome": {
+    "fullscreenOn": "Fullscreen (F11)",
+    "fullscreenOff": "Exit fullscreen (F11)",
+    "show": "Show the toolbar"
   }
 }

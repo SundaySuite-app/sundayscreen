@@ -1,5 +1,20 @@
 @import "./tokens.css";
 
+/*
+ * Inter Variable, BUNDLED (app/public/fonts/, SIL OFL 1.1 — see
+ * OFL-Inter.txt beside it and THIRD-PARTY-NOTICES.md). The app is offline
+ * and CSP-locked (`default-src 'self'`), so a font CDN would be blocked in
+ * the shipped webview while working in a dev browser — the worst failure
+ * mode. The latin subset covers Norwegian (æøå live in U+00C0–00FF).
+ */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+}
+
 /* Minimal reset — component styling lives in CSS Modules. */
 *,
 *::before,

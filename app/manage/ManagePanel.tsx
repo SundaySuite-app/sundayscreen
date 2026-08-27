@@ -43,14 +43,8 @@ export function ManagePanel() {
     setSavedReceipt(false);
   }, [current?.id]);
 
-  // Escape closes the panel (the full layered-Escape arrives in F7).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") managePanelOpen.value = false;
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Escape is handled centrally (screen/keyboard.ts): text field first, then
+  // the class menu, then this panel, then fullscreen — one layer per press.
 
   const run = (work: Promise<unknown>) => {
     setError(null);

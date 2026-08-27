@@ -19,9 +19,12 @@ import { setShimNotifier } from "@lib/api-shim";
 import { render } from "preact";
 
 import { resolveStartupLocale, setLocale, t } from "./i18n";
+import { installKeyboard } from "./screen/keyboard";
+import { initWindowState } from "./screen/window-state";
 import { Shell } from "./Shell";
 import { loadAppInfo } from "./state/app-info";
 import { loadClasses, loadMembers } from "./state/classes";
+import { initChrome } from "./state/chrome";
 import { activeClass, initLayout } from "./state/layout";
 import { hydrateSettings, settings } from "./state/settings";
 
@@ -44,6 +47,11 @@ if (!overlayHost) {
 // 3.
 render(<Shell />, host);
 
+// The chrome's global listeners — idempotent installs whose cleanups we
+// never need (the shell lives as long as the window).
+installKeyboard();
+initChrome();
+
 void boot();
 
 async function boot(): Promise<void> {
@@ -51,6 +59,8 @@ async function boot(): Promise<void> {
   // layout bootstrap (the default class name is translated copy).
   await hydrateSettings();
   await setLocale(resolveStartupLocale(settings.peek().language));
+  // After the settings (it reads window.fullscreen), before anything slow.
+  void initWindowState();
   await initLayout();
   const cls = activeClass.peek();
   if (cls) void loadMembers(cls.id);

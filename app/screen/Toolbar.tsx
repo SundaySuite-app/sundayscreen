@@ -1,9 +1,16 @@
-// The bottom toolbar (v0): add-widget buttons from the registry, the active
-// class, the version. Auto-hide and the full add-menu arrive in F7/F6 — the
-// bar itself already iterates the registry, so new kinds appear here for
-// free.
+// The bottom toolbar: add-widget buttons from the registry, the class
+// switcher, fullscreen and the version. It slips away after a few idle
+// seconds (state/chrome.ts + chrome-core.ts) and comes back when the
+// pointer reaches for it — never while one of its own menus is open.
 
 import { appVersion } from "../state/app-info";
+import { classMenuOpen, managePanelOpen } from "../state/classes";
+import {
+  chromeActivity,
+  chromeVisible,
+  fullscreen,
+  toggleFullscreen,
+} from "../state/chrome";
 import { addWidget } from "../state/layout";
 import { t, tDyn } from "../i18n";
 import { WIDGET_KINDS } from "../widgets/registry";
@@ -11,8 +18,19 @@ import { ClassSwitcher } from "./ClassSwitcher";
 import styles from "./Toolbar.module.css";
 
 export function Toolbar() {
+  const shown =
+    chromeVisible.value || managePanelOpen.value || classMenuOpen.value;
+  const fsLabel = fullscreen.value
+    ? t("chrome.fullscreenOff")
+    : t("chrome.fullscreenOn");
+
   return (
-    <footer class={styles.toolbar}>
+    <footer
+      class={styles.toolbar}
+      data-hidden={!shown || undefined}
+      onPointerMove={chromeActivity}
+      onPointerDown={chromeActivity}
+    >
       <span class={styles.brand}>{t("app.name")}</span>
       <div class={styles.actions}>
         {WIDGET_KINDS.map((kind) => (
@@ -26,6 +44,15 @@ export function Toolbar() {
       </div>
       <span class={styles.meta}>
         <ClassSwitcher />
+        <button
+          class={styles.iconBtn}
+          aria-label={fsLabel}
+          title={fsLabel}
+          aria-pressed={fullscreen.value}
+          onClick={() => void toggleFullscreen()}
+        >
+          ⛶
+        </button>
         <span class={styles.version}>{appVersion.value}</span>
       </span>
     </footer>

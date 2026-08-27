@@ -274,6 +274,43 @@ pub async fn replace_members(
     Ok(out)
 }
 
+// ── The picker's draw state ──────────────────────────────────────────────────
+
+/// Member ids drawn in the current round, for a class.
+pub async fn drawn_member_ids(pool: &SqlitePool, class_id: &str) -> AppResult<Vec<String>> {
+    let rows = sqlx::query("SELECT member_id FROM draw_state WHERE class_id = ?1")
+        .bind(class_id)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| r.get::<String, _>("member_id"))
+        .collect())
+}
+
+/// Remember that a member has been drawn this round. Idempotent.
+pub async fn insert_drawn(pool: &SqlitePool, class_id: &str, member_id: &str) -> AppResult<()> {
+    sqlx::query(
+        "INSERT INTO draw_state (class_id, member_id, drawn_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(class_id, member_id) DO NOTHING",
+    )
+    .bind(class_id)
+    .bind(member_id)
+    .bind(now_ms())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Start a fresh round.
+pub async fn clear_drawn(pool: &SqlitePool, class_id: &str) -> AppResult<()> {
+    sqlx::query("DELETE FROM draw_state WHERE class_id = ?1")
+        .bind(class_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 // ── Widgets ──────────────────────────────────────────────────────────────────
 
 /// A raw widget row as stored. The tolerance seam

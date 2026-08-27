@@ -75,6 +75,9 @@ pub fn run() {
             commands::classes::members_set,
             commands::layout::layout_load,
             commands::layout::layout_save,
+            commands::picker::picker_draw,
+            commands::picker::picker_reset,
+            commands::picker::groups_split,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

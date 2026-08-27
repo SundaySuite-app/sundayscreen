@@ -18,12 +18,16 @@
     "label": {
       "text": "Text",
       "clock": "Clock",
-      "timer": "Timer"
+      "timer": "Timer",
+      "namepicker": "Name picker",
+      "groups": "Groups",
+      "dice": "Dice"
     },
     "text": {
       "placeholder": "Write a message …"
     },
-    "resize": "Resize"
+    "resize": "Resize",
+    "noNames": "Add names to the class first"
   },
   "undo": {
     "removed": "Widget removed",
@@ -67,5 +71,32 @@
     "analog": "Analog",
     "seconds": "Seconds",
     "date": "Date"
+  },
+  "picker": {
+    "ready": "Ready to draw",
+    "draw": "Draw a name",
+    "newRound": "New round!",
+    "remaining": {
+      "one": "{n} left in the round",
+      "other": "{n} left in the round"
+    },
+    "roundDone": "Everyone has been drawn — the next draw starts a new round",
+    "reset": "New round",
+    "noRepeat": "No repeats"
+  },
+  "groups": {
+    "modeCount": "X groups",
+    "modeSize": "Groups of X",
+    "split": "Split",
+    "header": "Group {n}",
+    "increase": "Increase",
+    "decrease": "Decrease",
+    "empty": "Press “Split” to make groups"
+  },
+  "dice": {
+    "roll": "Roll",
+    "more": "One more die",
+    "fewer": "One fewer die",
+    "sum": "Sum: {n}"
   }
 }

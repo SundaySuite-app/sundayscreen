@@ -71,6 +71,34 @@ pub enum ClockFace {
     Analog,
 }
 
+/// How the group generator counts. Serialised lowercase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "GroupMode.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum GroupMode {
+    /// Split into N groups.
+    #[default]
+    Count,
+    /// Split into groups of N.
+    Size,
+}
+
+fn default_no_repeat() -> bool {
+    true
+}
+fn default_group_n() -> u32 {
+    2
+}
+fn default_dice_count() -> u32 {
+    1
+}
+
+/// Bounds for the group knob and the dice.
+pub const GROUP_N_MIN: u32 = 2;
+pub const GROUP_N_MAX: u32 = 30;
+pub const DICE_MIN: u32 = 1;
+pub const DICE_MAX: u32 = 3;
+
 fn default_timer_duration_ms() -> f64 {
     300_000.0 // 5 minutes
 }
@@ -124,6 +152,31 @@ pub enum WidgetConfig {
         #[serde(default)]
         mode: TimerMode,
     },
+    /// The picker persists the last drawn NAME (a display string, not a
+    /// member id — the pupil may be edited away later, the screen memory
+    /// stays honest).
+    NamePicker {
+        #[serde(default = "default_no_repeat")]
+        no_repeat: bool,
+        #[serde(default)]
+        last_drawn: Option<String>,
+    },
+    Groups {
+        #[serde(default)]
+        mode: GroupMode,
+        #[serde(default = "default_group_n")]
+        n: u32,
+        /// The last split, as NAMES — restored on boot so the class walks in
+        /// to the same groups the projector showed yesterday.
+        #[serde(default)]
+        last_result: Vec<Vec<String>>,
+    },
+    Dice {
+        #[serde(default = "default_dice_count")]
+        count: u32,
+        #[serde(default)]
+        last_roll: Vec<u8>,
+    },
 }
 
 impl WidgetConfig {
@@ -133,6 +186,9 @@ impl WidgetConfig {
             WidgetConfig::Text { .. } => "text",
             WidgetConfig::Clock { .. } => "clock",
             WidgetConfig::Timer { .. } => "timer",
+            WidgetConfig::NamePicker { .. } => "namepicker",
+            WidgetConfig::Groups { .. } => "groups",
+            WidgetConfig::Dice { .. } => "dice",
         }
     }
 
@@ -155,6 +211,19 @@ impl WidgetConfig {
                 warn_at_ms: default_warn_at_ms(),
                 sound_on: default_sound_on(),
                 mode: TimerMode::default(),
+            }),
+            "namepicker" => Some(WidgetConfig::NamePicker {
+                no_repeat: default_no_repeat(),
+                last_drawn: None,
+            }),
+            "groups" => Some(WidgetConfig::Groups {
+                mode: GroupMode::default(),
+                n: default_group_n(),
+                last_result: Vec::new(),
+            }),
+            "dice" => Some(WidgetConfig::Dice {
+                count: default_dice_count(),
+                last_roll: Vec::new(),
             }),
             _ => None,
         }
@@ -190,6 +259,32 @@ impl WidgetConfig {
                     *warn_at_ms = default_warn_at_ms();
                 }
                 *warn_at_ms = warn_at_ms.clamp(0.0, *duration_ms);
+            }
+            WidgetConfig::NamePicker { last_drawn, .. } => {
+                if let Some(name) = last_drawn {
+                    if name.chars().count() > crate::members::NAME_MAX_CHARS {
+                        *name = name.chars().take(crate::members::NAME_MAX_CHARS).collect();
+                    }
+                }
+            }
+            WidgetConfig::Groups { n, last_result, .. } => {
+                *n = (*n).clamp(GROUP_N_MIN, GROUP_N_MAX);
+                last_result.truncate(GROUP_N_MAX as usize);
+                for group in last_result.iter_mut() {
+                    group.truncate(crate::members::MEMBERS_MAX);
+                    for name in group.iter_mut() {
+                        if name.chars().count() > crate::members::NAME_MAX_CHARS {
+                            *name = name.chars().take(crate::members::NAME_MAX_CHARS).collect();
+                        }
+                    }
+                }
+            }
+            WidgetConfig::Dice { count, last_roll } => {
+                *count = (*count).clamp(DICE_MIN, DICE_MAX);
+                last_roll.truncate(DICE_MAX as usize);
+                for v in last_roll.iter_mut() {
+                    *v = (*v).clamp(1, 6);
+                }
             }
         }
     }

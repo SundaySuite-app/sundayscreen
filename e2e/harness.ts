@@ -7,9 +7,13 @@
 
 import type { Page } from "@playwright/test";
 
-/** Install the standard fixture set. Call BEFORE page.goto("/"). */
-export async function installFixtures(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+/** Install the standard fixture set. Call BEFORE page.goto("/").
+ *  `memberNames` pre-seeds class 7B's name list. */
+export async function installFixtures(
+  page: Page,
+  opts: { memberNames?: string[] } = {},
+): Promise<void> {
+  await page.addInitScript((seedNames: string[]) => {
     const DB_KEY = "__e2e_db__";
 
     interface E2eDb {
@@ -25,6 +29,7 @@ export async function installFixtures(page: Page): Promise<void> {
         { id: string; name: string; sortIndex: number }[]
       >;
       layouts: Record<string, unknown[]>;
+      drawn?: Record<string, string[]>;
       nextId: number;
     }
 
@@ -32,8 +37,15 @@ export async function installFixtures(page: Page): Promise<void> {
       (JSON.parse(localStorage.getItem(DB_KEY) ?? "null") as E2eDb | null) ?? {
         classes: [{ id: "c1", name: "7B", sortIndex: 0, createdAt: 1 }],
         activeClassId: "c1",
-        members: { c1: [] },
+        members: {
+          c1: seedNames.map((name, i) => ({
+            id: `m-c1-${i}`,
+            name,
+            sortIndex: i,
+          })),
+        },
         layouts: { c1: [] },
+        drawn: {},
         nextId: 1,
       };
     const save = (db: E2eDb) =>
@@ -134,6 +146,58 @@ export async function installFixtures(page: Page): Promise<void> {
           (arg(args, "widgets") as unknown[]) ?? [];
         save(db);
       },
+
+      // The draw is DETERMINISTIC here (first undrawn wins) — randomness is
+      // the real backend's unit-tested job; journeys want stable answers.
+      picker_draw: (args?: Record<string, unknown>) => {
+        const db = load();
+        db.drawn ??= {};
+        const classId = String(arg(args, "classId"));
+        const noRepeat = !!arg(args, "noRepeat");
+        const members = db.members[classId] ?? [];
+        if (members.length === 0) throw new Error("validation");
+        const drawnIds = db.drawn[classId] ?? [];
+        let pool = noRepeat
+          ? members.filter((m) => !drawnIds.includes(m.id))
+          : members;
+        let reshuffled = false;
+        if (noRepeat && pool.length === 0) {
+          pool = members;
+          db.drawn[classId] = [];
+          reshuffled = true;
+        }
+        const member = pool[0];
+        let remaining = members.length;
+        if (noRepeat) {
+          db.drawn[classId] = [...(db.drawn[classId] ?? []), member.id];
+          remaining = pool.length - 1;
+        }
+        save(db);
+        return { member, remaining, reshuffled };
+      },
+      picker_reset: (args?: Record<string, unknown>) => {
+        const db = load();
+        db.drawn ??= {};
+        db.drawn[String(arg(args, "classId"))] = [];
+        save(db);
+      },
+      groups_split: (args?: Record<string, unknown>) => {
+        const db = load();
+        const members = db.members[String(arg(args, "classId"))] ?? [];
+        if (members.length === 0) throw new Error("validation");
+        const mode = String(arg(args, "mode"));
+        const n = Math.max(Number(arg(args, "n")) || 2, 1);
+        const count =
+          mode === "size"
+            ? Math.ceil(members.length / n)
+            : Math.min(n, members.length);
+        const groups: (typeof members)[] = Array.from(
+          { length: Math.max(count, 1) },
+          () => [],
+        );
+        members.forEach((m, i) => groups[i % groups.length].push(m));
+        return groups;
+      },
     };
-  });
+  }, opts.memberNames ?? []);
 }

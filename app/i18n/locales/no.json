@@ -18,12 +18,16 @@
     "label": {
       "text": "Tekst",
       "clock": "Klokke",
-      "timer": "Timer"
+      "timer": "Timer",
+      "namepicker": "Navnetrekker",
+      "groups": "Grupper",
+      "dice": "Terning"
     },
     "text": {
       "placeholder": "Skriv en beskjed …"
     },
-    "resize": "Endre størrelse"
+    "resize": "Endre størrelse",
+    "noNames": "Legg inn navn i klassen først"
   },
   "undo": {
     "removed": "Widget fjernet",
@@ -67,5 +71,32 @@
     "analog": "Analog",
     "seconds": "Sekunder",
     "date": "Dato"
+  },
+  "picker": {
+    "ready": "Klar til å trekke",
+    "draw": "Trekk navn",
+    "newRound": "Ny runde!",
+    "remaining": {
+      "one": "{n} igjen i runden",
+      "other": "{n} igjen i runden"
+    },
+    "roundDone": "Alle er trukket — neste trekk starter ny runde",
+    "reset": "Ny runde",
+    "noRepeat": "Ingen gjentak"
+  },
+  "groups": {
+    "modeCount": "X grupper",
+    "modeSize": "Grupper på X",
+    "split": "Del inn",
+    "header": "Gruppe {n}",
+    "increase": "Øk tallet",
+    "decrease": "Senk tallet",
+    "empty": "Trykk «Del inn» for å lage grupper"
+  },
+  "dice": {
+    "roll": "Kast",
+    "more": "Én terning til",
+    "fewer": "Én terning mindre",
+    "sum": "Sum: {n}"
   }
 }

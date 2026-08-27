@@ -1,0 +1,90 @@
+.picker {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+.name {
+  font-size: 14cqmin;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: center;
+  line-height: 1.1;
+  word-break: break-word;
+}
+
+.name[data-empty] {
+  color: var(--ink-3);
+  font-weight: 400;
+  font-size: 8cqmin;
+}
+
+.name[data-spinning] {
+  color: var(--ink-2);
+}
+
+.round {
+  font-size: 5cqmin;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.hint {
+  font-size: 5cqmin;
+  color: var(--ink-3);
+}
+
+.draw {
+  padding: var(--sp-2) var(--sp-6);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+  color: var(--ink);
+  font-size: 6cqmin;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.draw:hover:not(:disabled) {
+  background: var(--gold);
+  color: var(--on-gold);
+}
+
+.draw:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings {
+  position: absolute;
+  bottom: var(--sp-2);
+  display: flex;
+  gap: var(--sp-1);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.picker:hover .settings {
+  opacity: 1;
+}
+
+.toggleBtn {
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.toggleBtn[data-current] {
+  color: var(--ink);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}

@@ -11,6 +11,8 @@ import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
 import type { AppInfo } from "../bindings/AppInfo";
 import type { Class } from "../bindings/Class";
 import type { ClassSnapshot } from "../bindings/ClassSnapshot";
+import type { DrawResult } from "../bindings/DrawResult";
+import type { GroupMode } from "../bindings/GroupMode";
 import type { Member } from "../bindings/Member";
 import type { Settings } from "../bindings/Settings";
 import type { WidgetInstance } from "../bindings/WidgetInstance";
@@ -221,6 +223,21 @@ const api = {
 
   membersSet: async (classId: string, names: string[]): Promise<Member[]> =>
     invoke<Member[]>("members_set", { classId, names }),
+
+  // Draw/split are WRITES against the round state — rejections travel, so
+  // the widgets can say "no names yet" instead of fabricating a pupil.
+  pickerDraw: async (classId: string, noRepeat: boolean): Promise<DrawResult> =>
+    invoke<DrawResult>("picker_draw", { classId, noRepeat }),
+
+  pickerReset: async (classId: string): Promise<void> =>
+    invoke<void>("picker_reset", { classId }),
+
+  groupsSplit: async (
+    classId: string,
+    mode: GroupMode,
+    n: number,
+  ): Promise<Member[][]> =>
+    invoke<Member[][]>("groups_split", { classId, mode, n }),
 };
 
 export type Api = typeof api;

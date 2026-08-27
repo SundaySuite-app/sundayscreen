@@ -1,0 +1,21 @@
+# Force the macOS deployment target for ALL cargo builds (local + CI) to the
+# same minimum `tauri.conf.json` declares (`minimumSystemVersion: 10.15`).
+# `tauri.conf.json`'s minimum does NOT propagate to build scripts' compiler
+# invocations, so the pin lives here. `force = true` overrides any lower value
+# a tool might set first.
+[env]
+MACOSX_DEPLOYMENT_TARGET = { value = "10.15", force = true }
+CMAKE_OSX_DEPLOYMENT_TARGET = { value = "10.15", force = true }
+
+# ── ts-rs: ONE export directory, whoever is compiling ────────────────────────
+#
+# ts-rs resolves `#[ts(export_to = …)]` against `TS_RS_EXPORT_DIR`, and the
+# default is the RELATIVE `./bindings` — anchored at whichever package's test
+# binary happened to write it, which lets exports land OUTSIDE the checkout
+# (the SundayRec ImageFormat.ts incident). `relative = true` makes cargo
+# resolve the value against the repo root, so every `export_to` is a bare file
+# name landing in the same directory no matter who wrote it.
+#
+# Keep in step with `scripts/clean-bindings.mjs` and `scripts/sync-bindings.mjs`
+# (both anchored at `<repo>/src/lib/bindings`), and with `.gitignore`.
+TS_RS_EXPORT_DIR = { value = "src/lib/bindings", force = true, relative = true }

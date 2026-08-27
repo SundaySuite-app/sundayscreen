@@ -1,0 +1,101 @@
+/*
+ * SundayScreen's dictionary of colours, spacing and layers — and the ONLY
+ * place in `app/` where a colour literal may appear.
+ * `scripts/check-app-css-tokens.mjs` rejects `#rrggbb` and `rgb()/hsl()` in
+ * every other `app/**\/*.css`, so the owner can retune the whole palette here.
+ *
+ * ## Light on purpose
+ *
+ * A classroom is a lit room and a projector renders light backgrounds best —
+ * so SundayScreen is LIGHT-FIRST, unlike the dark suite desktop apps. The
+ * accent is the suite gold (#EBB84B, from @sunday/design's BRAND tokens —
+ * values copied, not imported, per the desktop-app convention). A dark mode is
+ * a later owner decision, not a media query nobody designed for.
+ *
+ * ## The font is the system stack — for now
+ *
+ * The app is offline and CSP-locked (`default-src 'self'`), so a Google Fonts
+ * link would be blocked in the shipped webview while working in a dev browser
+ * — the worst failure mode. Bundled woff2 files (an OFL face with tabular
+ * digits for the timer) are planned for fase F7; until then the system stack
+ * is the honest choice.
+ */
+
+:root {
+  /* ── Ground surfaces ─────────────────────────────────────────────────── */
+  --bg: #f6f3ec;
+  --surface: #ffffff;
+  --raised: #fffdf8;
+  --line: #e4dfd2;
+  --line-2: #cfc8b6;
+
+  /* ── Ink, three levels ───────────────────────────────────────────────── */
+  --ink: #23272f;
+  --ink-2: #5c636e;
+  --ink-3: #8b9099;
+
+  /* ── Gold: the accent, and the only one ──────────────────────────────── */
+  --gold: #ebb84b;
+  --gold-soft: rgba(235, 184, 75, 0.16);
+  --gold-line: rgba(235, 184, 75, 0.55);
+  --on-gold: #1b1f2a;
+
+  /* ── Semantics, separate from the accent ─────────────────────────────── */
+  --good: #2e9e5b;
+  --good-soft: rgba(46, 158, 91, 0.14);
+  --good-line: rgba(46, 158, 91, 0.45);
+  --warn: #e0a426;
+  --warn-soft: rgba(224, 164, 38, 0.16);
+  --warn-line: rgba(224, 164, 38, 0.5);
+  --bad: #d64545;
+  --bad-soft: rgba(214, 69, 69, 0.12);
+  --bad-line: rgba(214, 69, 69, 0.5);
+
+  /* Traffic-light lamps — their own tokens so the widget's red/yellow/green
+     can be tuned without touching the semantic states. */
+  --light-red: #e04a3f;
+  --light-yellow: #f2c53d;
+  --light-green: #3cb864;
+  --light-off: #d9d4c7;
+
+  /* The veil behind a modal/manage overlay. */
+  --scrim: rgba(35, 39, 47, 0.45);
+
+  /* ── Shadows (soft — light theme) ────────────────────────────────────── */
+  --shadow-widget: 0 6px 24px rgba(35, 39, 47, 0.1);
+  --shadow-widget-active: 0 10px 34px rgba(35, 39, 47, 0.16);
+  --shadow-chrome: 0 -4px 20px rgba(35, 39, 47, 0.08);
+  --shadow-dialog: 0 24px 70px rgba(35, 39, 47, 0.25);
+
+  /* ── Radii — widgets are friendly, rounded cards ─────────────────────── */
+  --r-sm: 10px;
+  --r: 16px;
+  --r-lg: 22px;
+  --r-pill: 999px;
+
+  /* ── Spacing — the suite scale, unchanged ────────────────────────────── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 48px;
+
+  /* ── Typography ──────────────────────────────────────────────────────── */
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --fs-sm: 13px;
+  --fs-base: 14.5px;
+  --fs-md: 16px;
+  --fs-lg: 19px;
+  --fs-xl: 26px;
+  --fs-h1: 40px;
+
+  /* ── Layers ──────────────────────────────────────────────────────────── */
+  --z-surface: 1;
+  --z-widget-active: 40;
+  --z-chrome: 100;
+  --z-overlay: 300;
+  --z-toast: 400;
+}

@@ -1,0 +1,14 @@
+{
+  "app": {
+    "name": "SundayScreen",
+    "tagline": "Klasseromsskjermen din — uten nett"
+  },
+  "boot": {
+    "loading": "Laster …",
+    "ready": "Klar",
+    "hydrateError": "Innstillingene kunne ikke leses — appen bruker standardvalg."
+  },
+  "error": {
+    "ipcFailed": "Noe i bakgrunnen svarte ikke, så denne visningen kan være ufullstendig."
+  }
+}

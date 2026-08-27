@@ -1,0 +1,54 @@
+[package]
+name = "sundayscreen"
+version = "0.1.0"
+description = "Offline classroom display — timers, name pickers and work signals on the projector. Part of the Sunday suite."
+authors = ["Richard Fossland"]
+license = "MIT"
+edition = "2021"
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name (a Windows
+# constraint, see cargo#8519).
+name = "sundayscreen_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Pure, GUI-free domain core — every decision lives (and is tested) there.
+sundayscreen-core = { path = "../crates/sundayscreen-core" }
+
+tauri = { version = "2", features = [] }
+# Single-instance lock: a second launch focuses the running window instead of
+# starting another process. On a shared classroom PC the app WILL be
+# double-launched; desktop-only (the only target here). Must be the FIRST
+# plugin registered.
+tauri-plugin-single-instance = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Local-first storage: SQLite via sqlx. Runtime-checked queries (no
+# DATABASE_URL / `.sqlx` cache needed to build); `migrate` runs the versioned
+# schema in `migrations/`.
+sqlx = { version = "0.9", default-features = false, features = [
+    "runtime-tokio",
+    "sqlite",
+    "macros",
+    "migrate",
+] }
+# Time-ordered ids (UUID v7) for rows — sortable by creation without a
+# separate timestamp index.
+uuid = { version = "1", features = ["v4", "v7"] }
+
+# Type generation for the frontend (run with `cargo test export_bindings`).
+ts-rs = { version = "12", features = ["serde-compat"] }
+
+[dev-dependencies]
+# Throwaway temp databases for the storage tests — no app, no device.
+tempfile = "3"

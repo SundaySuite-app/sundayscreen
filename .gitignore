@@ -1,0 +1,36 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# ts-rs regenerates these on `cargo test` (TS_RS_EXPORT_DIR points here).
+# Transient regen target — `npm run bindings` syncs them into the committed,
+# consumed copy at app/bindings/. Don't track this one.
+/src/lib/bindings/
+
+# Rust / Tauri build output
+target
+src-tauri/target
+src-tauri/gen/schemas
+
+# Test artifacts
+coverage
+.last-run.json
+test-results
+playwright-report
+blob-report
+.playwright
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.sw?
+.claude/

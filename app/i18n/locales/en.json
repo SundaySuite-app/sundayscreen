@@ -1,0 +1,14 @@
+{
+  "app": {
+    "name": "SundayScreen",
+    "tagline": "Your classroom screen — no internet needed"
+  },
+  "boot": {
+    "loading": "Loading …",
+    "ready": "Ready",
+    "hydrateError": "Settings could not be read — the app is using defaults."
+  },
+  "error": {
+    "ipcFailed": "Something in the background did not answer, so this view may be incomplete."
+  }
+}

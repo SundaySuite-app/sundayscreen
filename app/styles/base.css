@@ -1,0 +1,37 @@
+@import "./tokens.css";
+
+/* Minimal reset — component styling lives in CSS Modules. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--fs-base);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  /* The surface is the app — never a text-selection target. Inputs and
+     per-widget text opt back in. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}

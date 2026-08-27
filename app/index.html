@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      The CSP must be BYTE-IDENTICAL to app.security.csp in
+      src-tauri/tauri.conf.json — app/security-sync.test.ts fails CI if the two
+      drift. Keeping it here (rather than trusting the Tauri header alone) makes
+      a plain `npm run dev` browser boot enforce the SAME policy the shipped
+      webview does.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    />
+    <title>SundayScreen</title>
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <!--
+      Dialogs and toasts live HERE, as a sibling of #app and not inside it: a
+      dialog host that sets `inert` on #app must not disable itself. Two mount
+      points, two Preact trees, in main.tsx.
+    -->
+    <div id="overlays"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>

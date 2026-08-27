@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The full local gate, mirrored: scripts/ci-local.sh runs the same commands
+  # in the same order on a Mac. A step added in only one place is a gap.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Tauri system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Frontend — eslint
+        run: npm run lint
+      - name: Frontend — prettier --check
+        run: npm run format:check
+      - name: Frontend — tsc --noEmit
+        run: npm run typecheck
+      - name: Frontend — vitest
+        run: npm run test
+
+      - name: Frontend — production build
+        run: npm run build
+      - name: No dynamic code evaluation in the shipped bundle
+        run: |
+          if grep -RnE "eval\(|new Function" dist/assets/*.js; then
+            echo "::error::dist/ contains dynamic code evaluation — the CSP (script-src 'self') will break at runtime"
+            exit 1
+          fi
+
+      - name: App version in sync
+        run: npm run version-sync
+      - name: i18n keys exist
+        run: npm run i18n-keys
+      - name: i18n no dead keys
+        run: npm run i18n-keys:unused
+      - name: i18n no hardcoded copy
+        run: npm run i18n-hardcoded-tsx
+      - name: i18n plural groups
+        run: npm run i18n-plurals
+      - name: Colors only via tokens
+        run: npm run css-tokens
+
+      - name: Rust — fmt
+        run: npm run fmt:rust:check
+      - name: Rust — clippy
+        run: npm run lint:rust
+      - name: Rust — tests
+        run: npm run test:rust
+
+      - name: ts-rs bindings up to date
+        run: |
+          npm run bindings
+          if [ -n "$(git status --porcelain -- app/bindings)" ]; then
+            echo "::error::ts-rs bindings are stale — run npm run bindings and commit app/bindings"
+            git status --porcelain -- app/bindings
+            exit 1
+          fi
+
+  build-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Tauri system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tauri build (no bundle)
+        run: npm run tauri build -- --no-bundle
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
+  # The Windows compile surface — catches win-only breakage on every PR
+  # without paying for a full release build.
+  windows-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo check
+        run: cargo check --workspace
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: npm audit (high+)
+        run: npm audit --audit-level=high
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit

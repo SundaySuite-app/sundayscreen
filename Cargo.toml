@@ -1,0 +1,7 @@
+[workspace]
+# Clean separation between the Tauri shell (`src-tauri`) and the pure, GUI-free
+# domain core (`crates/sundayscreen-core`). The core is unit-testable without a
+# webview or display — name drawing, group splitting, timer transitions, layout
+# clamping and the settings merge all live (and are tested) there.
+members = ["src-tauri", "crates/sundayscreen-core"]
+resolver = "2"

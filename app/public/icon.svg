@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- SundayScreen app icon v1 (F0 placeholder — refined in fase F7).
+       Dark ink ground, suite-gold screen frame, a clock and a timer card. -->
+  <rect width="1024" height="1024" rx="224" fill="#23272F"/>
+  <!-- the screen -->
+  <rect x="142" y="170" width="740" height="484" rx="44" fill="#F6F3EC" stroke="#EBB84B" stroke-width="34"/>
+  <!-- stand -->
+  <rect x="478" y="666" width="68" height="80" fill="#EBB84B"/>
+  <rect x="362" y="746" width="300" height="48" rx="24" fill="#EBB84B"/>
+  <!-- clock widget -->
+  <circle cx="342" cy="412" r="102" fill="#EBB84B"/>
+  <path d="M342 344 v68 l48 36" stroke="#23272F" stroke-width="26" stroke-linecap="round" fill="none"/>
+  <!-- timer widget -->
+  <rect x="500" y="322" width="296" height="180" rx="30" fill="#23272F"/>
+  <rect x="540" y="376" width="88" height="72" rx="14" fill="#EBB84B"/>
+  <rect x="668" y="376" width="88" height="72" rx="14" fill="#EBB84B"/>
+  <circle cx="648" cy="392" r="9" fill="#EBB84B"/>
+  <circle cx="648" cy="432" r="9" fill="#EBB84B"/>
+</svg>

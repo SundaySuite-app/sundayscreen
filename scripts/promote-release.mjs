@@ -20,6 +20,7 @@
 // (The service name is the SUITE's one admin key — shared across apps.)
 
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 export const APP = "sundayscreen";
 export const GITHUB_REPO = "SundaySuite-app/sundayscreen";
@@ -172,7 +173,13 @@ async function main() {
   console.log(JSON.stringify(result, null, 2));
 }
 
-// Only run as a script — the exports above are unit-tested.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Only run as a script — the exports above are unit-tested. The comparison
+// MUST go through pathToFileURL: import.meta.url percent-encodes spaces in
+// the repo path («Claude%20Code»), so naive `file://${argv[1]}` never
+// matches and the script exits 0 having done NOTHING.
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   await main();
 }

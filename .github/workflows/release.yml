@@ -11,6 +11,12 @@ on:
       - "v*"
   workflow_dispatch:
 
+# The default GITHUB_TOKEN is read-only on this repo — creating the draft
+# release needs an explicit grant ("Resource not accessible by integration"
+# was the whole first v0.9.0-beta.1 run's Windows failure).
+permissions:
+  contents: write
+
 jobs:
   build:
     # A dispatch from a BRANCH would create a draft release literally tagged
@@ -45,23 +51,37 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
+      # macOS code signing is armed ONLY when the certificate secret exists.
+      # These cannot be plain `env:` lines on the build step: an UNSET secret
+      # interpolates to an empty string, and an empty APPLE_CERTIFICATE still
+      # enters the import path and fails the build ("failed to import
+      # keychain certificate" — proven by the first v0.9.0-beta.1 run). The
+      # suite's empty-≠-absent lesson, again. The secret NAMES are the
+      # Electron-era MAC_CERTS*, mapped onto tauri's APPLE_* env.
+      - name: Arm macOS code signing (certificate secret present)
+        if: ${{ runner.os == 'macOS' && secrets.MAC_CERTS != '' }}
+        shell: bash
+        run: |
+          {
+            echo "APPLE_CERTIFICATE<<CERT_EOF"
+            echo "${{ secrets.MAC_CERTS }}"
+            echo "CERT_EOF"
+            echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.MAC_CERTS_PASSWORD }}"
+            echo "APPLE_SIGNING_IDENTITY=Developer ID Application: Richard Fossland (784GN847G4)"
+          } >> "$GITHUB_ENV"
+
+      - name: Ad-hoc signing fallback (no certificate secret)
+        if: ${{ runner.os == 'macOS' && secrets.MAC_CERTS == '' }}
+        shell: bash
+        run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+
       - name: Build and draft the release
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Updater artifact signing (the feed's signature chain). The key is
-          # PASSWORDLESS — no PASSWORD env on purpose: an empty-string env is
-          # not the same as an absent one (the suite's APPLE_ID lesson), so
-          # the variable simply does not exist here.
+          # PASSWORDLESS — no PASSWORD env on purpose (empty ≠ absent).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # macOS code signing. The secret NAMES are the suite's Electron-era
-          # ones (MAC_CERTS*), mapped onto tauri-action's APPLE_* env. Until
-          # the owner adds MAC_CERTS, the identity falls back to "-" (AD-HOC
-          # signing) — a hardcoded Developer ID with no certificate in the
-          # runner keychain would fail the whole build.
-          APPLE_CERTIFICATE: ${{ secrets.MAC_CERTS }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: "${{ secrets.MAC_CERTS != '' && 'Developer ID Application: Richard Fossland (784GN847G4)' || '-' }}"
           # Notarization is DELIBERATELY off: Apple's notary answers 403
           # ("required agreement missing") until the updated PLA is accepted
           # for team 784GN847G4. When the owner has accepted it, uncomment:

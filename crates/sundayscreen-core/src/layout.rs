@@ -71,6 +71,30 @@ pub enum ClockFace {
     Analog,
 }
 
+/// The traffic light's lamps. Serialised lowercase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "TrafficColor.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum TrafficColor {
+    /// The classroom's starting stance: silence.
+    #[default]
+    Red,
+    Yellow,
+    Green,
+}
+
+/// The work-mode symbols. Serialised lowercase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "WorkMode.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum WorkMode {
+    #[default]
+    Silent,
+    Whisper,
+    Collaborate,
+    RaiseHand,
+}
+
 /// How the group generator counts. Serialised lowercase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "GroupMode.ts")]
@@ -177,6 +201,14 @@ pub enum WidgetConfig {
         #[serde(default)]
         last_roll: Vec<u8>,
     },
+    TrafficLight {
+        #[serde(default)]
+        active: TrafficColor,
+    },
+    WorkSymbol {
+        #[serde(default)]
+        mode: WorkMode,
+    },
 }
 
 impl WidgetConfig {
@@ -189,6 +221,8 @@ impl WidgetConfig {
             WidgetConfig::NamePicker { .. } => "namepicker",
             WidgetConfig::Groups { .. } => "groups",
             WidgetConfig::Dice { .. } => "dice",
+            WidgetConfig::TrafficLight { .. } => "trafficlight",
+            WidgetConfig::WorkSymbol { .. } => "worksymbol",
         }
     }
 
@@ -224,6 +258,12 @@ impl WidgetConfig {
             "dice" => Some(WidgetConfig::Dice {
                 count: default_dice_count(),
                 last_roll: Vec::new(),
+            }),
+            "trafficlight" => Some(WidgetConfig::TrafficLight {
+                active: TrafficColor::default(),
+            }),
+            "worksymbol" => Some(WidgetConfig::WorkSymbol {
+                mode: WorkMode::default(),
             }),
             _ => None,
         }
@@ -286,6 +326,8 @@ impl WidgetConfig {
                     *v = (*v).clamp(1, 6);
                 }
             }
+            WidgetConfig::TrafficLight { .. } => {}
+            WidgetConfig::WorkSymbol { .. } => {}
         }
     }
 }

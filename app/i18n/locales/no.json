@@ -21,7 +21,9 @@
       "timer": "Timer",
       "namepicker": "Navnetrekker",
       "groups": "Grupper",
-      "dice": "Terning"
+      "dice": "Terning",
+      "trafficlight": "Trafikklys",
+      "worksymbol": "Arbeidssymbol"
     },
     "text": {
       "placeholder": "Skriv en beskjed …"
@@ -98,5 +100,18 @@
     "more": "Én terning til",
     "fewer": "Én terning mindre",
     "sum": "Sum: {n}"
+  },
+  "traffic": {
+    "red": "Rødt lys — stille",
+    "yellow": "Gult lys — hviskestemme",
+    "green": "Grønt lys — samarbeid"
+  },
+  "work": {
+    "mode": {
+      "silent": "Stille arbeid",
+      "whisper": "Hviskestemme",
+      "collaborate": "Samarbeid",
+      "raisehand": "Rekk opp hånda"
+    }
   }
 }

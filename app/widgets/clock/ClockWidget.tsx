@@ -50,23 +50,23 @@ export function ClockWidget({ widget }: { widget: WidgetInstance }) {
         </div>
       )}
 
-      <div class={styles.settings} data-no-drag>
+      <div data-settings-row data-no-drag>
         <button
-          class={styles.toggleBtn}
+          data-settings-btn
           data-current={cfg.face === "digital" || undefined}
           onClick={() => toggle({ face: "digital" })}
         >
           {t("clock.digital")}
         </button>
         <button
-          class={styles.toggleBtn}
+          data-settings-btn
           data-current={cfg.face === "analog" || undefined}
           onClick={() => toggle({ face: "analog" })}
         >
           {t("clock.analog")}
         </button>
         <button
-          class={styles.toggleBtn}
+          data-settings-btn
           aria-pressed={cfg.showSeconds}
           data-current={cfg.showSeconds || undefined}
           onClick={() => toggle({ showSeconds: !cfg.showSeconds })}
@@ -74,7 +74,7 @@ export function ClockWidget({ widget }: { widget: WidgetInstance }) {
           {t("clock.seconds")}
         </button>
         <button
-          class={styles.toggleBtn}
+          data-settings-btn
           aria-pressed={cfg.showDate}
           data-current={cfg.showDate || undefined}
           onClick={() => toggle({ showDate: !cfg.showDate })}

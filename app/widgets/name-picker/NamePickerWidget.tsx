@@ -115,9 +115,9 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
         {t("picker.draw")}
       </button>
 
-      <div class={styles.settings} data-no-drag>
+      <div data-settings-row data-no-drag>
         <button
-          class={styles.toggleBtn}
+          data-settings-btn
           data-current={cfg.noRepeat || undefined}
           aria-pressed={cfg.noRepeat}
           onClick={() =>
@@ -126,7 +126,7 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
         >
           {t("picker.noRepeat")}
         </button>
-        <button class={styles.toggleBtn} onClick={() => void resetRound()}>
+        <button data-settings-btn onClick={() => void resetRound()}>
           {t("picker.reset")}
         </button>
       </div>

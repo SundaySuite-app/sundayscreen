@@ -156,23 +156,23 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
         )}
       </div>
 
-      <div class={styles.settings} data-no-drag>
+      <div data-settings-row data-no-drag>
         <button
-          class={styles.modeBtn}
+          data-settings-btn
           data-current={cfg.mode === "countdown" || undefined}
           onClick={() => setMode("countdown")}
         >
           {t("timer.modeCountdown")}
         </button>
         <button
-          class={styles.modeBtn}
+          data-settings-btn
           data-current={cfg.mode === "stopwatch" || undefined}
           onClick={() => setMode("stopwatch")}
         >
           {t("timer.modeStopwatch")}
         </button>
         <button
-          class={styles.modeBtn}
+          data-settings-btn
           aria-label={t("timer.sound")}
           title={t("timer.sound")}
           aria-pressed={cfg.soundOn}

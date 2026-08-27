@@ -3,6 +3,8 @@ import type { ClockFace } from "./ClockFace";
 import type { GroupMode } from "./GroupMode";
 import type { TextAlign } from "./TextAlign";
 import type { TimerMode } from "./TimerMode";
+import type { TrafficColor } from "./TrafficColor";
+import type { WorkMode } from "./WorkMode";
 
 /**
  * Per-kind widget configuration. The serde tag IS the `kind` column value —
@@ -16,4 +18,4 @@ export type WidgetConfig = { "kind": "text", content: string, fontScale: number,
  * The last split, as NAMES — restored on boot so the class walks in
  * to the same groups the projector showed yesterday.
  */
-lastResult: Array<Array<string>>, } | { "kind": "dice", count: number, lastRoll: Array<number>, };
+lastResult: Array<Array<string>>, } | { "kind": "dice", count: number, lastRoll: Array<number>, } | { "kind": "trafficlight", active: TrafficColor, } | { "kind": "worksymbol", mode: WorkMode, };

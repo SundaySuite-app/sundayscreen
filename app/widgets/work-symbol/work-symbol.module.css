@@ -1,0 +1,22 @@
+.symbol {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+}
+
+.glyph {
+  font-size: 34cqmin;
+  line-height: 1;
+}
+
+.label {
+  font-size: 9cqmin;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: center;
+}

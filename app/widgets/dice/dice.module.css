@@ -53,31 +53,4 @@
   color: var(--ink-2);
 }
 
-.settings {
-  position: absolute;
-  bottom: var(--sp-2);
-  display: flex;
-  gap: var(--sp-1);
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.dice:hover .settings {
-  opacity: 1;
-}
-
-.toggleBtn {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: var(--fs-md);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.toggleBtn:hover {
-  border-color: var(--gold-line);
-}
+/* The count buttons use the shell's standard settings row. */

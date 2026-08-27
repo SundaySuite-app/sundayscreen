@@ -8,6 +8,8 @@ import { groupsWidgetDef } from "./groups";
 import { namePickerWidgetDef } from "./name-picker";
 import { textWidgetDef } from "./text";
 import { timerWidgetDef } from "./timer";
+import { trafficLightWidgetDef } from "./traffic-light";
+import { workSymbolWidgetDef } from "./work-symbol";
 import type { WidgetDef, WidgetKind } from "./widget-def";
 
 export type { WidgetDef, WidgetKind } from "./widget-def";
@@ -16,6 +18,8 @@ export const WIDGET_REGISTRY: Record<WidgetKind, WidgetDef> = {
   text: textWidgetDef,
   clock: clockWidgetDef,
   timer: timerWidgetDef,
+  trafficlight: trafficLightWidgetDef,
+  worksymbol: workSymbolWidgetDef,
   namepicker: namePickerWidgetDef,
   groups: groupsWidgetDef,
   dice: diceWidgetDef,

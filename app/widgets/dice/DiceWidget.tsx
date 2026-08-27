@@ -142,9 +142,9 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
         <div class={styles.sum}>{tf("dice.sum", { n: sum })}</div>
       )}
 
-      <div class={styles.settings} data-no-drag>
+      <div data-settings-row data-no-drag>
         <button
-          class={styles.toggleBtn}
+          data-settings-btn
           aria-label={t("dice.fewer")}
           title={t("dice.fewer")}
           onClick={() => setCount(-1)}
@@ -152,7 +152,7 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
           −
         </button>
         <button
-          class={styles.toggleBtn}
+          data-settings-btn
           aria-label={t("dice.more")}
           title={t("dice.more")}
           onClick={() => setCount(1)}

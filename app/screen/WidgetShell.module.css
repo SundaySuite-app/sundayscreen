@@ -78,3 +78,48 @@
 .shell[data-selected] .resize {
   opacity: 1;
 }
+
+/* ── The standard per-widget settings row ─────────────────────────────────
+   Widgets opt in with `data-settings-row` (the container, which should also
+   carry data-no-drag) and `data-settings-btn` (each control). Living HERE —
+   on the shell every widget renders inside — is what makes the hover-reveal
+   and the look identical across widget folders without a shared component. */
+.shell [data-settings-row] {
+  position: absolute;
+  bottom: var(--sp-2);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--sp-1);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  white-space: nowrap;
+}
+
+.shell:hover [data-settings-row],
+.shell[data-selected] [data-settings-row] {
+  opacity: 1;
+}
+
+.shell [data-settings-btn] {
+  padding: 2px var(--sp-2);
+  min-width: 28px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.shell [data-settings-btn]:hover {
+  border-color: var(--gold-line);
+  color: var(--ink);
+}
+
+.shell [data-settings-btn][data-current] {
+  color: var(--ink);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}

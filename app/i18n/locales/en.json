@@ -21,7 +21,9 @@
       "timer": "Timer",
       "namepicker": "Name picker",
       "groups": "Groups",
-      "dice": "Dice"
+      "dice": "Dice",
+      "trafficlight": "Traffic light",
+      "worksymbol": "Work symbol"
     },
     "text": {
       "placeholder": "Write a message …"
@@ -98,5 +100,18 @@
     "more": "One more die",
     "fewer": "One fewer die",
     "sum": "Sum: {n}"
+  },
+  "traffic": {
+    "red": "Red light — silence",
+    "yellow": "Yellow light — whisper",
+    "green": "Green light — collaborate"
+  },
+  "work": {
+    "mode": {
+      "silent": "Silent work",
+      "whisper": "Whisper voices",
+      "collaborate": "Collaborate",
+      "raisehand": "Raise your hand"
+    }
   }
 }

@@ -5,10 +5,21 @@
   },
   "boot": {
     "loading": "Laster …",
-    "ready": "Klar",
     "hydrateError": "Innstillingene kunne ikke leses — appen bruker standardvalg."
+  },
+  "class": {
+    "defaultName": "Min klasse"
   },
   "error": {
     "ipcFailed": "Noe i bakgrunnen svarte ikke, så denne visningen kan være ufullstendig."
+  },
+  "widget": {
+    "delete": "Fjern",
+    "label": {
+      "text": "Tekst"
+    },
+    "text": {
+      "placeholder": "Skriv en beskjed …"
+    }
   }
 }

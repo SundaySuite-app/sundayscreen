@@ -1,35 +1,37 @@
-// The root shell. In F0 this is the empty stage: the surface, a wordmark and
-// an honest status line. F1 replaces the centre with the widget surface and
-// the bottom toolbar.
+// The root shell: a boot splash until the settings have landed, then the
+// surface and the toolbar. The hydrate-error chip is a STATE, not a toast —
+// it stays until something changes.
 
 import styles from "./Shell.module.css";
 import { t } from "./i18n";
-import { appVersion } from "./state/app-info";
+import { Surface } from "./screen/Surface";
+import { Toolbar } from "./screen/Toolbar";
 import { hydrated, hydrateError } from "./state/settings";
 
-function statusText(): string {
-  if (hydrateError.value) return t("boot.hydrateError");
-  return hydrated.value ? t("boot.ready") : t("boot.loading");
-}
-
 export function Shell() {
-  const status = hydrateError.value
-    ? "error"
-    : hydrated.value
-      ? "ready"
-      : "loading";
+  if (!hydrated.value) {
+    return (
+      <main class={styles.splash}>
+        <div class={styles.center}>
+          <h1 class={styles.wordmark}>{t("app.name")}</h1>
+          <p class={styles.tagline}>{t("app.tagline")}</p>
+          <p class={styles.status} data-status="loading">
+            {t("boot.loading")}
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main class={styles.shell}>
-      <div class={styles.center}>
-        <h1 class={styles.wordmark}>{t("app.name")}</h1>
-        <p class={styles.tagline}>{t("app.tagline")}</p>
-        <p class={styles.status} data-status={status}>
-          {statusText()}
+      <Surface />
+      {hydrateError.value && (
+        <p class={styles.errorChip} data-status="error">
+          {t("boot.hydrateError")}
         </p>
-      </div>
-      <footer class={styles.footer}>
-        <span class={styles.version}>{appVersion.value}</span>
-      </footer>
+      )}
+      <Toolbar />
     </main>
   );
 }

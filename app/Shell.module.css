@@ -1,11 +1,15 @@
 .shell {
+  position: relative;
+  height: 100%;
+  background: var(--bg);
+}
+
+.splash {
   height: 100%;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   background: var(--bg);
-  position: relative;
 }
 
 .center {
@@ -41,25 +45,17 @@
   background: var(--surface);
 }
 
-.status[data-status="ready"] {
-  color: var(--good);
-  border-color: var(--good-line);
-  background: var(--good-soft);
-}
-
-.status[data-status="error"] {
-  color: var(--bad);
-  border-color: var(--bad-line);
-  background: var(--bad-soft);
-}
-
-.footer {
+.errorChip {
   position: absolute;
-  bottom: var(--sp-4);
-  right: var(--sp-5);
-}
-
-.version {
+  top: var(--sp-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  margin: 0;
   font-size: var(--fs-sm);
-  color: var(--ink-3);
+  color: var(--bad);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--bad-line);
+  background: var(--bad-soft);
 }

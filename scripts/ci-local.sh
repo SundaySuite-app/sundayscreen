@@ -42,6 +42,8 @@ if [ -n "$(git status --porcelain -- app/bindings)" ]; then
   exit 1
 fi
 
+step "command reachability regression"; npm run reachability
+
 step "tauri build (no bundle)";         npm run tauri build -- --no-bundle
 
 CURRENT="done"

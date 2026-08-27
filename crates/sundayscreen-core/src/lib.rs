@@ -4,4 +4,5 @@
 //! display, no clock reads, no filesystem. The `src-tauri` crate is the thin
 //! I/O shell over these decisions.
 
+pub mod layout;
 pub mod settings;

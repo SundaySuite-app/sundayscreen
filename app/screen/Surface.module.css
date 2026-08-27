@@ -1,0 +1,7 @@
+.surface {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  overflow: hidden;
+  z-index: var(--z-surface);
+}

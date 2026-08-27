@@ -9,7 +9,9 @@
 import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
 
 import type { AppInfo } from "../bindings/AppInfo";
+import type { Class } from "../bindings/Class";
 import type { Settings } from "../bindings/Settings";
+import type { WidgetInstance } from "../bindings/WidgetInstance";
 import {
   FIXTURE_GLOBAL,
   FIXTURE_QUERY_PARAM,
@@ -170,6 +172,31 @@ const api = {
   // stays honest).
   saveSettings: async (settings: Settings): Promise<Settings> =>
     invoke<Settings>("settings_save", { settings }),
+
+  // ── Classes / layout ─────────────────────────────────────────────────────
+  // Read-or-bootstrap: outside Tauri there is nothing to bootstrap IN, so
+  // the fallback is an ephemeral in-memory class — the shell renders, and
+  // saves against it reject honestly.
+  classEnsureActive: async (defaultName: string): Promise<Class> =>
+    call(
+      "class_ensure_active",
+      { defaultName },
+      {
+        id: "browser-fallback",
+        name: defaultName,
+        sortIndex: 0,
+        createdAt: 0,
+      },
+    ),
+
+  layoutLoad: async (classId: string): Promise<WidgetInstance[]> =>
+    call<WidgetInstance[]>("layout_load", { classId }, []),
+
+  // WRITE — rejection travels (see saveSettings).
+  layoutSave: async (
+    classId: string,
+    widgets: WidgetInstance[],
+  ): Promise<void> => invoke<void>("layout_save", { classId, widgets }),
 };
 
 export type Api = typeof api;

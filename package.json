@@ -31,7 +31,9 @@
     "i18n-hardcoded-tsx": "node scripts/check-i18n-hardcoded-tsx.mjs",
     "i18n-plurals": "node scripts/check-i18n-plurals.mjs",
     "css-tokens": "node scripts/check-app-css-tokens.mjs",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run version-sync && npm run i18n-keys && npm run i18n-keys:unused && npm run i18n-hardcoded-tsx && npm run i18n-plurals && npm run css-tokens && npm run fmt:rust:check && npm run lint:rust && npm run test:rust && npm run bindings:check",
+    "reachability": "node scripts/check-command-reachability.mjs",
+    "reachability:write-baseline": "node scripts/check-command-reachability.mjs --write-baseline",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run version-sync && npm run i18n-keys && npm run i18n-keys:unused && npm run i18n-hardcoded-tsx && npm run i18n-plurals && npm run css-tokens && npm run fmt:rust:check && npm run lint:rust && npm run test:rust && npm run bindings:check && npm run reachability",
     "ci": "bash scripts/ci-local.sh",
     "prepare": "husky"
   },

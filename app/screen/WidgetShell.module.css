@@ -1,0 +1,43 @@
+.shell {
+  position: absolute;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-widget);
+  overflow: hidden;
+  /* Widget content sizes itself with cqmin/cqw against ITS OWN box. */
+  container-type: size;
+}
+
+.shell[data-selected] {
+  border-color: var(--gold-line);
+  box-shadow: var(--shadow-widget-active);
+}
+
+.delete {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--ink-2);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.shell:hover .delete,
+.shell[data-selected] .delete {
+  opacity: 1;
+}
+
+.delete:hover {
+  color: var(--bad);
+  border-color: var(--bad-line);
+  background: var(--bad-soft);
+}

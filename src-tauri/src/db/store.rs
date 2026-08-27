@@ -13,8 +13,10 @@
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Row, SqlitePool};
+use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::error::AppResult;
@@ -65,6 +67,150 @@ pub async fn set_setting(pool: &SqlitePool, key: &str, value: &str) -> AppResult
     .bind(value)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+// ── Classes ──────────────────────────────────────────────────────────────────
+
+/// One class row. Exported to TS as `Class`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "Class.ts", rename = "Class")]
+#[serde(rename_all = "camelCase")]
+pub struct ClassRow {
+    pub id: String,
+    pub name: String,
+    // i64 would map to `bigint` in TS; force `number` (display order stays
+    // far below 2^53).
+    #[ts(type = "number")]
+    pub sort_index: i64,
+    pub created_at: f64,
+}
+
+fn row_to_class(r: sqlx::sqlite::SqliteRow) -> ClassRow {
+    ClassRow {
+        id: r.get("id"),
+        name: r.get("name"),
+        sort_index: r.get("sort_index"),
+        created_at: r.get("created_at"),
+    }
+}
+
+/// Look a class up by id.
+pub async fn get_class(pool: &SqlitePool, id: &str) -> AppResult<Option<ClassRow>> {
+    let row = sqlx::query("SELECT id, name, sort_index, created_at FROM class WHERE id = ?1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(row_to_class))
+}
+
+/// The first class in display order, if any.
+pub async fn first_class(pool: &SqlitePool) -> AppResult<Option<ClassRow>> {
+    let row = sqlx::query(
+        "SELECT id, name, sort_index, created_at FROM class
+         ORDER BY sort_index, created_at LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(row_to_class))
+}
+
+/// Create a class at the end of the display order. Returns the stored row.
+pub async fn insert_class(pool: &SqlitePool, name: &str) -> AppResult<ClassRow> {
+    let next: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(sort_index) + 1, 0) FROM class")
+        .fetch_one(pool)
+        .await?;
+    let row = ClassRow {
+        id: new_id(),
+        name: name.to_string(),
+        sort_index: next,
+        created_at: now_ms(),
+    };
+    sqlx::query("INSERT INTO class (id, name, sort_index, created_at) VALUES (?1, ?2, ?3, ?4)")
+        .bind(&row.id)
+        .bind(&row.name)
+        .bind(row.sort_index)
+        .bind(row.created_at)
+        .execute(pool)
+        .await?;
+    Ok(row)
+}
+
+// ── Widgets ──────────────────────────────────────────────────────────────────
+
+/// A raw widget row as stored. The tolerance seam
+/// (`sundayscreen_core::layout::row_to_instance`) decides what renders —
+/// this layer never interprets `kind`/`config`, which is exactly what lets an
+/// unknown kind survive a downgrade.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WidgetRow {
+    pub id: String,
+    pub kind: String,
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub z: i64,
+    pub config: String,
+}
+
+/// Every widget row for a class, in z order.
+pub async fn load_widget_rows(pool: &SqlitePool, class_id: &str) -> AppResult<Vec<WidgetRow>> {
+    let rows = sqlx::query(
+        "SELECT id, kind, x, y, w, h, z, config FROM widget_instance
+         WHERE class_id = ?1 ORDER BY z, id",
+    )
+    .bind(class_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| WidgetRow {
+            id: r.get("id"),
+            kind: r.get("kind"),
+            x: r.get("x"),
+            y: r.get("y"),
+            w: r.get("w"),
+            h: r.get("h"),
+            z: r.get("z"),
+            config: r.get("config"),
+        })
+        .collect())
+}
+
+/// Replace a class's ENTIRE layout in one transaction — idempotent and
+/// atomic: a failed insert rolls the delete back, so a crash mid-save can
+/// never leave a mixed layout.
+pub async fn replace_widgets(
+    pool: &SqlitePool,
+    class_id: &str,
+    rows: &[WidgetRow],
+) -> AppResult<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM widget_instance WHERE class_id = ?1")
+        .bind(class_id)
+        .execute(&mut *tx)
+        .await?;
+    let stamp = now_ms();
+    for row in rows {
+        sqlx::query(
+            "INSERT INTO widget_instance (id, class_id, kind, x, y, w, h, z, config, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        )
+        .bind(&row.id)
+        .bind(class_id)
+        .bind(&row.kind)
+        .bind(row.x)
+        .bind(row.y)
+        .bind(row.w)
+        .bind(row.h)
+        .bind(row.z)
+        .bind(&row.config)
+        .bind(stamp)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
     Ok(())
 }
 
@@ -173,6 +319,90 @@ mod tests {
             let row = sqlx::query(q).fetch_one(&pool).await.unwrap();
             assert_eq!(row.get::<i64, _>("n"), 0, "{table} should cascade-empty");
         }
+    }
+
+    #[tokio::test]
+    async fn class_insert_get_and_first_in_display_order() {
+        let (pool, _d) = temp_pool().await;
+        assert_eq!(first_class(&pool).await.unwrap(), None);
+
+        let a = insert_class(&pool, "7B").await.unwrap();
+        let b = insert_class(&pool, "8A").await.unwrap();
+        assert!(a.sort_index < b.sort_index, "later class sorts after");
+
+        assert_eq!(get_class(&pool, &a.id).await.unwrap().as_ref(), Some(&a));
+        assert_eq!(get_class(&pool, "nope").await.unwrap(), None);
+        assert_eq!(first_class(&pool).await.unwrap().as_ref(), Some(&a));
+    }
+
+    fn widget_row(id: &str, z: i64) -> WidgetRow {
+        WidgetRow {
+            id: id.to_string(),
+            kind: "text".to_string(),
+            x: 0.1,
+            y: 0.2,
+            w: 0.3,
+            h: 0.2,
+            z,
+            config: r#"{"kind":"text","content":"hei"}"#.to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn replace_widgets_round_trips_and_replaces_everything() {
+        let (pool, _d) = temp_pool().await;
+        let class = insert_class(&pool, "7B").await.unwrap();
+
+        replace_widgets(
+            &pool,
+            &class.id,
+            &[widget_row("w1", 0), widget_row("w2", 1)],
+        )
+        .await
+        .unwrap();
+        let loaded = load_widget_rows(&pool, &class.id).await.unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].id, "w1");
+        assert_eq!(loaded[0].config, r#"{"kind":"text","content":"hei"}"#);
+
+        // A second save REPLACES — w1/w2 are gone, only w3 remains.
+        replace_widgets(&pool, &class.id, &[widget_row("w3", 0)])
+            .await
+            .unwrap();
+        let after = load_widget_rows(&pool, &class.id).await.unwrap();
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].id, "w3");
+    }
+
+    #[tokio::test]
+    async fn replace_widgets_only_touches_the_named_class() {
+        let (pool, _d) = temp_pool().await;
+        let a = insert_class(&pool, "7B").await.unwrap();
+        let b = insert_class(&pool, "8A").await.unwrap();
+        replace_widgets(&pool, &a.id, &[widget_row("wa", 0)])
+            .await
+            .unwrap();
+        replace_widgets(&pool, &b.id, &[widget_row("wb", 0)])
+            .await
+            .unwrap();
+
+        replace_widgets(&pool, &a.id, &[]).await.unwrap();
+        assert!(load_widget_rows(&pool, &a.id).await.unwrap().is_empty());
+        assert_eq!(load_widget_rows(&pool, &b.id).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn replace_widgets_for_a_missing_class_fails_and_rolls_back() {
+        let (pool, _d) = temp_pool().await;
+        let class = insert_class(&pool, "7B").await.unwrap();
+        replace_widgets(&pool, &class.id, &[widget_row("keep", 0)])
+            .await
+            .unwrap();
+
+        // FK failure on insert must not have deleted anything anywhere.
+        let res = replace_widgets(&pool, "no-such-class", &[widget_row("wx", 0)]).await;
+        assert!(res.is_err(), "saving to a missing class must fail");
+        assert_eq!(load_widget_rows(&pool, &class.id).await.unwrap().len(), 1);
     }
 
     #[tokio::test]

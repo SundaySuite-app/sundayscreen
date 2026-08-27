@@ -80,6 +80,9 @@ jobs:
             exit 1
           fi
 
+      - name: Command reachability regression
+        run: npm run reachability
+
   build-smoke:
     runs-on: ubuntu-latest
     steps:

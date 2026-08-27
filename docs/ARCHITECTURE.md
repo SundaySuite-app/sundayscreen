@@ -81,11 +81,11 @@ epoch-ms, FK håndhevet.
 ## Faseplan
 
 - **F0 Scaffold** (alle gates armert) ✅
-- **F1** Flate + widget-rammeverk + tekst-widget + Playwright-tier
-- **F2** Interaksjonslag (drag/resize/snap/z + angre-snackbar)
-- **F3** Klasser (CRUD, lim-inn-navneliste, atomisk bytte)
-- **F4** Klokke + timer/stoppeklokke (vektorparitet)
-- **F5** Navnetrekker + grupper + terning (egenskapstester)
+- **F1** Flate + widget-rammeverk + tekst-widget + Playwright-tier ✅
+- **F2** Interaksjonslag (drag/resize/snap/z + angre-snackbar) ✅
+- **F3** Klasser (CRUD, lim-inn-navneliste, atomisk bytte) ✅
+- **F4** Klokke + timer/stoppeklokke (vektorparitet) ✅
+- **F5** Navnetrekker + grupper + terning (egenskapstester) ✅
 - **F6** Trafikklys + arbeidssymboler + settings-popovers
 - **F7** Chrome/auto-hide + fullskjerm + tekstvask + ikon + bundlede fonter
 - **F8** Updater (suite-ringer, stille feiling) + pakking + release.yml

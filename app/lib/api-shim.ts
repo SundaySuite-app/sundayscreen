@@ -64,6 +64,10 @@ export function setShimNotifier(override: Partial<ShimNotifier> | null): void {
   notifier.set(override);
 }
 
+/** Re-exported so the SHIM stays the one file that touches
+ *  `@tauri-apps/api/core` (the reachability gate holds it to exactly one). */
+export { isTauri };
+
 // ── The fixture seam ────────────────────────────────────────────────────────
 const FIXTURE_GATE: FixtureGate = {
   inTauri: isTauri(),

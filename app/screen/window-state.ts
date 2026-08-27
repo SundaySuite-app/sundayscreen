@@ -3,9 +3,9 @@
 // debounced off the move/resize events; fullscreen geometry is never stored
 // (it would overwrite the windowed geometry with the monitor's).
 
-import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+import { isTauri } from "@lib/api-shim";
 import { fullscreen } from "../state/chrome";
 import { settings } from "../state/settings";
 

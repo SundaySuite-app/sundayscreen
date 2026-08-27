@@ -92,4 +92,7 @@ epoch-ms, FK håndhevet.
 - **F9** Gransking — 39 funn, 30 fikset (docs/GRANSKING-v1.md) ✅
 - **F10** `v0.9.0-beta.1` publisert + promotert til beta-ringen (08-27) ✅
   → 👤 riggtest i klasserom → `v1.0.0`
-- **F11** Nettside-kort + nedlastingsfunksjon på sundaysuite.app
+- **F11** Nettside (08-27) ✅ — ellevte kjerneprodukt på sundaysuite.app:
+  produktside EN+NO, kort i «Tilgjengelig i dag», grønn juveltile-logo,
+  `/download/sundayscreen/{mac,windows,version}` (leser suite-feeden,
+  stable-ring først, så beta — flipper selv ved v1.0.0). Live-verifisert.

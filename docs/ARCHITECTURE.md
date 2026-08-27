@@ -86,9 +86,9 @@ epoch-ms, FK håndhevet.
 - **F3** Klasser (CRUD, lim-inn-navneliste, atomisk bytte) ✅
 - **F4** Klokke + timer/stoppeklokke (vektorparitet) ✅
 - **F5** Navnetrekker + grupper + terning (egenskapstester) ✅
-- **F6** Trafikklys + arbeidssymboler + settings-popovers
-- **F7** Chrome/auto-hide + fullskjerm + tekstvask + ikon + bundlede fonter
-- **F8** Updater (suite-ringer, stille feiling) + pakking + release.yml
-- **F9** Gransking (offline-kjøring, DPI-matrise, dvale, kill −9, CSP)
-- **F10** `v0.9.0-beta.1` → riggtest i klasserom → `v1.0.0`
+- **F6** Trafikklys + arbeidssymboler + standard innstillingsrad ✅
+- **F7** Chrome/auto-hide + fullskjerm + vindusminne + bundlet Inter ✅
+- **F8** Updater (suite-ringer, stille feiling) + pakking + release.yml ✅
+- **F9** Gransking — 39 funn, 30 fikset (docs/GRANSKING-v1.md) ✅
+- **F10** `v0.9.0-beta.1` → 👤 riggtest i klasserom → `v1.0.0`
 - **F11** Nettside-kort + nedlastingsfunksjon på sundaysuite.app

@@ -68,6 +68,11 @@ jobs:
         run: npm run fmt:rust:check
       - name: Rust — clippy
         run: npm run lint:rust
+      - name: Rust — clippy (feature-off build)
+        # The updater-off degradation path must keep COMPILING and stay
+        # clippy-clean — dead_code only fires in the lane where an item's
+        # callers are compiled out.
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
       - name: Rust — tests
         run: npm run test:rust
 

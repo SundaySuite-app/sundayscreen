@@ -31,6 +31,8 @@ step "farger kun via tokens (app/)";    npm run css-tokens
 
 step "rust — cargo fmt --check";        npm run fmt:rust:check
 step "rust — cargo clippy -D warnings"; npm run lint:rust
+step "rust — clippy (feature-off)"
+cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 step "rust — cargo test --workspace";   npm run test:rust
 
 # status --porcelain (not diff): also catches brand-new binding files, which

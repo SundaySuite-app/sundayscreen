@@ -291,3 +291,89 @@
   background: var(--gold);
   color: var(--on-gold);
 }
+
+.about {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+.aboutVersion {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.channel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.channelLabel {
+  margin-right: var(--sp-1);
+}
+
+.channelBtn {
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.channelBtn[data-current] {
+  color: var(--ink);
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
+
+.checkBtn {
+  padding: 2px var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.checkBtn:hover:not(:disabled) {
+  border-color: var(--gold-line);
+  color: var(--ink);
+}
+
+.updGood {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.updBad {
+  color: var(--bad);
+}
+
+.updMuted {
+  color: var(--ink-3);
+}
+
+.installBtn {
+  padding: 2px var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.installBtn:hover {
+  background: var(--gold);
+  color: var(--on-gold);
+}

@@ -10,4 +10,5 @@ export const SETTINGS_DEFAULTS: Settings = {
   activeClassId: null,
   snapEnabled: true,
   window: null,
+  updateChannel: "stable",
 };

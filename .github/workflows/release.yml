@@ -1,0 +1,76 @@
+name: Release
+
+# Signed desktop builds for macOS (aarch64) and Windows, cut from a `v*` tag.
+# The GitHub release is created as a DRAFT — a human publishes it, and then
+# `node scripts/promote-release.mjs <channel> <tag>` tells the update Worker
+# which published tag each ring serves. The tag alone ships nothing.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    # A dispatch from a BRANCH would create a draft release literally tagged
+    # with the branch name. Refuse anything that is not a tag.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: ""
+          - platform: windows-latest
+            # MSI cannot express `-beta.N` (ProductVersion is three numeric
+            # fields), so beta tags build NSIS only; stable tags build both.
+            args: ${{ contains(github.ref_name, '-beta.') && '--bundles nsis' || '' }}
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Refuse to run on a non-tag ref
+        if: ${{ github.ref_type != 'tag' }}
+        shell: bash
+        run: |
+          echo "::error::Release builds only run from a v* tag (got ${{ github.ref }})."
+          exit 1
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build and draft the release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater artifact signing (the feed's signature chain).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # macOS code signing. The secret NAMES are the suite's Electron-era
+          # ones (MAC_CERTS*), mapped onto tauri-action's APPLE_* env.
+          APPLE_CERTIFICATE: ${{ secrets.MAC_CERTS }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: "Developer ID Application: Richard Fossland (784GN847G4)"
+          # Notarization is DELIBERATELY off: Apple's notary answers 403
+          # ("required agreement missing") until the updated PLA is accepted
+          # for team 784GN847G4. When the owner has accepted it, uncomment:
+          #   APPLE_ID: ${{ secrets.APPLE_ID }}
+          #   APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          #   APPLE_TEAM_ID: "784GN847G4"
+          # NOTE: never set these to '' instead — an empty string still
+          # enters the notarize path and fails the build.
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "SundayScreen ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-beta.') }}
+          # `uploadUpdaterJson`, NOT `includeUpdaterJson` — the wrong name is
+          # silently ignored and the feed would have no manifest.
+          uploadUpdaterJson: true
+          args: ${{ matrix.args }}

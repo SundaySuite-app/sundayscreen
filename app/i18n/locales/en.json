@@ -118,5 +118,17 @@
     "fullscreenOn": "Fullscreen (F11)",
     "fullscreenOff": "Exit fullscreen (F11)",
     "show": "Show the toolbar"
+  },
+  "update": {
+    "version": "Version {v}",
+    "channelLabel": "Update channel",
+    "channelStable": "Stable",
+    "channelBeta": "Beta",
+    "check": "Check for updates",
+    "upToDate": "You have the latest version",
+    "available": "Version {v} is ready",
+    "install": "Update and restart",
+    "error": "Could not check right now — try again when online",
+    "disabled": "Updates are disabled in this build"
   }
 }

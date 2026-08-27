@@ -2,18 +2,13 @@
 
 > Ting bare eieren kan gjøre. Oppdateres per fase.
 
-## Nå (F0)
+## Før første release-tag (F10)
 
-- [ ] Ingenting — scaffolden er selvforsynt.
-
-## Før F8 (updater + pakking)
-
-- [ ] GitHub-secrets på repoet: `MAC_CERTS`, `MAC_CERTS_PASSWORD` (samme
-      eksport som de andre appene), `TAURI_SIGNING_PRIVATE_KEY`,
-      `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (NYTT nøkkelpar for SundayScreen —
-      genereres i F8, passordet må inn i Keychain/secrets).
+- [ ] GitHub-secrets på `SundaySuite-app/sundayscreen`: - `MAC_CERTS` + `MAC_CERTS_PASSWORD` (samme eksport som de andre appene) - `TAURI_SIGNING_PRIVATE_KEY` = innholdet av
+      `~/.tauri/sundayscreen_updater.key` (generert i F8, UTEN passordfrase) - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = tom streng
 - [ ] Apple-avtalen (PLA) er fortsatt ikke akseptert for team 784GN847G4 →
-      notarisering forblir av til den er det (samme som Rec/Stage/Edit).
+      notarisering forblir av til den er det (samme som Rec/Stage/Edit);
+      linjene står klare i release.yml.
 
 ## Før v1.0 (F10)
 

@@ -6,7 +6,9 @@
 
 import { useEffect, useState } from "preact/hooks";
 
+import type { UpdateStatus } from "../bindings/UpdateStatus";
 import { t, tf, tn } from "../i18n";
+import { appVersion } from "../state/app-info";
 import {
   classes,
   createClass,
@@ -18,6 +20,7 @@ import {
   switchClass,
 } from "../state/classes";
 import { activeClass } from "../state/layout";
+import { settings } from "../state/settings";
 import styles from "./ManagePanel.module.css";
 import { namesToText, parseNameList } from "./name-list-core";
 
@@ -34,6 +37,8 @@ export function ManagePanel() {
   );
   const [savedReceipt, setSavedReceipt] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [updStatus, setUpdStatus] = useState<UpdateStatus | null>(null);
+  const [checking, setChecking] = useState(false);
 
   // Re-seed the textarea whenever the ACTIVE CLASS changes (a switch inside
   // the panel) — not on every members change, or typing would fight the
@@ -56,6 +61,29 @@ export function ManagePanel() {
 
   const parsedCount = parseNameList(namesDraft).length;
   const deletingClass = classes.value.find((c) => c.id === deletingId);
+
+  const setChannel = (channel: "stable" | "beta") => {
+    const s = settings.peek();
+    if (s.updateChannel === channel) return;
+    const next = { ...s, updateChannel: channel };
+    settings.value = next;
+    setUpdStatus(null);
+    run(window.api.saveSettings(next));
+  };
+
+  const checkUpdate = async () => {
+    setChecking(true);
+    setUpdStatus(null);
+    setError(null);
+    try {
+      setUpdStatus(await window.api.updateCheck());
+    } catch (e) {
+      console.warn("[manage] update check failed", e);
+      setError(t("manage.actionFailed"));
+    } finally {
+      setChecking(false);
+    }
+  };
 
   return (
     <div class={styles.scrim}>
@@ -232,6 +260,63 @@ export function ManagePanel() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* ── About / updates ─────────────────────────────────────────── */}
+        <div class={styles.about}>
+          <span class={styles.aboutVersion}>
+            {tf("update.version", { v: appVersion.value })}
+          </span>
+          <span class={styles.channel}>
+            <span class={styles.channelLabel}>{t("update.channelLabel")}</span>
+            <button
+              class={styles.channelBtn}
+              data-current={
+                settings.value.updateChannel === "stable" || undefined
+              }
+              onClick={() => setChannel("stable")}
+            >
+              {t("update.channelStable")}
+            </button>
+            <button
+              class={styles.channelBtn}
+              data-current={
+                settings.value.updateChannel === "beta" || undefined
+              }
+              onClick={() => setChannel("beta")}
+            >
+              {t("update.channelBeta")}
+            </button>
+          </span>
+          <button
+            class={styles.checkBtn}
+            disabled={checking}
+            onClick={() => void checkUpdate()}
+          >
+            {t("update.check")}
+          </button>
+          {updStatus?.phase === "upToDate" && (
+            <span class={styles.updGood}>{t("update.upToDate")}</span>
+          )}
+          {updStatus?.phase === "error" && (
+            <span class={styles.updBad}>{t("update.error")}</span>
+          )}
+          {updStatus?.phase === "disabled" && (
+            <span class={styles.updMuted}>{t("update.disabled")}</span>
+          )}
+          {updStatus?.phase === "available" && (
+            <>
+              <span class={styles.updGood}>
+                {tf("update.available", { v: updStatus.version })}
+              </span>
+              <button
+                class={styles.installBtn}
+                onClick={() => run(window.api.updateInstall())}
+              >
+                {t("update.install")}
+              </button>
+            </>
+          )}
         </div>
       </section>
     </div>

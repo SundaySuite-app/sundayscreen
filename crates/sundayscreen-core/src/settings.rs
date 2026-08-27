@@ -46,6 +46,51 @@ fn default_window_h() -> f64 {
 pub const MIN_WINDOW_W: f64 = 960.0;
 pub const MIN_WINDOW_H: f64 = 600.0;
 
+/// Which release feed this install follows. The lowercase tag IS the feed's
+/// path segment (`/v1/update/sundayscreen/{stable|beta}`) — a renamed
+/// variant is a renamed live URL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "UpdateChannel.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateChannel {
+    /// Where every install stays unless someone deliberately moves it.
+    #[default]
+    Stable,
+    /// Promoted-but-unverified builds, for machines whose owner accepted
+    /// that job.
+    Beta,
+}
+
+impl UpdateChannel {
+    /// The stored tag / feed path segment.
+    pub fn as_tag(self) -> &'static str {
+        match self {
+            UpdateChannel::Stable => "stable",
+            UpdateChannel::Beta => "beta",
+        }
+    }
+
+    /// Parse a stored tag; anything unrecognised is [`UpdateChannel::Stable`]
+    /// — a value we cannot read cannot mean "this owner asked for unverified
+    /// builds".
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "beta" => UpdateChannel::Beta,
+            _ => UpdateChannel::Stable,
+        }
+    }
+}
+
+/// Lenient deserializer for [`Settings::update_channel`]: an unreadable
+/// value costs the channel (→ Stable) and nothing else.
+fn lenient_channel<'de, D>(de: D) -> Result<UpdateChannel, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(de)?;
+    Ok(raw.as_str().map(UpdateChannel::parse).unwrap_or_default())
+}
+
 /// Lenient per-field deserializer: tolerate a malformed VALUE by taking the
 /// field's `Default` instead of failing the whole blob. Without this,
 /// [`Settings::from_json_merged`] falls back to the FULL defaults the moment
@@ -94,6 +139,9 @@ pub struct Settings {
     /// Saved window geometry, or `None` for the config default.
     #[serde(default, deserialize_with = "lenient")]
     pub window: Option<WindowState>,
+    /// Which release feed this install follows.
+    #[serde(default, deserialize_with = "lenient_channel")]
+    pub update_channel: UpdateChannel,
 }
 
 fn default_language() -> Option<String> {
@@ -110,6 +158,7 @@ impl Default for Settings {
             active_class_id: None,
             snap_enabled: true,
             window: None,
+            update_channel: UpdateChannel::Stable,
         }
     }
 }
@@ -251,6 +300,24 @@ mod tests {
     }
 
     #[test]
+    fn update_channel_parses_leniently_and_defaults_to_stable() {
+        assert_eq!(UpdateChannel::parse(" BETA "), UpdateChannel::Beta);
+        assert_eq!(UpdateChannel::parse("canary"), UpdateChannel::Stable);
+        // A garbage channel costs the channel, never the rest of the blob.
+        let s = Settings::from_json_merged(r#"{ "updateChannel": 42, "activeClassId": "keep" }"#);
+        assert_eq!(s.update_channel, UpdateChannel::Stable);
+        assert_eq!(s.active_class_id.as_deref(), Some("keep"));
+        // The real value round-trips.
+        let beta = Settings {
+            update_channel: UpdateChannel::Beta,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&beta).unwrap();
+        assert!(json.contains("\"updateChannel\":\"beta\""));
+        assert_eq!(Settings::from_json_merged(&json), beta);
+    }
+
+    #[test]
     fn serialises_camel_case() {
         let json = serde_json::to_string(&Settings::default()).unwrap();
         assert!(json.contains("\"activeClassId\""));
@@ -271,6 +338,7 @@ mod tests {
                 h: 1080.0,
                 fullscreen: true,
             }),
+            update_channel: UpdateChannel::Beta,
         };
         let json = serde_json::to_string(&s).unwrap();
         assert_eq!(Settings::from_json_merged(&json), s);

@@ -6,6 +6,7 @@ pub mod commands;
 pub mod db;
 pub mod error;
 pub mod settings;
+pub mod update;
 pub mod window;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -38,6 +39,9 @@ pub fn run() {
         }
     }));
 
+    #[cfg(feature = "updater")]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
     builder
         .setup(|app| {
             use tauri::Manager;
@@ -63,7 +67,14 @@ pub fn run() {
             // Restore the saved window geometry BEFORE the shell paints, so
             // the projector setup comes back without a visible jump.
             match tauri::async_runtime::block_on(settings::load(&pool)) {
-                Ok(loaded) => window::restore_window_state(app.handle(), &loaded),
+                Ok(loaded) => {
+                    window::restore_window_state(app.handle(), &loaded);
+                    // The silent boot check — the app's ONE network call, and
+                    // it swallows every failure (offline is the normal
+                    // classroom state).
+                    #[cfg(feature = "updater")]
+                    update::spawn_boot_check(app.handle().clone(), loaded.update_channel);
+                }
                 Err(e) => tracing::warn!("settings load for window restore failed: {e}"),
             }
 
@@ -88,6 +99,8 @@ pub fn run() {
             commands::picker::picker_reset,
             commands::picker::groups_split,
             window::window_set_fullscreen,
+            update::update_check,
+            update::update_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

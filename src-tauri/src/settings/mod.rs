@@ -63,7 +63,7 @@ mod tests {
             language: Some("en".to_string()),
             active_class_id: Some("c1".to_string()),
             snap_enabled: false,
-            window: None,
+            ..Default::default()
         };
         let stored = save(&pool, s.clone()).await.unwrap();
         assert_eq!(stored, s);

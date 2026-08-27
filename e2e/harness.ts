@@ -62,8 +62,10 @@ export async function installFixtures(
           activeClassId: db.activeClassId,
           snapEnabled: true,
           window: null,
+          updateChannel: "stable",
         };
       },
+      update_check: { phase: "upToDate" },
       settings_save: (args?: Record<string, unknown>) => args?.settings,
       app_info: { name: "SundayScreen", version: "0.0.0-e2e" },
 

@@ -15,6 +15,7 @@ import type { DrawResult } from "../bindings/DrawResult";
 import type { GroupMode } from "../bindings/GroupMode";
 import type { Member } from "../bindings/Member";
 import type { Settings } from "../bindings/Settings";
+import type { UpdateStatus } from "../bindings/UpdateStatus";
 import type { WidgetInstance } from "../bindings/WidgetInstance";
 import {
   FIXTURE_GLOBAL,
@@ -247,6 +248,14 @@ const api = {
   // revert its optimistic flag in a plain browser.
   windowSetFullscreen: async (fullscreen: boolean): Promise<void> =>
     invoke<void>("window_set_fullscreen", { fullscreen }),
+
+  // The manual update check answers with a STATUS (errors included) — the
+  // panel shows it; only a broken IPC rejects. Install is a WRITE: on
+  // success the app restarts and the promise never resolves.
+  updateCheck: async (): Promise<UpdateStatus> =>
+    invoke<UpdateStatus>("update_check"),
+
+  updateInstall: async (): Promise<void> => invoke<void>("update_install"),
 };
 
 export type Api = typeof api;

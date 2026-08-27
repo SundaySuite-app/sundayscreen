@@ -118,5 +118,17 @@
     "fullscreenOn": "Fullskjerm (F11)",
     "fullscreenOff": "Avslutt fullskjerm (F11)",
     "show": "Vis verktøylinja"
+  },
+  "update": {
+    "version": "Versjon {v}",
+    "channelLabel": "Oppdateringskanal",
+    "channelStable": "Stabil",
+    "channelBeta": "Beta",
+    "check": "Se etter oppdatering",
+    "upToDate": "Du har nyeste versjon",
+    "available": "Versjon {v} er klar",
+    "install": "Oppdater og start på nytt",
+    "error": "Fikk ikke sjekket nå — prøv igjen når du er på nett",
+    "disabled": "Oppdatering er slått av i denne builden"
   }
 }

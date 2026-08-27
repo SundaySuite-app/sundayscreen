@@ -26,7 +26,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "category": "Productivity",
     "copyright": "© 2026 Richard Fossland",
@@ -46,6 +46,14 @@
       "nsis": {
         "installMode": "perMachine"
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ1NjJCMTYxRTI5QUI5REQKUldUZHVacmlZYkZpUmRURVFPVEQ5L3RtMnkxZUNXWXIwcnhxdTFOaG5makU4K0JrVHhZV2Z3N0UK",
+      "endpoints": [
+        "https://updates.sundaysuite.app/v1/update/sundayscreen/stable"
+      ]
     }
   }
 }

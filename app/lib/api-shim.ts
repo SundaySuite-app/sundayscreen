@@ -10,6 +10,8 @@ import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
 
 import type { AppInfo } from "../bindings/AppInfo";
 import type { Class } from "../bindings/Class";
+import type { ClassSnapshot } from "../bindings/ClassSnapshot";
+import type { Member } from "../bindings/Member";
 import type { Settings } from "../bindings/Settings";
 import type { WidgetInstance } from "../bindings/WidgetInstance";
 import {
@@ -197,6 +199,28 @@ const api = {
     classId: string,
     widgets: WidgetInstance[],
   ): Promise<void> => invoke<void>("layout_save", { classId, widgets }),
+
+  classList: async (): Promise<Class[]> => call("class_list", undefined, []),
+
+  membersGet: async (classId: string): Promise<Member[]> =>
+    call<Member[]>("members_get", { classId }, []),
+
+  // The rest are WRITES — rejections travel, so the manage panel can say
+  // what actually went wrong instead of fabricating success.
+  classCreate: async (name: string): Promise<Class> =>
+    invoke<Class>("class_create", { name }),
+
+  classRename: async (classId: string, name: string): Promise<Class> =>
+    invoke<Class>("class_rename", { classId, name }),
+
+  classDelete: async (classId: string): Promise<void> =>
+    invoke<void>("class_delete", { classId }),
+
+  classSwitch: async (classId: string): Promise<ClassSnapshot> =>
+    invoke<ClassSnapshot>("class_switch", { classId }),
+
+  membersSet: async (classId: string, names: string[]): Promise<Member[]> =>
+    invoke<Member[]>("members_set", { classId, names }),
 };
 
 export type Api = typeof api;

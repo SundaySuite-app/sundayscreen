@@ -26,5 +26,27 @@
   "undo": {
     "removed": "Widget removed",
     "action": "Undo"
+  },
+  "manage": {
+    "title": "Classes and names",
+    "close": "Close",
+    "switchClass": "Switch class",
+    "open": "Manage classes …",
+    "rename": "Rename",
+    "delete": "Delete",
+    "deleteTypePlaceholder": "Type “{name}” to delete",
+    "deleteConfirm": "Delete the class",
+    "cancel": "Cancel",
+    "newClassPlaceholder": "New class …",
+    "add": "Add",
+    "namesFor": "Names in {name}",
+    "nameCount": {
+      "one": "{n} name",
+      "other": "{n} names"
+    },
+    "saveNames": "Save name list",
+    "pasteHint": "One name per line — paste from Excel if you like.",
+    "savedReceipt": "Saved",
+    "actionFailed": "Something went wrong — try again."
   }
 }

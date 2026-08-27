@@ -66,6 +66,13 @@ pub fn run() {
             commands::settings::settings_get,
             commands::settings::settings_save,
             commands::classes::class_ensure_active,
+            commands::classes::class_list,
+            commands::classes::class_create,
+            commands::classes::class_rename,
+            commands::classes::class_delete,
+            commands::classes::class_switch,
+            commands::classes::members_get,
+            commands::classes::members_set,
             commands::layout::layout_load,
             commands::layout::layout_save,
         ])

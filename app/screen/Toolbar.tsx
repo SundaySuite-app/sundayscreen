@@ -4,9 +4,10 @@
 // free.
 
 import { appVersion } from "../state/app-info";
-import { activeClass, addWidget } from "../state/layout";
+import { addWidget } from "../state/layout";
 import { t, tDyn } from "../i18n";
 import { WIDGET_KINDS } from "../widgets/registry";
+import { ClassSwitcher } from "./ClassSwitcher";
 import styles from "./Toolbar.module.css";
 
 export function Toolbar() {
@@ -24,7 +25,7 @@ export function Toolbar() {
         ))}
       </div>
       <span class={styles.meta}>
-        <span class={styles.className}>{activeClass.value?.name ?? ""}</span>
+        <ClassSwitcher />
         <span class={styles.version}>{appVersion.value}</span>
       </span>
     </footer>

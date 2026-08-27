@@ -21,7 +21,8 @@ import { render } from "preact";
 import { resolveStartupLocale, setLocale, t } from "./i18n";
 import { Shell } from "./Shell";
 import { loadAppInfo } from "./state/app-info";
-import { initLayout } from "./state/layout";
+import { loadClasses, loadMembers } from "./state/classes";
+import { activeClass, initLayout } from "./state/layout";
 import { hydrateSettings, settings } from "./state/settings";
 
 // 2. The shell's own translator into the shim, before anything can fail.
@@ -51,6 +52,9 @@ async function boot(): Promise<void> {
   await hydrateSettings();
   await setLocale(resolveStartupLocale(settings.peek().language));
   await initLayout();
+  const cls = activeClass.peek();
+  if (cls) void loadMembers(cls.id);
+  void loadClasses();
   // A one-shot read the footer shows. No await — a line that can render "—"
   // until the number lands should not delay boot.
   void loadAppInfo();

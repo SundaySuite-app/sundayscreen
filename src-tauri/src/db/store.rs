@@ -136,6 +136,144 @@ pub async fn insert_class(pool: &SqlitePool, name: &str) -> AppResult<ClassRow> 
     Ok(row)
 }
 
+/// Every class, in display order.
+pub async fn list_classes(pool: &SqlitePool) -> AppResult<Vec<ClassRow>> {
+    let rows = sqlx::query(
+        "SELECT id, name, sort_index, created_at FROM class
+         ORDER BY sort_index, created_at",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(row_to_class).collect())
+}
+
+/// Rename a class. Returns whether a row was actually touched.
+pub async fn rename_class(pool: &SqlitePool, id: &str, name: &str) -> AppResult<bool> {
+    let res = sqlx::query("UPDATE class SET name = ?1 WHERE id = ?2")
+        .bind(name)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+/// Delete a class — members, widgets and draw state cascade with it.
+/// Returns whether a row was actually deleted.
+pub async fn delete_class(pool: &SqlitePool, id: &str) -> AppResult<bool> {
+    let res = sqlx::query("DELETE FROM class WHERE id = ?1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+// ── Members ──────────────────────────────────────────────────────────────────
+
+/// One pupil row. Exported to TS as `Member`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "Member.ts", rename = "Member")]
+#[serde(rename_all = "camelCase")]
+pub struct MemberRow {
+    pub id: String,
+    pub name: String,
+    // i64 would map to `bigint` in TS; force `number`.
+    #[ts(type = "number")]
+    pub sort_index: i64,
+}
+
+/// A class's members, in display order.
+pub async fn list_members(pool: &SqlitePool, class_id: &str) -> AppResult<Vec<MemberRow>> {
+    let rows = sqlx::query(
+        "SELECT id, name, sort_index FROM class_member
+         WHERE class_id = ?1 ORDER BY sort_index, created_at",
+    )
+    .bind(class_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| MemberRow {
+            id: r.get("id"),
+            name: r.get("name"),
+            sort_index: r.get("sort_index"),
+        })
+        .collect())
+}
+
+/// Replace a class's member list from reconciled specs, in one transaction.
+/// A spec WITH an id keeps that row (its draw state survives); rows whose id
+/// is not in the specs are deleted (their draw state cascades away); a spec
+/// without an id gets a fresh row. `sort_index` becomes the spec order.
+pub async fn replace_members(
+    pool: &SqlitePool,
+    class_id: &str,
+    specs: &[sundayscreen_core::members::MemberSpec],
+) -> AppResult<Vec<MemberRow>> {
+    let mut tx = pool.begin().await?;
+
+    let kept: Vec<&str> = specs.iter().filter_map(|s| s.id.as_deref()).collect();
+    // Delete rows that are NOT kept. (No sqlx array-bind for sqlite — the
+    // list is small, so delete-all-then-skip-kept is done per row instead.)
+    let existing_ids: Vec<String> = sqlx::query("SELECT id FROM class_member WHERE class_id = ?1")
+        .bind(class_id)
+        .fetch_all(&mut *tx)
+        .await?
+        .into_iter()
+        .map(|r| r.get::<String, _>("id"))
+        .collect();
+    for id in &existing_ids {
+        if !kept.contains(&id.as_str()) {
+            sqlx::query("DELETE FROM class_member WHERE id = ?1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+
+    let stamp = now_ms();
+    let mut out = Vec::with_capacity(specs.len());
+    for (i, spec) in specs.iter().enumerate() {
+        let sort_index = i as i64;
+        match &spec.id {
+            Some(id) => {
+                sqlx::query("UPDATE class_member SET name = ?1, sort_index = ?2 WHERE id = ?3")
+                    .bind(&spec.name)
+                    .bind(sort_index)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                out.push(MemberRow {
+                    id: id.clone(),
+                    name: spec.name.clone(),
+                    sort_index,
+                });
+            }
+            None => {
+                let id = new_id();
+                sqlx::query(
+                    "INSERT INTO class_member (id, class_id, name, sort_index, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                )
+                .bind(&id)
+                .bind(class_id)
+                .bind(&spec.name)
+                .bind(sort_index)
+                .bind(stamp)
+                .execute(&mut *tx)
+                .await?;
+                out.push(MemberRow {
+                    id,
+                    name: spec.name.clone(),
+                    sort_index,
+                });
+            }
+        }
+    }
+
+    tx.commit().await?;
+    Ok(out)
+}
+
 // ── Widgets ──────────────────────────────────────────────────────────────────
 
 /// A raw widget row as stored. The tolerance seam
@@ -333,6 +471,74 @@ mod tests {
         assert_eq!(get_class(&pool, &a.id).await.unwrap().as_ref(), Some(&a));
         assert_eq!(get_class(&pool, "nope").await.unwrap(), None);
         assert_eq!(first_class(&pool).await.unwrap().as_ref(), Some(&a));
+    }
+
+    #[tokio::test]
+    async fn replace_members_keeps_ids_and_their_draw_state() {
+        use sundayscreen_core::members::{reconcile, MemberSpec};
+        let (pool, _d) = temp_pool().await;
+        let class = insert_class(&pool, "7B").await.unwrap();
+
+        let first = replace_members(
+            &pool,
+            &class.id,
+            &[
+                MemberSpec {
+                    id: None,
+                    name: "Kari".into(),
+                },
+                MemberSpec {
+                    id: None,
+                    name: "Ola".into(),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+        let kari = first[0].clone();
+
+        // Kari has been drawn this round.
+        sqlx::query("INSERT INTO draw_state (class_id, member_id, drawn_at) VALUES (?1, ?2, 1.0)")
+            .bind(&class.id)
+            .bind(&kari.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // The teacher re-saves the list with Ola swapped for Nils. Kari's id
+        // — and therefore her drawn-state — must survive the round-trip.
+        let existing: Vec<(String, String)> = first
+            .iter()
+            .map(|m| (m.id.clone(), m.name.clone()))
+            .collect();
+        let specs = reconcile(&existing, &["Kari".into(), "Nils".into()]);
+        let second = replace_members(&pool, &class.id, &specs).await.unwrap();
+
+        assert_eq!(second[0].id, kari.id, "Kari keeps her id");
+        assert_eq!(second[1].name, "Nils");
+        let drawn: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM draw_state WHERE class_id = ?1")
+            .bind(&class.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(drawn, 1, "Kari's draw state survived; Ola's row cascaded");
+
+        let listed = list_members(&pool, &class.id).await.unwrap();
+        assert_eq!(listed, second, "list agrees with the returned rows");
+    }
+
+    #[tokio::test]
+    async fn class_rename_and_delete_report_whether_a_row_was_hit() {
+        let (pool, _d) = temp_pool().await;
+        let class = insert_class(&pool, "7B").await.unwrap();
+        assert!(rename_class(&pool, &class.id, "8B").await.unwrap());
+        assert_eq!(
+            get_class(&pool, &class.id).await.unwrap().unwrap().name,
+            "8B"
+        );
+        assert!(!rename_class(&pool, "ghost", "X").await.unwrap());
+        assert!(delete_class(&pool, &class.id).await.unwrap());
+        assert!(!delete_class(&pool, &class.id).await.unwrap());
     }
 
     fn widget_row(id: &str, z: i64) -> WidgetRow {

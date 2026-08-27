@@ -5,4 +5,5 @@
 //! I/O shell over these decisions.
 
 pub mod layout;
+pub mod members;
 pub mod settings;

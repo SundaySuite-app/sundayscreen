@@ -4,8 +4,10 @@
 
 import styles from "./Shell.module.css";
 import { t } from "./i18n";
+import { ManagePanel } from "./manage/ManagePanel";
 import { Surface } from "./screen/Surface";
 import { Toolbar } from "./screen/Toolbar";
+import { managePanelOpen } from "./state/classes";
 import { undoRemove, undoSlot } from "./state/layout";
 import { hydrated, hydrateError } from "./state/settings";
 
@@ -41,6 +43,7 @@ export function Shell() {
         </div>
       )}
       <Toolbar />
+      {managePanelOpen.value && <ManagePanel />}
     </main>
   );
 }

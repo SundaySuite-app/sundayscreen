@@ -1,0 +1,93 @@
+.wrap {
+  position: relative;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trigger:hover {
+  border-color: var(--gold-line);
+  color: var(--ink);
+}
+
+.chevron {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  border: none;
+  background: none;
+  cursor: default;
+  z-index: var(--z-chrome);
+}
+
+.menu {
+  position: absolute;
+  bottom: calc(100% + var(--sp-2));
+  right: 0;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-2);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-dialog);
+  z-index: calc(var(--z-chrome) + 1);
+}
+
+.item {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink);
+  font-size: var(--fs-base);
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--gold-soft);
+}
+
+.item[data-current] {
+  font-weight: 700;
+  background: var(--gold-soft);
+}
+
+.divider {
+  height: 1px;
+  background: var(--line);
+  margin: var(--sp-2) 0;
+}
+
+.manage {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.manage:hover {
+  background: var(--gold-soft);
+  color: var(--ink);
+}

@@ -26,5 +26,27 @@
   "undo": {
     "removed": "Widget fjernet",
     "action": "Angre"
+  },
+  "manage": {
+    "title": "Klasser og navn",
+    "close": "Lukk",
+    "switchClass": "Bytt klasse",
+    "open": "Administrer klasser …",
+    "rename": "Gi nytt navn",
+    "delete": "Slett",
+    "deleteTypePlaceholder": "Skriv «{name}» for å slette",
+    "deleteConfirm": "Slett klassen",
+    "cancel": "Avbryt",
+    "newClassPlaceholder": "Ny klasse …",
+    "add": "Legg til",
+    "namesFor": "Navn i {name}",
+    "nameCount": {
+      "one": "{n} navn",
+      "other": "{n} navn"
+    },
+    "saveNames": "Lagre navneliste",
+    "pasteHint": "Ett navn per linje — lim gjerne inn fra Excel.",
+    "savedReceipt": "Lagret",
+    "actionFailed": "Noe gikk galt — prøv igjen."
   }
 }

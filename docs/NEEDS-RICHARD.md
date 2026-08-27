@@ -15,9 +15,12 @@
 
 ## Før v1.0 (F10)
 
-**v0.9.0-beta.1 er ute (08-27):** publisert på GitHub og promotert til
-beta-ringen. Nedlasting:
-<https://github.com/SundaySuite-app/sundayscreen/releases/tag/v0.9.0-beta.1>
+**v0.1.0-beta.1 er ute (08-27):** publisert på GitHub og promotert til
+beta-ringen (renummerert fra v0.9.0-beta.1 — ADR-008). Nedlasting:
+<https://github.com/SundaySuite-app/sundayscreen/releases/tag/v0.1.0-beta.1>
+
+⚠️ Installerte du 0.9.0-beta.1 i mellomtiden: avinstallér og installér
+0.1.0-beta.1 manuelt — updateren tilbyr aldri et lavere versjonsnummer.
 
 - [ ] **Riggtest i klasserom:** installer beta på klasseroms-maskinen, koble
       projektor (helst også en 4:3), bruk appen én hel undervisningstime

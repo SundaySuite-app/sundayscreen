@@ -1,8 +1,10 @@
 # Changelog
 
-## [0.9.0-beta.1] — 2026-08-27
+## [0.1.0-beta.1] — 2026-08-27
 
-Første beta — hele v1-verktøysettet, gransket:
+Første beta — hele verktøysettet, gransket. (Utgitt tidligere samme dag som
+`v0.9.0-beta.1`; eier valgte å starte nummereringen på 0.1 i stedet — se
+ADR-008. Samme innhold, nytt nummer; 0.9.0-utgivelsen er trukket.)
 
 - 8 widgets: tekst, klokke (digital/analog), tidtaker/stoppeklokke (m/
   lydvarsel og varselfarge), trafikklys, arbeidssymboler, navnetrekker (m/

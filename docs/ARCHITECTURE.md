@@ -90,8 +90,10 @@ epoch-ms, FK håndhevet.
 - **F7** Chrome/auto-hide + fullskjerm + vindusminne + bundlet Inter ✅
 - **F8** Updater (suite-ringer, stille feiling) + pakking + release.yml ✅
 - **F9** Gransking — 39 funn, 30 fikset (docs/GRANSKING-v1.md) ✅
-- **F10** `v0.9.0-beta.1` publisert + promotert til beta-ringen (08-27) ✅
-  → 👤 riggtest i klasserom → `v1.0.0`
+- **F10** første beta publisert + promotert til beta-ringen (08-27) ✅ —
+  utgitt som `v0.9.0-beta.1`, senere samme dag renummerert til
+  `v0.1.0-beta.1` (ADR-008: 0.x-betaer, ingen v1-milepæl).
+  → 👤 riggtest i klasserom; stable først når eier ber om det
 - **F11** Nettside (08-27) ✅ — ellevte kjerneprodukt på sundaysuite.app:
   produktside EN+NO, kort i «Tilgjengelig i dag», grønn juveltile-logo,
   `/download/sundayscreen/{mac,windows,version}` (leser suite-feeden,

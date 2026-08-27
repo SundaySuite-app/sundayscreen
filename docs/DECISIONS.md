@@ -41,3 +41,14 @@ samtykke-mønster.
 Klasserom er lyse rom og projektorer gjengir lyst best. Suite-gull #EBB84B som
 aksent; verdier kopiert fra @sunday/design (ikke pakkeimport — ingen
 desktop-app importerer pakken, og appen skal bygge standalone).
+
+## ADR-008 — Versjonering: 0.x-betaer, ingen v1-milepæl (2026-08-27, eiervalg)
+
+Eier vil ha beskjeden nummerering: produktet starter på **0.1** og går KUN som
+beta inntil videre — planens `v0.9.0-beta.1 → v1.0.0`-løp er forlatt. Den alt
+publiserte `v0.9.0-beta.1` (samme dag, samme innhold) ble trukket og
+renummerert til `v0.1.0-beta.1`. Konsekvens av nedjusteringen: en maskin som
+rakk å installere 0.9.0-beta.1 ser ALDRI 0.1.x-utgivelser i updateren
+(semver-sammenligning klient-side) og må reinstallere manuelt én gang.
+Stable-ringen tas i bruk først når eier eksplisitt ber om en stabil utgivelse.
+(ADR-007, config-felttoleranse, står i docs/GRANSKING-v1.md.)

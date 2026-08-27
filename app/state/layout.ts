@@ -9,6 +9,7 @@
 import { signal } from "@preact/signals";
 
 import type { Class } from "../bindings/Class";
+import type { NormRect } from "../bindings/NormRect";
 import type { WidgetConfig } from "../bindings/WidgetConfig";
 import type { WidgetInstance } from "../bindings/WidgetInstance";
 import { t } from "../i18n";
@@ -46,9 +47,60 @@ export function addWidget(kind: WidgetKind): void {
   saveNow();
 }
 
+/** How long the undo snackbar stays. */
+export const UNDO_MS = 5000;
+
+/** The most recently removed widget, restorable for [`UNDO_MS`]. No confirm
+ *  dialog — a dialog slows the teacher forty times to prevent one mistake;
+ *  the snackbar fixes the one mistake instead. */
+export const undoSlot = signal<{ widget: WidgetInstance } | null>(null);
+let undoTimer: ReturnType<typeof setTimeout> | undefined;
+
 export function removeWidget(id: string): void {
+  const removed = widgets.value.find((w) => w.id === id);
   widgets.value = widgets.value.filter((w) => w.id !== id);
   if (selectedWidgetId.value === id) selectedWidgetId.value = null;
+  if (removed) {
+    undoSlot.value = { widget: removed };
+    if (undoTimer !== undefined) clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => {
+      undoSlot.value = null;
+    }, UNDO_MS);
+  }
+  saveNow();
+}
+
+/** Put the removed widget back, on top. */
+export function undoRemove(): void {
+  const slot = undoSlot.value;
+  if (!slot) return;
+  undoSlot.value = null;
+  if (undoTimer !== undefined) clearTimeout(undoTimer);
+  widgets.value = [
+    ...widgets.value,
+    { ...slot.widget, z: widgets.value.length },
+  ];
+  saveNow();
+}
+
+/** Commit a finished drag/resize (pointerup) — an immediate save. */
+export function commitWidgetRect(id: string, rect: NormRect): void {
+  widgets.value = widgets.value.map((w) => (w.id === id ? { ...w, rect } : w));
+  saveNow();
+}
+
+/** Select and raise a widget. Saves only when the stacking actually
+ *  changed — a plain select-click writes nothing. */
+export function bringToFront(id: string): void {
+  selectedWidgetId.value = id;
+  const list = widgets.value;
+  const target = list.find((w) => w.id === id);
+  if (!target || target.z === list.length - 1) return;
+  const rest = [...list].filter((w) => w.id !== id).sort((a, b) => a.z - b.z);
+  widgets.value = [
+    ...rest.map((w, i) => ({ ...w, z: i })),
+    { ...target, z: rest.length },
+  ];
   saveNow();
 }
 

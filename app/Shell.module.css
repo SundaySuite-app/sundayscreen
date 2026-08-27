@@ -59,3 +59,35 @@
   border: 1px solid var(--bad-line);
   background: var(--bad-soft);
 }
+
+.snackbar {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  box-shadow: var(--shadow-chrome);
+  font-size: var(--fs-base);
+  color: var(--ink-2);
+}
+
+.snackbarAction {
+  border: none;
+  background: none;
+  color: var(--gold);
+  font-weight: 700;
+  font-size: var(--fs-base);
+  cursor: pointer;
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.snackbarAction:hover {
+  color: var(--ink);
+}

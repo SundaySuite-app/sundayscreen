@@ -6,6 +6,7 @@ import styles from "./Shell.module.css";
 import { t } from "./i18n";
 import { Surface } from "./screen/Surface";
 import { Toolbar } from "./screen/Toolbar";
+import { undoRemove, undoSlot } from "./state/layout";
 import { hydrated, hydrateError } from "./state/settings";
 
 export function Shell() {
@@ -30,6 +31,14 @@ export function Shell() {
         <p class={styles.errorChip} data-status="error">
           {t("boot.hydrateError")}
         </p>
+      )}
+      {undoSlot.value && (
+        <div class={styles.snackbar}>
+          <span>{t("undo.removed")}</span>
+          <button class={styles.snackbarAction} onClick={undoRemove}>
+            {t("undo.action")}
+          </button>
+        </div>
       )}
       <Toolbar />
     </main>

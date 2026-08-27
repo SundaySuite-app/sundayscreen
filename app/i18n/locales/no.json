@@ -20,6 +20,11 @@
     },
     "text": {
       "placeholder": "Skriv en beskjed …"
-    }
+    },
+    "resize": "Endre størrelse"
+  },
+  "undo": {
+    "removed": "Widget fjernet",
+    "action": "Angre"
   }
 }

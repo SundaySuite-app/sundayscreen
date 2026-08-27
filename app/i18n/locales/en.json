@@ -20,6 +20,11 @@
     },
     "text": {
       "placeholder": "Write a message …"
-    }
+    },
+    "resize": "Resize"
+  },
+  "undo": {
+    "removed": "Widget removed",
+    "action": "Undo"
   }
 }

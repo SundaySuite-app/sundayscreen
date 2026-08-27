@@ -23,6 +23,7 @@ export function TextWidget({ widget }: { widget: WidgetInstance }) {
         class={styles.editor}
         style={{ fontSize: `${8 * cfg.fontScale}cqmin` }}
         value={cfg.content}
+        data-no-drag
         autofocus
         onInput={(e) =>
           commit((e.target as HTMLTextAreaElement).value, { debounce: true })

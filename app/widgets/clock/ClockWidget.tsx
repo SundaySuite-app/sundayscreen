@@ -9,6 +9,7 @@ import { localeTag } from "@lib/i18n";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
 import { updateWidgetConfig } from "../../state/layout";
+import { Icon } from "../../ui/Icon";
 import styles from "./clock.module.css";
 
 export function ClockWidget({ widget }: { widget: WidgetInstance }) {
@@ -54,16 +55,20 @@ export function ClockWidget({ widget }: { widget: WidgetInstance }) {
         <button
           data-settings-btn
           data-current={cfg.face === "digital" || undefined}
+          aria-label={t("clock.digital")}
+          title={t("clock.digital")}
           onClick={() => toggle({ face: "digital" })}
         >
-          {t("clock.digital")}
+          <Icon name="clock-digital" size="sm" />
         </button>
         <button
           data-settings-btn
           data-current={cfg.face === "analog" || undefined}
+          aria-label={t("clock.analog")}
+          title={t("clock.analog")}
           onClick={() => toggle({ face: "analog" })}
         >
-          {t("clock.analog")}
+          <Icon name="clock" size="sm" />
         </button>
         <button
           data-settings-btn

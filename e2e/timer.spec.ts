@@ -105,7 +105,7 @@ test("the clock shows the mocked time, digital and analog", async ({
 
   await clock.hover();
   await clock.getByRole("button", { name: "Analog" }).click();
-  await expect(clock.locator("svg")).toBeVisible();
+  await expect(clock.getByRole("img")).toBeVisible();
   await expect(clock.getByText("10:37")).toHaveCount(0);
 
   await clock.getByRole("button", { name: "Dato" }).click();

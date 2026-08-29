@@ -13,6 +13,7 @@ import {
   updateWidgetConfig,
   updateWidgetConfigBy,
 } from "../../state/layout";
+import { Icon } from "../../ui/Icon";
 import styles from "./name-picker.module.css";
 
 /** How long the name-spin lasts. */
@@ -131,8 +132,13 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
         >
           {t("picker.noRepeat")}
         </button>
-        <button data-settings-btn onClick={() => void resetRound()}>
-          {t("picker.reset")}
+        <button
+          data-settings-btn
+          aria-label={t("picker.reset")}
+          title={t("picker.reset")}
+          onClick={() => void resetRound()}
+        >
+          <Icon name="rotate" size="sm" />
         </button>
       </div>
     </div>

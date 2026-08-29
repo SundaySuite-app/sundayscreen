@@ -10,8 +10,19 @@
 }
 
 .glyph {
-  font-size: 34cqmin;
-  line-height: 1;
+  width: 40cqmin;
+  height: 40cqmin;
+  color: var(--ink);
+}
+
+.glyph > svg {
+  width: 100%;
+  height: 100%;
+}
+
+.btnGlyph {
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .label {

@@ -7,6 +7,7 @@
 import type { WidgetInstance } from "../bindings/WidgetInstance";
 import { t } from "../i18n";
 import { removeWidget, selectedWidgetId } from "../state/layout";
+import { Icon } from "../ui/Icon";
 import { surfaceSize } from "../state/surface";
 import { WIDGET_REGISTRY } from "../widgets/registry";
 import { fromNorm } from "./coords-core";
@@ -43,7 +44,7 @@ export function WidgetShell({ widget }: { widget: WidgetInstance }) {
         title={t("widget.delete")}
         onClick={() => removeWidget(widget.id)}
       >
-        ×
+        <Icon name="close" size="sm" />
       </button>
       <button
         class={styles.resize}

@@ -13,6 +13,7 @@ import {
   updateWidgetConfig,
   updateWidgetConfigBy,
 } from "../../state/layout";
+import { Icon } from "../../ui/Icon";
 import styles from "./groups.module.css";
 
 export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
@@ -96,7 +97,7 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
             aria-label={t("groups.decrease")}
             onClick={() => setN(-1)}
           >
-            −
+            <Icon name="minus" size="sm" />
           </button>
           <span class={styles.n}>{cfg.n}</span>
           <button
@@ -104,7 +105,7 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
             aria-label={t("groups.increase")}
             onClick={() => setN(1)}
           >
-            +
+            <Icon name="plus" size="sm" />
           </button>
         </span>
         <button

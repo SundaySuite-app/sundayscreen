@@ -3,6 +3,7 @@
 
 import { t } from "../i18n";
 import { dismissToast, toasts } from "./toast";
+import { Icon } from "./Icon";
 import styles from "./Toasts.module.css";
 
 export function Toasts() {
@@ -17,7 +18,7 @@ export function Toasts() {
             aria-label={t("toast.dismiss")}
             onClick={() => dismissToast(entry.id)}
           >
-            ×
+            <Icon name="close" size="sm" />
           </button>
         </div>
       ))}

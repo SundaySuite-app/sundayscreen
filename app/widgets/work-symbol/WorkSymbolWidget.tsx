@@ -6,30 +6,26 @@ import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import type { WorkMode } from "../../bindings/WorkMode";
 import { tDyn } from "../../i18n";
 import { updateWidgetConfig } from "../../state/layout";
+import { WorkGlyph } from "./glyphs";
 import styles from "./work-symbol.module.css";
 
-const MODES: { mode: WorkMode; glyph: string }[] = [
-  { mode: "silent", glyph: "🤫" },
-  { mode: "whisper", glyph: "💬" },
-  { mode: "collaborate", glyph: "🤝" },
-  { mode: "raisehand", glyph: "✋" },
-];
+const MODES: WorkMode[] = ["silent", "whisper", "collaborate", "raisehand"];
 
 export function WorkSymbolWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
   if (cfg.kind !== "worksymbol") return null;
 
-  const current = MODES.find((m) => m.mode === cfg.mode) ?? MODES[0];
+  const current = MODES.includes(cfg.mode) ? cfg.mode : MODES[0];
 
   return (
     <div class={styles.symbol}>
-      <div class={styles.glyph} aria-hidden="true">
-        {current.glyph}
+      <div class={styles.glyph}>
+        <WorkGlyph mode={current} />
       </div>
       <div class={styles.label}>{tDyn("work.mode", cfg.mode)}</div>
 
       <div data-settings-row data-no-drag>
-        {MODES.map(({ mode, glyph }) => (
+        {MODES.map((mode) => (
           <button
             key={mode}
             data-settings-btn
@@ -39,7 +35,7 @@ export function WorkSymbolWidget({ widget }: { widget: WidgetInstance }) {
             aria-pressed={cfg.mode === mode}
             onClick={() => updateWidgetConfig(widget.id, { ...cfg, mode })}
           >
-            {glyph}
+            <WorkGlyph mode={mode} class={styles.btnGlyph} />
           </button>
         ))}
       </div>

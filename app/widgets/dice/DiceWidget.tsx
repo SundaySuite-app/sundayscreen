@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tf } from "../../i18n";
 import { updateWidgetConfig, updateWidgetConfigBy } from "../../state/layout";
+import { Icon } from "../../ui/Icon";
 import styles from "./dice.module.css";
 
 const ROLL_MS = 600;
@@ -153,7 +154,7 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
           title={t("dice.fewer")}
           onClick={() => setCount(-1)}
         >
-          −
+          <Icon name="minus" size="sm" />
         </button>
         <button
           data-settings-btn
@@ -161,7 +162,7 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
           title={t("dice.more")}
           onClick={() => setCount(1)}
         >
-          +
+          <Icon name="plus" size="sm" />
         </button>
       </div>
     </div>

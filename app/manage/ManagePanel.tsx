@@ -22,6 +22,7 @@ import {
 import { activeClass } from "../state/layout";
 import { settings } from "../state/settings";
 import styles from "./ManagePanel.module.css";
+import { Icon } from "../ui/Icon";
 import { namesToText, parseNameList } from "./name-list-core";
 
 export function ManagePanel() {
@@ -120,7 +121,7 @@ export function ManagePanel() {
               managePanelOpen.value = false;
             }}
           >
-            ×
+            <Icon name="close" size="md" />
           </button>
         </header>
 
@@ -169,7 +170,7 @@ export function ManagePanel() {
                       setDeletingId(null);
                     }}
                   >
-                    ✎
+                    <Icon name="pencil" size="sm" />
                   </button>
                   <button
                     class={styles.rowAction}
@@ -181,7 +182,7 @@ export function ManagePanel() {
                       setRenamingId(null);
                     }}
                   >
-                    ×
+                    <Icon name="trash" size="sm" />
                   </button>
                 </li>
               ))}

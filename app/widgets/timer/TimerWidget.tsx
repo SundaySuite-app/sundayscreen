@@ -8,6 +8,7 @@ import type { TimerState } from "../../bindings/TimerState";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
 import { updateWidgetConfig } from "../../state/layout";
+import { Icon } from "../../ui/Icon";
 import { playChime } from "./chime";
 import styles from "./timer.module.css";
 import {
@@ -112,7 +113,7 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
                   title={t("timer.minusMinute")}
                   onClick={() => adjust(-STEP_MS)}
                 >
-                  −
+                  <Icon name="minus" size="sm" />
                 </button>
                 <button
                   class={styles.small}
@@ -120,7 +121,7 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
                   title={t("timer.plusMinute")}
                   onClick={() => adjust(STEP_MS)}
                 >
-                  +
+                  <Icon name="plus" size="sm" />
                 </button>
               </>
             )}
@@ -160,16 +161,20 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
         <button
           data-settings-btn
           data-current={cfg.mode === "countdown" || undefined}
+          aria-label={t("timer.modeCountdown")}
+          title={t("timer.modeCountdown")}
           onClick={() => setMode("countdown")}
         >
-          {t("timer.modeCountdown")}
+          <Icon name="hourglass" size="sm" />
         </button>
         <button
           data-settings-btn
           data-current={cfg.mode === "stopwatch" || undefined}
+          aria-label={t("timer.modeStopwatch")}
+          title={t("timer.modeStopwatch")}
           onClick={() => setMode("stopwatch")}
         >
-          {t("timer.modeStopwatch")}
+          <Icon name="timer" size="sm" />
         </button>
         <button
           data-settings-btn
@@ -180,7 +185,7 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
             updateWidgetConfig(widget.id, { ...cfg, soundOn: !cfg.soundOn })
           }
         >
-          {cfg.soundOn ? "🔔" : "🔇"}
+          <Icon name={cfg.soundOn ? "bell" : "bell-off"} size="sm" />
         </button>
       </div>
     </div>

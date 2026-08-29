@@ -1,0 +1,473 @@
+//! The planner's model and its ONE resolution rule — pure and headless.
+//!
+//! Time is deliberately primitive: periods are MINUTES SINCE LOCAL MIDNIGHT
+//! (the school bell does not care about time zones), dates are opaque
+//! `YYYY-MM-DD` strings minted by the FRONTEND (JS owns the local wall
+//! clock; this crate never reads a clock — the house rule), weekdays are ISO
+//! 1..=5. There is no chrono dependency on purpose.
+//!
+//! The shadowing rule, spelled once in [`resolve_day`]: a `date_override`
+//! row shadows the weekly slot for that (date, period) — `Cancelled` means
+//! "no lesson at all"; otherwise the weekly timetable answers; otherwise the
+//! period is free. Agenda items hang off the DATE-INSTANCE (date, period) —
+//! next Tuesday's plan is not this Tuesday's — and work identically whether
+//! the effective lesson came from the weekly plan or an override.
+
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+/// Minutes in a day — the exclusive upper bound for period times.
+pub const DAY_MIN: u32 = 24 * 60;
+
+/// Longest label/subject/title we persist.
+pub const LABEL_MAX_CHARS: usize = 80;
+/// Longest agenda-item text / day-note body.
+pub const TEXT_MAX_CHARS: usize = 500;
+/// Most agenda items one lesson will hold.
+pub const AGENDA_MAX_ITEMS: usize = 30;
+/// Most notes one day will hold.
+pub const NOTES_MAX: usize = 20;
+
+/// A slot in the school day's template (defined once, applies Mon–Fri).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "Period.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct Period {
+    pub id: String,
+    pub label: String,
+    #[ts(type = "number")]
+    pub start_min: u32,
+    #[ts(type = "number")]
+    pub end_min: u32,
+    pub kind: PeriodKind,
+    #[ts(type = "number")]
+    pub sort_index: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "PeriodKind.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum PeriodKind {
+    #[default]
+    Lesson,
+    Break,
+}
+
+/// One cell of the recurring weekly timetable: weekday × lesson-period.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "WeekSlot.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct WeekSlot {
+    pub id: String,
+    /// ISO weekday, 1 (Monday) ..= 5 (Friday).
+    pub weekday: u8,
+    pub period_id: String,
+    pub class_id: Option<String>,
+    pub subject: String,
+    /// `None` → the class's default scene at switch time.
+    pub scene_id: Option<String>,
+}
+
+/// A per-date shadow of one (date, period) cell.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "DateOverride.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct DateOverride {
+    pub id: String,
+    /// Local wall date, `YYYY-MM-DD`, minted by the frontend.
+    pub date: String,
+    pub period_id: String,
+    pub kind: OverrideKind,
+    pub class_id: Option<String>,
+    pub subject: String,
+    pub scene_id: Option<String>,
+    /// «Prøve», «Tur til Bymarka» — shown alongside/instead of the subject.
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "OverrideKind.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum OverrideKind {
+    /// Replace the weekly lesson for this date.
+    #[default]
+    Lesson,
+    /// No lesson at all this date (the class is on a trip, the period is
+    /// free…).
+    Cancelled,
+}
+
+/// One planned activity inside one lesson-instance.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "AgendaItem.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct AgendaItem {
+    pub id: String,
+    pub date: String,
+    pub period_id: String,
+    pub text: String,
+    /// `None` = untimed; timed items derive start offsets by prefix sum.
+    #[ts(type = "number | null")]
+    pub duration_min: Option<u32>,
+    pub done: bool,
+    #[ts(type = "number")]
+    pub sort_index: i64,
+}
+
+/// A day-level message («Husk gymtøy i morgen») shown by «Dagen i dag».
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "DayNote.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct DayNote {
+    pub id: String,
+    pub date: String,
+    pub body: String,
+    #[ts(type = "number")]
+    pub sort_index: i64,
+}
+
+/// The effective lesson in one period of one date, names joined in.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "LessonInfo.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct LessonInfo {
+    pub class_id: Option<String>,
+    pub class_name: Option<String>,
+    pub subject: String,
+    pub scene_id: Option<String>,
+    pub scene_name: Option<String>,
+    pub title: String,
+    /// Did a date override produce this (or cancel it)?
+    pub overridden: bool,
+}
+
+/// One period of the resolved day.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "DayEntry.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct DayEntry {
+    pub period: Period,
+    /// `None`: a break, a free period, or a cancelled lesson.
+    pub lesson: Option<LessonInfo>,
+    pub agenda: Vec<AgendaItem>,
+}
+
+/// Everything the widgets and the banner need about one date.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "DayPlan.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct DayPlan {
+    pub date: String,
+    pub weekday: u8,
+    pub entries: Vec<DayEntry>,
+    pub notes: Vec<DayNote>,
+}
+
+/// Name lookups for the join — plain maps, so resolution stays pure.
+#[derive(Debug, Default)]
+pub struct NameLookup {
+    pub class_names: HashMap<String, String>,
+    pub scene_names: HashMap<String, String>,
+}
+
+/// THE shadowing rule. `periods` must be sorted (see [`normalize_periods`]);
+/// `slots` are the weekday's, `overrides`/`agenda`/`notes` the date's.
+pub fn resolve_day(
+    date: &str,
+    weekday: u8,
+    periods: &[Period],
+    slots: &[WeekSlot],
+    overrides: &[DateOverride],
+    agenda: &[AgendaItem],
+    notes: &[DayNote],
+    names: &NameLookup,
+) -> DayPlan {
+    let entries = periods
+        .iter()
+        .map(|period| {
+            let lesson = if period.kind == PeriodKind::Break {
+                None
+            } else {
+                effective_lesson(period, slots, overrides, names)
+            };
+            let mut items: Vec<AgendaItem> = agenda
+                .iter()
+                .filter(|a| a.period_id == period.id)
+                .cloned()
+                .collect();
+            items.sort_by_key(|a| a.sort_index);
+            DayEntry {
+                period: period.clone(),
+                lesson,
+                agenda: items,
+            }
+        })
+        .collect();
+    let mut day_notes: Vec<DayNote> = notes.to_vec();
+    day_notes.sort_by_key(|n| n.sort_index);
+    DayPlan {
+        date: date.to_string(),
+        weekday,
+        entries,
+        notes: day_notes,
+    }
+}
+
+fn effective_lesson(
+    period: &Period,
+    slots: &[WeekSlot],
+    overrides: &[DateOverride],
+    names: &NameLookup,
+) -> Option<LessonInfo> {
+    if let Some(ovr) = overrides.iter().find(|o| o.period_id == period.id) {
+        if ovr.kind == OverrideKind::Cancelled {
+            return None;
+        }
+        return Some(LessonInfo {
+            class_id: ovr.class_id.clone(),
+            class_name: lookup(&names.class_names, &ovr.class_id),
+            subject: ovr.subject.clone(),
+            scene_id: ovr.scene_id.clone(),
+            scene_name: lookup(&names.scene_names, &ovr.scene_id),
+            title: ovr.title.clone(),
+            overridden: true,
+        });
+    }
+    let slot = slots.iter().find(|s| s.period_id == period.id)?;
+    if slot.class_id.is_none() && slot.subject.is_empty() {
+        return None;
+    }
+    Some(LessonInfo {
+        class_id: slot.class_id.clone(),
+        class_name: lookup(&names.class_names, &slot.class_id),
+        subject: slot.subject.clone(),
+        scene_id: slot.scene_id.clone(),
+        scene_name: lookup(&names.scene_names, &slot.scene_id),
+        title: String::new(),
+        overridden: false,
+    })
+}
+
+fn lookup(map: &HashMap<String, String>, id: &Option<String>) -> Option<String> {
+    id.as_ref().and_then(|i| map.get(i).cloned())
+}
+
+/// Clamp and order a period template: labels truncated, times clamped into
+/// the day, `end > start` enforced (a broken row is DROPPED — the editor
+/// validates before saving; this is the belt for hand-edited data), sorted
+/// by start time, sort_index re-stamped densely.
+pub fn normalize_periods(mut periods: Vec<Period>) -> Vec<Period> {
+    for p in &mut periods {
+        p.label = truncate(&p.label, LABEL_MAX_CHARS);
+        p.start_min = p.start_min.min(DAY_MIN - 1);
+        p.end_min = p.end_min.min(DAY_MIN);
+    }
+    periods.retain(|p| p.end_min > p.start_min);
+    periods.sort_by_key(|p| (p.start_min, p.end_min));
+    for (i, p) in periods.iter_mut().enumerate() {
+        p.sort_index = i as i64;
+    }
+    periods
+}
+
+/// Do any two periods overlap? (The editor refuses to save such a template;
+/// the resolver tolerates it — lessons just both render.)
+pub fn periods_overlap(periods: &[Period]) -> bool {
+    let mut sorted: Vec<&Period> = periods.iter().collect();
+    sorted.sort_by_key(|p| p.start_min);
+    sorted.windows(2).any(|w| w[1].start_min < w[0].end_min)
+}
+
+/// Clamp one agenda list: texts truncated, durations clamped 1..=600 min,
+/// at most [`AGENDA_MAX_ITEMS`], sort_index re-stamped densely.
+pub fn normalize_agenda(mut items: Vec<AgendaItem>) -> Vec<AgendaItem> {
+    items.truncate(AGENDA_MAX_ITEMS);
+    for (i, a) in items.iter_mut().enumerate() {
+        a.text = truncate(&a.text, TEXT_MAX_CHARS);
+        a.duration_min = a.duration_min.map(|d| d.clamp(1, 600));
+        a.sort_index = i as i64;
+    }
+    items
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() > max {
+        s.chars().take(max).collect()
+    } else {
+        s.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn period(id: &str, start: u32, end: u32, kind: PeriodKind) -> Period {
+        Period {
+            id: id.into(),
+            label: id.into(),
+            start_min: start,
+            end_min: end,
+            kind,
+            sort_index: 0,
+        }
+    }
+
+    fn slot(period_id: &str, class_id: Option<&str>, subject: &str) -> WeekSlot {
+        WeekSlot {
+            id: format!("s-{period_id}"),
+            weekday: 1,
+            period_id: period_id.into(),
+            class_id: class_id.map(String::from),
+            subject: subject.into(),
+            scene_id: None,
+        }
+    }
+
+    fn names() -> NameLookup {
+        NameLookup {
+            class_names: HashMap::from([("c1".to_string(), "7B".to_string())]),
+            scene_names: HashMap::from([("sc1".to_string(), "Prøve".to_string())]),
+        }
+    }
+
+    #[test]
+    fn weekly_slot_answers_when_no_override_exists() {
+        let periods = [period("p1", 510, 555, PeriodKind::Lesson)];
+        let slots = [slot("p1", Some("c1"), "Norsk")];
+        let day = resolve_day("2026-08-31", 1, &periods, &slots, &[], &[], &[], &names());
+        let lesson = day.entries[0].lesson.as_ref().expect("lesson");
+        assert_eq!(lesson.class_name.as_deref(), Some("7B"));
+        assert_eq!(lesson.subject, "Norsk");
+        assert!(!lesson.overridden);
+    }
+
+    #[test]
+    fn an_override_shadows_the_slot_and_cancelled_means_free() {
+        let periods = [
+            period("p1", 510, 555, PeriodKind::Lesson),
+            period("p2", 565, 610, PeriodKind::Lesson),
+        ];
+        let slots = [
+            slot("p1", Some("c1"), "Norsk"),
+            slot("p2", Some("c1"), "KRLE"),
+        ];
+        let overrides = [
+            DateOverride {
+                id: "o1".into(),
+                date: "2026-08-31".into(),
+                period_id: "p1".into(),
+                kind: OverrideKind::Lesson,
+                class_id: Some("c1".into()),
+                subject: "Matte".into(),
+                scene_id: Some("sc1".into()),
+                title: "Prøve".into(),
+            },
+            DateOverride {
+                id: "o2".into(),
+                date: "2026-08-31".into(),
+                period_id: "p2".into(),
+                kind: OverrideKind::Cancelled,
+                class_id: None,
+                subject: String::new(),
+                scene_id: None,
+                title: String::new(),
+            },
+        ];
+        let day = resolve_day(
+            "2026-08-31",
+            1,
+            &periods,
+            &slots,
+            &overrides,
+            &[],
+            &[],
+            &names(),
+        );
+        let l1 = day.entries[0].lesson.as_ref().expect("shadowed");
+        assert_eq!(l1.subject, "Matte");
+        assert_eq!(l1.scene_name.as_deref(), Some("Prøve"));
+        assert!(l1.overridden);
+        assert!(day.entries[1].lesson.is_none(), "cancelled = free");
+    }
+
+    #[test]
+    fn breaks_and_empty_slots_have_no_lesson_and_agenda_is_sorted() {
+        let periods = [
+            period("p1", 510, 555, PeriodKind::Lesson),
+            period("b1", 555, 565, PeriodKind::Break),
+        ];
+        let slots = [slot("b1", Some("c1"), "smitter ikke over på pause")];
+        let agenda = [
+            AgendaItem {
+                id: "a2".into(),
+                date: "d".into(),
+                period_id: "p1".into(),
+                text: "Oppgaver".into(),
+                duration_min: Some(20),
+                done: false,
+                sort_index: 1,
+            },
+            AgendaItem {
+                id: "a1".into(),
+                date: "d".into(),
+                period_id: "p1".into(),
+                text: "Gjennomgang".into(),
+                duration_min: Some(10),
+                done: true,
+                sort_index: 0,
+            },
+        ];
+        let day = resolve_day("d", 1, &periods, &slots, &[], &agenda, &[], &names());
+        assert!(day.entries[0].lesson.is_none(), "no slot for p1");
+        assert!(day.entries[1].lesson.is_none(), "breaks never hold lessons");
+        assert_eq!(day.entries[0].agenda[0].id, "a1", "sorted by sort_index");
+    }
+
+    #[test]
+    fn normalize_periods_drops_broken_rows_sorts_and_restamps() {
+        let ps = vec![
+            period("late", 600, 645, PeriodKind::Lesson),
+            period("broken", 500, 400, PeriodKind::Lesson),
+            period("early", 510, 555, PeriodKind::Lesson),
+        ];
+        let out = normalize_periods(ps);
+        assert_eq!(
+            out.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            vec!["early", "late"]
+        );
+        assert_eq!(out[0].sort_index, 0);
+        assert_eq!(out[1].sort_index, 1);
+    }
+
+    #[test]
+    fn overlap_detection() {
+        let a = period("a", 510, 555, PeriodKind::Lesson);
+        let b = period("b", 550, 600, PeriodKind::Lesson);
+        let c = period("c", 555, 600, PeriodKind::Lesson);
+        assert!(periods_overlap(&[a.clone(), b]));
+        assert!(!periods_overlap(&[a, c]));
+    }
+
+    #[test]
+    fn normalize_agenda_clamps_and_restamps() {
+        let items: Vec<AgendaItem> = (0..40)
+            .map(|i| AgendaItem {
+                id: format!("a{i}"),
+                date: "d".into(),
+                period_id: "p".into(),
+                text: "x".repeat(600),
+                duration_min: Some(9999),
+                done: false,
+                sort_index: 99,
+            })
+            .collect();
+        let out = normalize_agenda(items);
+        assert_eq!(out.len(), AGENDA_MAX_ITEMS);
+        assert_eq!(out[0].text.chars().count(), TEXT_MAX_CHARS);
+        assert_eq!(out[0].duration_min, Some(600));
+        assert_eq!(out[5].sort_index, 5);
+    }
+}

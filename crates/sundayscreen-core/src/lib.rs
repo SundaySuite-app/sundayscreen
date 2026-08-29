@@ -8,6 +8,7 @@ pub mod groups;
 pub mod layout;
 pub mod members;
 pub mod picker;
+pub mod schedule;
 pub mod settings;
 pub mod timer;
 pub mod update;

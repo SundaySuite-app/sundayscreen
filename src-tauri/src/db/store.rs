@@ -641,6 +641,11 @@ mod tests {
             "scene",
             "widget_instance",
             "draw_state",
+            "period",
+            "week_slot",
+            "date_override",
+            "agenda_item",
+            "day_note",
         ] {
             // AssertSqlSafe: sqlx 0.9 requires dynamic SQL to be explicitly
             // vouched for — `table` comes from the hardcoded list above.

@@ -1,5 +1,6 @@
 //! Database state: the one pool, shared as managed Tauri state.
 
+pub mod planner;
 pub mod store;
 
 use sqlx::SqlitePool;

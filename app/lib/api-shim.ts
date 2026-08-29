@@ -11,6 +11,16 @@ import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
 import type { AppInfo } from "../bindings/AppInfo";
 import type { Class } from "../bindings/Class";
 import type { Scene } from "../bindings/Scene";
+import type { AgendaItem } from "../bindings/AgendaItem";
+import type { AgendaItemSpec } from "../bindings/AgendaItemSpec";
+import type { DayNote } from "../bindings/DayNote";
+import type { DayPlan } from "../bindings/DayPlan";
+import type { NoteSpec } from "../bindings/NoteSpec";
+import type { OverrideSpec } from "../bindings/OverrideSpec";
+import type { Period } from "../bindings/Period";
+import type { PeriodSpec } from "../bindings/PeriodSpec";
+import type { SlotSpec } from "../bindings/SlotSpec";
+import type { WeekSlot } from "../bindings/WeekSlot";
 import type { ActiveContext } from "../bindings/ActiveContext";
 import type { ClassSnapshot } from "../bindings/ClassSnapshot";
 import type { DrawResult } from "../bindings/DrawResult";
@@ -247,6 +257,52 @@ const api = {
     classId: string,
     sceneId: string | null,
   ): Promise<ClassSnapshot> => invoke("lesson_switch", { classId, sceneId }),
+
+  // ── Planner ─────────────────────────────────────────────────────────────
+  // The editor reads REJECT (S#4 lesson): a panel that replace-alls over a
+  // silently-empty read would wipe the plan. state/planner.ts catches and
+  // blocks edits instead.
+  plannerPeriodsGet: async (): Promise<Period[]> =>
+    invoke<Period[]>("planner_periods_get"),
+
+  plannerPeriodsSet: async (periods: PeriodSpec[]): Promise<Period[]> =>
+    invoke<Period[]>("planner_periods_set", { periods }),
+
+  plannerWeekGet: async (): Promise<WeekSlot[]> =>
+    invoke<WeekSlot[]>("planner_week_get"),
+
+  plannerSlotSet: async (
+    weekday: number,
+    periodId: string,
+    slot: SlotSpec | null,
+  ): Promise<void> =>
+    invoke<void>("planner_slot_set", { weekday, periodId, slot }),
+
+  plannerOverrideSet: async (
+    date: string,
+    periodId: string,
+    ovr: OverrideSpec | null,
+  ): Promise<void> =>
+    invoke<void>("planner_override_set", { date, periodId, ovr }),
+
+  plannerDayGet: async (date: string, weekday: number): Promise<DayPlan> =>
+    invoke<DayPlan>("planner_day_get", { date, weekday }),
+
+  plannerAgendaSet: async (
+    date: string,
+    periodId: string,
+    items: AgendaItemSpec[],
+  ): Promise<AgendaItem[]> =>
+    invoke<AgendaItem[]>("planner_agenda_set", { date, periodId, items }),
+
+  plannerAgendaCheck: async (itemId: string, done: boolean): Promise<void> =>
+    invoke<void>("planner_agenda_check", { itemId, done }),
+
+  plannerNotesSet: async (
+    date: string,
+    notes: NoteSpec[],
+  ): Promise<DayNote[]> =>
+    invoke<DayNote[]>("planner_notes_set", { date, notes }),
 
   classList: async (): Promise<Class[]> => call("class_list", undefined, []),
 

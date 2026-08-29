@@ -23,7 +23,7 @@ import {
   weekdayOf,
 } from "../planner/date-core";
 import { lessonKeyInWindow, suggest } from "../planner/suggest-core";
-import { switchLesson } from "./scenes";
+import { loadScenes, switchLesson } from "./scenes";
 import { settings } from "./settings";
 import { t } from "../i18n";
 import { toast } from "../ui/toast";
@@ -40,6 +40,21 @@ export const selectedDate = signal<string>(localDateStr(new Date()));
 export const selectedDayPlan = signal<DayPlan | null>(null);
 /** Did the panel's reads land? While false the editors are blocked. */
 export const plannerHydrated = signal(false);
+
+/**
+ * The ONE way to open the planner.
+ *
+ * `plannerPanelOpen = true` on its own opens a panel with
+ * `plannerHydrated === false` — every editor blocked, for a teacher who did
+ * nothing wrong. The reads are part of opening, not something the caller is
+ * trusted to remember; `loadScenes` comes along because the day editor's
+ * scene picker is empty without it.
+ */
+export function openPlanner(): void {
+  plannerPanelOpen.value = true;
+  void refreshPlanner();
+  void loadScenes();
+}
 
 export async function refreshPlanner(): Promise<void> {
   try {

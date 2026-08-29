@@ -67,22 +67,10 @@
   cursor: pointer;
 }
 
-/* No font-size: this button holds an SVG and nothing else, so the declaration
-   that used to sit here (var(--fs-lg)) styled no glyph at any size. */
-.small {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  line-height: 1;
-  cursor: pointer;
-}
+/* `.small` is gone with the ±1-minute pair it styled: the duration is set
+   from the presets in the hover row now, and the ± moved there too. The row
+   in front of the class is one button in every phase again.
 
-.small:hover {
-  border-color: var(--gold-line);
-}
-
-/* Mode/sound buttons use the shell's standard settings row
-   (data-settings-row / data-settings-btn — see WidgetShell.module.css). */
+   Everything in the settings row — presets, ±, mode and sound — uses the
+   shell's standard chrome (data-settings-row / data-settings-btn, see
+   WidgetShell.module.css). */

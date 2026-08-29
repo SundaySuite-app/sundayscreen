@@ -47,10 +47,18 @@ export function TodayWidget({ widget }: { widget: WidgetInstance }) {
       {cfg.showLessons && (
         <ul class={styles.lessons} data-no-drag>
           {lessons.length === 0 ? (
+            // Three different days, three different sentences. The middle
+            // one is keyed on `plan.entries`, NOT on `lessons`: a Saturday
+            // with a full week template has periods but no lesson rows, and
+            // «Ingen timer i dag» is the true thing to say there. An empty
+            // ENTRY list means no timetable exists at all. (`plan != null`
+            // keeps the text from flickering before the first IPC answer.)
             <li class={styles.emptyRow}>
               {todayReadFailed.value
                 ? t("planner.readFailed")
-                : t("today.noLessons")}
+                : plan != null && plan.entries.length === 0
+                  ? t("planner.noTimetable")
+                  : t("today.noLessons")}
             </li>
           ) : (
             lessons.map((e) => (

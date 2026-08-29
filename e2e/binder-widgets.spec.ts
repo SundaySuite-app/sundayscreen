@@ -18,7 +18,7 @@ test("plan a lesson, see it in both widgets, check off an activity", async ({
   await page.waitForLoadState("networkidle");
 
   // Template: one lesson 08:30–09:15.
-  await page.getByRole("button", { name: "Legg til økt" }).click();
+  await page.getByRole("button", { name: "Legg til time" }).click();
   await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
   await expect(page.getByText("Lagret")).toBeVisible();
 
@@ -83,9 +83,17 @@ test("manual mode works without any plan", async ({ page }) => {
 
   await addWidget(page, "Dagens time");
   const agenda = page.locator('[data-widget-kind="agenda"]');
-  await expect(agenda).toContainText("Ingen time nå");
+  await expect(agenda).toContainText("Ingen timeplan satt opp ennå");
 
+  // Planner mode offers three settings; manual mode offers two. «Tider»
+  // derives start times from `durationMin`, which is ALWAYS null on manual
+  // items — a control that cannot do anything teaches a teacher that the
+  // row is unreliable. The choice itself stays in the config.
+  await agenda.hover();
+  await expect(agenda.locator("[data-settings-row] button")).toHaveCount(3);
   await agenda.getByRole("button", { name: "Manuell" }).click();
+  await expect(agenda.locator("[data-settings-row] button")).toHaveCount(2);
+
   await agenda.getByLabel("Ny aktivitet …").fill("Lese stille");
   await agenda.getByLabel("Ny aktivitet …").press("Enter");
   await expect(agenda).toContainText("Lese stille");
@@ -95,4 +103,46 @@ test("manual mode works without any plan", async ({ page }) => {
   await expect(page.locator('[data-widget-kind="agenda"]')).toContainText(
     "Lese stille",
   );
+});
+
+test("«ingen time nå» and «ingen timeplan» are different days", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  // A SATURDAY. The day a weekday-indexed planner goes blind on, and the day
+  // where the two sentences below are genuinely different facts.
+  await page.clock.install({ time: new Date("2026-09-05T10:00:00") });
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  await addWidget(page, "Dagens time");
+  await addWidget(page, "Dagen i dag");
+  const agenda = page.locator('[data-widget-kind="agenda"]');
+  const today = page.locator('[data-widget-kind="today"]');
+
+  // Nothing is set up at all — and this is the state a first-evening teacher
+  // is actually in. NOT «ingen time nå», which would be an answer about a
+  // timetable she has not made yet.
+  await expect(agenda).toContainText("Ingen timeplan satt opp ennå");
+  await expect(today).toContainText("Ingen timeplan satt opp ennå");
+
+  // In the agenda the sentence is a DOOR, and it opens a planner that is
+  // READY: setting `plannerPanelOpen` alone would open one with
+  // `plannerHydrated === false`, i.e. every editor blocked for a teacher who
+  // did nothing wrong.
+  await agenda
+    .getByRole("button", { name: "Ingen timeplan satt opp ennå" })
+    .click();
+  await expect(page.getByRole("region", { name: "Planlegger" })).toBeVisible();
+  await page.getByRole("button", { name: "Timeoppsett", exact: true }).click();
+  await page.getByRole("button", { name: "Legg til time" }).click();
+  await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await expect(page.getByText("Lagret")).toBeVisible();
+  await page.getByRole("button", { name: "Lukk" }).click();
+
+  // Same Saturday, now WITH a day template and still no lesson in it: both
+  // widgets change their answer, and neither claims the timetable is missing.
+  await expect(agenda).toContainText("Ingen time nå");
+  await expect(today).toContainText("Ingen timer i dag");
+  await expect(today).not.toContainText("Ingen timeplan");
 });

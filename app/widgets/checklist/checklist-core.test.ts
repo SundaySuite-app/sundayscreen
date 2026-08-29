@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { addItem, removeItem, renameItem, toggleItem } from "./checklist-core";
+import {
+  addItem,
+  removeItem,
+  renameItem,
+  resetAll,
+  toggleItem,
+} from "./checklist-core";
 
 const items = [
   { id: "a", text: "Matpakke-lapp", done: false },
@@ -26,5 +32,17 @@ describe("checklist-core", () => {
   it("removes and renames by id", () => {
     expect(removeItem(items, "a")).toHaveLength(1);
     expect(renameItem(items, "b", "Levert!")[1].text).toBe("Levert!");
+  });
+
+  it("resetAll clears the checks and keeps the rows", () => {
+    const out = resetAll(items);
+    expect(out.map((i) => i.text)).toEqual(items.map((i) => i.text));
+    expect(out.every((i) => !i.done)).toBe(true);
+  });
+
+  it("resetAll on an unchecked list is the SAME array — no save, no button", () => {
+    const clean = [{ id: "a", text: "Matpakke-lapp", done: false }];
+    expect(resetAll(clean)).toBe(clean);
+    expect(resetAll([])).toHaveLength(0);
   });
 });

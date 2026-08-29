@@ -4,9 +4,10 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 
+import type { TimerAction } from "../../bindings/TimerAction";
 import type { TimerState } from "../../bindings/TimerState";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
-import { t } from "../../i18n";
+import { t, tn } from "../../i18n";
 import { updateWidgetConfig } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import { playChime } from "./chime";
@@ -25,10 +26,20 @@ import {
  *  bigger jump on its next tick). */
 const TICK_MS = 200;
 
-/** The duration buttons step by a minute and stop at one. */
-const STEP_MS = 60_000;
-const BUTTON_MIN_MS = 60_000;
-const BUTTON_MAX_MS = 86_400_000;
+/** One minute, the unit of both the presets and the ± while running. */
+const MINUTE_MS = 60_000;
+
+/**
+ * The lengths a school day actually asks for. FIVE, not six: the row already
+ * carries three 36 px icon buttons and the timer's minimum width is 260 px,
+ * so a sixth pill is what pushes the digits onto a second line.
+ *
+ * These REPLACE the old ±1-minute pair that stood in `.controls`. That row
+ * is on the projector permanently, in front of the class — «dere får tjue
+ * minutter» cost fifteen clicks there; here it is one, and the fine
+ * adjustment moved to where it is actually needed (see below).
+ */
+const PRESET_MINUTES = [1, 5, 10, 15, 20];
 
 export function TimerWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
@@ -57,11 +68,11 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
     return () => clearInterval(id);
   }, [running]);
 
-  const act = (type: "start" | "pause" | "resume" | "reset") => {
+  const act = (action: TimerAction) => {
     setState(
       transition(
         stateRef.current,
-        { type },
+        action,
         cfg.mode,
         cfg.durationMs,
         Date.now(),
@@ -84,12 +95,8 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
         ? "warn"
         : "calm";
 
-  const adjust = (delta: number) => {
-    const durationMs = Math.min(
-      Math.max(cfg.durationMs + delta, BUTTON_MIN_MS),
-      BUTTON_MAX_MS,
-    );
-    updateWidgetConfig(widget.id, { ...cfg, durationMs });
+  const setDuration = (minutes: number) => {
+    updateWidgetConfig(widget.id, { ...cfg, durationMs: minutes * MINUTE_MS });
   };
 
   const setMode = (mode: "countdown" | "stopwatch") => {
@@ -104,60 +111,99 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
 
       <div class={styles.controls} data-no-drag>
         {state.phase === "idle" && (
-          <>
-            {cfg.mode === "countdown" && (
-              <>
-                <button
-                  class={styles.small}
-                  aria-label={t("timer.minusMinute")}
-                  title={t("timer.minusMinute")}
-                  onClick={() => adjust(-STEP_MS)}
-                >
-                  <Icon name="minus" size="sm" />
-                </button>
-                <button
-                  class={styles.small}
-                  aria-label={t("timer.plusMinute")}
-                  title={t("timer.plusMinute")}
-                  onClick={() => adjust(STEP_MS)}
-                >
-                  <Icon name="plus" size="sm" />
-                </button>
-              </>
-            )}
-            <button class={styles.primary} onClick={() => act("start")}>
-              {t("timer.start")}
-            </button>
-          </>
+          <button class={styles.primary} onClick={() => act({ type: "start" })}>
+            {t("timer.start")}
+          </button>
         )}
         {(state.phase === "running" || state.phase === "swRunning") && (
           <>
-            <button class={styles.primary} onClick={() => act("pause")}>
+            <button
+              class={styles.primary}
+              onClick={() => act({ type: "pause" })}
+            >
               {t("timer.pause")}
             </button>
-            <button class={styles.secondary} onClick={() => act("reset")}>
+            <button
+              class={styles.secondary}
+              onClick={() => act({ type: "reset" })}
+            >
               {t("timer.reset")}
             </button>
           </>
         )}
         {(state.phase === "paused" || state.phase === "swPaused") && (
           <>
-            <button class={styles.primary} onClick={() => act("resume")}>
+            <button
+              class={styles.primary}
+              onClick={() => act({ type: "resume" })}
+            >
               {t("timer.resume")}
             </button>
-            <button class={styles.secondary} onClick={() => act("reset")}>
+            <button
+              class={styles.secondary}
+              onClick={() => act({ type: "reset" })}
+            >
               {t("timer.reset")}
             </button>
           </>
         )}
         {state.phase === "finished" && (
-          <button class={styles.primary} onClick={() => act("reset")}>
+          <button class={styles.primary} onClick={() => act({ type: "reset" })}>
             {t("timer.reset")}
           </button>
         )}
       </div>
 
+      {/*
+       * The row is PHASE-DRIVEN, and the two groups can never stand at the
+       * same time: before the start you choose a LENGTH, after it you move
+       * the FINISH LINE. Both live here rather than in `.controls` because
+       * that row stands permanently in front of the class, and a teacher who
+       * needs either of these already has the mouse on the widget.
+       *
+       * Free consequence of the adjust action: lifting the remainder back
+       * above `warnAtMs` flips `tone` from `warn` to `calm` on its own — the
+       * amber stops claiming there is a hurry the extra minutes just removed.
+       *
+       * Deliberately outside: adjusting from `finished`. That is a different
+       * edge for a rarer case.
+       */}
       <div data-settings-row data-no-drag>
+        {state.phase === "idle" &&
+          cfg.mode === "countdown" &&
+          PRESET_MINUTES.map((m) => (
+            <button
+              key={m}
+              data-settings-btn
+              data-current={cfg.durationMs === m * MINUTE_MS || undefined}
+              aria-label={tn("timer.presetMinutes", m)}
+              title={tn("timer.presetMinutes", m)}
+              onClick={() => setDuration(m)}
+            >
+              {m}
+            </button>
+          ))}
+        {(state.phase === "running" || state.phase === "paused") &&
+          cfg.mode === "countdown" && (
+            <>
+              <button
+                data-settings-btn
+                aria-label={t("timer.minusMinute")}
+                title={t("timer.minusMinute")}
+                onClick={() => act({ type: "adjust", deltaMs: -MINUTE_MS })}
+              >
+                <Icon name="minus" size="sm" />
+              </button>
+              <button
+                data-settings-btn
+                aria-label={t("timer.plusMinute")}
+                title={t("timer.plusMinute")}
+                onClick={() => act({ type: "adjust", deltaMs: MINUTE_MS })}
+              >
+                <Icon name="plus" size="sm" />
+              </button>
+            </>
+          )}
         <button
           data-settings-btn
           data-current={cfg.mode === "countdown" || undefined}

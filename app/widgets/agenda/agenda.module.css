@@ -5,6 +5,13 @@
   flex-direction: column;
   gap: 2cqmin;
   padding: 4cqmin;
+  /* Same reserve as the checklist, same reason: the shell parks the settings
+     row at `bottom: var(--sp-2)` ON TOP of whatever is there, and in manual
+     mode «Ny aktivitet …» sits exactly under it. Aiming for the text field
+     while the row is showing would hit «Manuell» and swap the source. It
+     costs ~52 px of list height permanently — the alternative is a widget
+     whose own input cannot be clicked. */
+  padding-bottom: calc(4cqmin + var(--sp-2) + 44px);
   overflow: hidden;
 }
 
@@ -123,8 +130,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The shell's reveal pattern, not `display: none`.
+ *
+ * `display: none` took the button out of the flow, so `.textBtn` grew 36 px
+ * wide, and every row the mouse passed RE-WRAPPED under it — an eight-item
+ * agenda twitched line by line while a class was reading it. It also removes
+ * the button from the accessibility tree (F9-funn U#9), which leaves a
+ * screen reader — and Playwright — unable to see it at all.
+ *
+ * `visibility: hidden` is the load-bearing half: it keeps the box, and it
+ * makes hidden mean UNHITTABLE. */
 .removeBtn {
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 36px;
@@ -135,10 +152,19 @@
   background: none;
   color: var(--ink-3);
   cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--t-fast) ease,
+    visibility var(--t-fast) ease;
 }
 
-.item:hover .removeBtn {
-  display: inline-flex;
+.item:hover .removeBtn,
+.item:focus-within .removeBtn {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .removeBtn:hover {
@@ -151,6 +177,26 @@
   color: var(--ink-3);
   font-size: 5.5cqmin;
   text-align: center;
+}
+
+/* The same sentence as `.empty`, but it opens the planner. No gold CTA: this
+   stands on a projector, and a button that shouts would outrank the lesson
+   it is standing in for. */
+.emptyBtn {
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 5.5cqmin;
+  text-align: center;
+  cursor: pointer;
+}
+
+.emptyBtn:hover {
+  color: var(--ink-2);
+  text-decoration: underline;
 }
 
 .addRow {

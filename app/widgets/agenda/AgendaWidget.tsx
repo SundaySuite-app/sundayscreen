@@ -13,6 +13,7 @@ import { t } from "../../i18n";
 import { markedIndex, startOffsets } from "../../planner/agenda-core";
 import { formatMin, minutesOfDay } from "../../planner/date-core";
 import {
+  openPlanner,
   plannerChanged,
   plannerNowMs,
   todayPlan,
@@ -57,6 +58,17 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   }
 
   const shown = shownLesson(todayPlan.value, nowMin);
+  // «No lesson right now» and «no timetable at all» are different days, and
+  // only one of them has something the teacher can do about it.
+  //
+  // NOT `periods.length === 0`: that signal is filled by `refreshPlanner()`,
+  // which only runs when the panel opens — at boot it is `[]` for everyone,
+  // including a teacher with a full week. `resolve_day` builds one entry per
+  // PERIOD regardless of weekday, so an empty entry list means the template
+  // itself is empty. The `!= null` guard keeps the text from flickering
+  // before the first IPC answer lands.
+  const plan = todayPlan.value;
+  const noTimetable = plan != null && plan.entries.length === 0;
   return (
     <div class={styles.agenda}>
       {shown ? (
@@ -106,10 +118,16 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
             <p class={styles.empty}>{t("agenda.plan")}</p>
           )}
         </>
+      ) : todayReadFailed.value ? (
+        <p class={styles.empty}>{t("planner.readFailed")}</p>
+      ) : noTimetable ? (
+        // A DOOR, not a message: the one thing this teacher needs is the
+        // planner, and she is standing in front of the class.
+        <button class={styles.emptyBtn} data-no-drag onClick={openPlanner}>
+          {t("planner.noTimetable")}
+        </button>
       ) : (
-        <p class={styles.empty}>
-          {todayReadFailed.value ? t("planner.readFailed") : t("agenda.empty")}
-        </p>
+        <p class={styles.empty}>{t("agenda.empty")}</p>
       )}
 
       <SettingsRow widget={widget} />
@@ -289,16 +307,23 @@ function SettingsRow({ widget }: { widget: WidgetInstance }) {
       >
         {t("agenda.sourceManual")}
       </button>
-      <button
-        data-settings-btn
-        aria-pressed={cfg.showTimes}
-        data-current={cfg.showTimes || undefined}
-        onClick={() =>
-          updateWidgetConfig(widget.id, { ...cfg, showTimes: !cfg.showTimes })
-        }
-      >
-        {t("agenda.showTimes")}
-      </button>
+      {/* Manual items have no `durationMin` — it is always null — so start
+          times cannot be derived and this button could never change what the
+          board shows. A control that does nothing teaches a teacher that the
+          row is unreliable. `showTimes` stays untouched in the config, so
+          switching back to the planner restores her choice. */}
+      {cfg.source !== "manual" && (
+        <button
+          data-settings-btn
+          aria-pressed={cfg.showTimes}
+          data-current={cfg.showTimes || undefined}
+          onClick={() =>
+            updateWidgetConfig(widget.id, { ...cfg, showTimes: !cfg.showTimes })
+          }
+        >
+          {t("agenda.showTimes")}
+        </button>
+      )}
     </div>
   );
 }

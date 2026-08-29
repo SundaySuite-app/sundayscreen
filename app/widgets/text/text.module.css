@@ -81,3 +81,27 @@
   user-select: text;
   -webkit-user-select: text;
 }
+
+/* The SAME two branches as `.display` above. The alignment used to be
+   hardcoded to centre here, so a left-aligned message jumped to the middle
+   the moment the teacher clicked it and back again on blur — the widget
+   lied about its own setting exactly while it was being changed. */
+.editor[data-align="left"] {
+  text-align: left;
+}
+
+.editor[data-align="right"] {
+  text-align: right;
+}
+
+/* A− / A+ at the ends of the stop list. `disabled` is the honest state: the
+   press would do nothing, and the button says so before it is pressed. The
+   element selector outranks the shell's `[data-settings-btn]` rules, which
+   would otherwise keep the pointer cursor and the gold hover. */
+button.step:disabled,
+button.step:disabled:hover {
+  opacity: 0.4;
+  cursor: default;
+  color: var(--ink-3);
+  border-color: var(--line);
+}

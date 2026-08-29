@@ -9,7 +9,13 @@ import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
 import { saveNow, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
-import { addItem, removeItem, renameItem, toggleItem } from "./checklist-core";
+import {
+  addItem,
+  removeItem,
+  renameItem,
+  resetAll,
+  toggleItem,
+} from "./checklist-core";
 import styles from "./checklist.module.css";
 
 /** Mirrors CHECKLIST_MAX_ITEMS / CHECKLIST_TEXT_MAX_CHARS in the core crate
@@ -124,6 +130,22 @@ export function ChecklistWidget({ widget }: { widget: WidgetInstance }) {
           onInput={(e) => setAddDraft((e.target as HTMLInputElement).value)}
         />
       </form>
+
+      {/* No confirmation dialog: living in the hover row IS the guard — the
+          button cannot be brushed by a passing sleeve, and the worst case is
+          re-ticking a list, not losing one. */}
+      <div data-settings-row data-no-drag>
+        <button
+          data-settings-btn
+          class={styles.resetBtn}
+          aria-label={t("checklist.resetAll")}
+          title={t("checklist.resetAll")}
+          disabled={!cfg.items.some((i) => i.done)}
+          onClick={() => patch(resetAll)}
+        >
+          <Icon name="rotate" size="sm" />
+        </button>
+      </div>
     </div>
   );
 }

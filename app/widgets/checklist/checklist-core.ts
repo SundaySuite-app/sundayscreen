@@ -26,6 +26,17 @@ export function removeItem(
   return items.filter((i) => i.id !== id);
 }
 
+/**
+ * Clear every check, keep every row — the Monday-morning move on a list that
+ * is the same each day. Returns the SAME array when nothing was checked, so
+ * the caller can render `disabled` from the same fact it would act on and no
+ * save is queued for a press that changes nothing.
+ */
+export function resetAll(items: ChecklistItem[]): ChecklistItem[] {
+  if (!items.some((i) => i.done)) return items;
+  return items.map((i) => (i.done ? { ...i, done: false } : i));
+}
+
 export function renameItem(
   items: ChecklistItem[],
   id: string,

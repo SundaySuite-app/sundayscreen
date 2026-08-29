@@ -163,6 +163,10 @@ pub struct Settings {
     /// Which release feed this install follows.
     #[serde(default, deserialize_with = "lenient_channel")]
     pub update_channel: UpdateChannel,
+    /// Opt-in: switch class+scene automatically when a planned lesson
+    /// starts. Off by default — the banner suggests, the teacher decides.
+    #[serde(default, deserialize_with = "lenient")]
+    pub auto_switch_scenes: bool,
     /// ADR-007: settings keys a NEWER version wrote survive this build's
     /// load→save cycle instead of being dropped by the whole-blob write.
     /// `#[ts(skip)]` — the webview receives the keys inline and its
@@ -188,6 +192,7 @@ impl Default for Settings {
             snap_enabled: true,
             window: None,
             update_channel: UpdateChannel::Stable,
+            auto_switch_scenes: false,
             extra: Default::default(),
         }
     }
@@ -405,6 +410,7 @@ mod tests {
                 fullscreen: true,
             }),
             update_channel: UpdateChannel::Beta,
+            auto_switch_scenes: true,
             extra: Default::default(),
         };
         let json = serde_json::to_string(&s).unwrap();

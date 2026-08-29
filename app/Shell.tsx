@@ -6,6 +6,7 @@ import styles from "./Shell.module.css";
 import { t } from "./i18n";
 import { ManagePanel } from "./manage/ManagePanel";
 import { PlannerPanel } from "./planner/PlannerPanel";
+import { SuggestionBanner } from "./screen/SuggestionBanner";
 import { Surface } from "./screen/Surface";
 import { Toolbar } from "./screen/Toolbar";
 import { classMenuOpen, managePanelOpen } from "./state/classes";
@@ -69,6 +70,7 @@ export function Shell() {
             onClick={chromeActivity}
           />
         )}
+      <SuggestionBanner />
       {managePanelOpen.value && <ManagePanel />}
       <PlannerPanel />
     </main>

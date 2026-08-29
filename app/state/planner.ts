@@ -11,12 +11,17 @@
 //   state from Date.now() (sleep-proof, the timer discipline) and re-fetches
 //   ONLY when the local date rolled over.
 
-import { signal } from "@preact/signals";
+import { computed, signal } from "@preact/signals";
 
 import type { DayPlan } from "../bindings/DayPlan";
 import type { Period } from "../bindings/Period";
 import type { WeekSlot } from "../bindings/WeekSlot";
-import { localDateStr, weekdayOf } from "../planner/date-core";
+import { localDateStr, minutesOfDay, weekdayOf } from "../planner/date-core";
+import { suggest } from "../planner/suggest-core";
+import { switchLesson } from "./scenes";
+import { settings } from "./settings";
+import { t } from "../i18n";
+import { toast } from "../ui/toast";
 
 export const plannerPanelOpen = signal(false);
 export type PlannerTab = "periods" | "week" | "day";
@@ -90,6 +95,42 @@ export async function plannerChanged(): Promise<void> {
   ]);
 }
 
+// ── The lesson-start suggestion + opt-in auto-switch ───────────────────────
+
+/** «Ikke nå» silences exactly one lesson-instance (in-memory: a restart may
+ *  re-suggest, which is fine — the banner is chrome, the board restores
+ *  exactly regardless). */
+export const dismissedSuggestionKey = signal<string | null>(null);
+
+/** What the banner shows. Reads the 30 s tick so the window re-evaluates. */
+export const currentSuggestion = computed(() => {
+  const nowMin = minutesOfDay(new Date(plannerNowMs.value));
+  const s = settings.value;
+  return suggest(
+    todayPlan.value,
+    s.activeClassId,
+    s.activeSceneId,
+    nowMin,
+    dismissedSuggestionKey.value,
+  );
+});
+
+/** Auto-switch fires at most once per lesson-instance. */
+const autoFiredKeys = new Set<string>();
+
+/** Opt-in automation: when the setting is on and a suggested lesson is
+ *  RUNNING, perform the switch the banner would have offered. */
+export function maybeAutoSwitch(): void {
+  if (!settings.peek().autoSwitchScenes) return;
+  const s = currentSuggestion.peek();
+  if (!s || !s.running || autoFiredKeys.has(s.key)) return;
+  autoFiredKeys.add(s.key);
+  void switchLesson(s.classId, s.sceneId).catch((e) => {
+    console.warn("[planner] auto-switch failed", e);
+    toast("error", t("manage.actionFailed"));
+  });
+}
+
 let ticker: ReturnType<typeof setInterval> | undefined;
 
 /** Boot: one fetch + the 30 s derive-tick (with date-rollover refetch). */
@@ -102,5 +143,7 @@ export async function initPlanner(): Promise<void> {
     if (current && current.date !== localDateStr(new Date())) {
       void refreshToday();
     }
+    maybeAutoSwitch();
   }, 30_000);
+  maybeAutoSwitch();
 }

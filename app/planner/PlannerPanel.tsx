@@ -24,6 +24,8 @@ import {
   weekSlots,
 } from "../state/planner";
 import { scenes } from "../state/scenes";
+import { settings } from "../state/settings";
+import { toast } from "../ui/toast";
 import { Icon } from "../ui/Icon";
 import { addDays, formatMin, localDateStr, parseTime } from "./date-core";
 import styles from "./PlannerPanel.module.css";
@@ -233,6 +235,26 @@ function PeriodsTab() {
         )}
         {error && <span class={styles.error}>{error}</span>}
       </div>
+      <label class={styles.checkRow}>
+        <input
+          type="checkbox"
+          checked={settings.value.autoSwitchScenes}
+          onChange={(e) => {
+            const next = {
+              ...settings.peek(),
+              autoSwitchScenes: (e.target as HTMLInputElement).checked,
+            };
+            const prev = settings.peek();
+            settings.value = next;
+            window.api.saveSettings(next).catch((err) => {
+              console.warn("[planner] auto-toggle save failed", err);
+              settings.value = prev;
+              toast("error", t("manage.actionFailed"));
+            });
+          }}
+        />
+        {t("planner.autoSwitch")}
+      </label>
     </div>
   );
 }

@@ -205,7 +205,8 @@
     "notes": "Beskjeder",
     "addNote": "Legg til beskjed",
     "notePlaceholder": "Beskjed til klassen …",
-    "saveNotes": "Lagre beskjeder"
+    "saveNotes": "Lagre beskjeder",
+    "autoSwitch": "Bytt skjerm automatisk når timen starter"
   },
   "agenda": {
     "empty": "Ingen time nå",
@@ -247,5 +248,11 @@
     "check": "Merk gjort",
     "remove": "Fjern punkt",
     "empty": "Ingen punkter ennå"
+  },
+  "suggest": {
+    "next": "Neste:",
+    "now": "Nå:",
+    "switch": "Bytt skjerm",
+    "dismiss": "Ikke nå"
   }
 }

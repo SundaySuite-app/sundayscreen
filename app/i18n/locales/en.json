@@ -205,7 +205,8 @@
     "notes": "Messages",
     "addNote": "Add a message",
     "notePlaceholder": "A message for the class …",
-    "saveNotes": "Save the messages"
+    "saveNotes": "Save the messages",
+    "autoSwitch": "Switch the screen automatically when the lesson starts"
   },
   "agenda": {
     "empty": "No lesson right now",
@@ -247,5 +248,11 @@
     "check": "Mark done",
     "remove": "Remove the item",
     "empty": "No items yet"
+  },
+  "suggest": {
+    "next": "Next:",
+    "now": "Now:",
+    "switch": "Switch screen",
+    "dismiss": "Not now"
   }
 }

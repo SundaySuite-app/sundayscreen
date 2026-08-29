@@ -36,4 +36,9 @@ window: WindowState | null,
 /**
  * Which release feed this install follows.
  */
-updateChannel: UpdateChannel, };
+updateChannel: UpdateChannel, 
+/**
+ * Opt-in: switch class+scene automatically when a planned lesson
+ * starts. Off by default — the banner suggests, the teacher decides.
+ */
+autoSwitchScenes: boolean, };

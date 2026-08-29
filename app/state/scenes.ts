@@ -20,8 +20,17 @@ export async function switchScene(sceneId: string | null): Promise<void> {
   sceneMenuOpen.value = false;
   const cls = activeClass.peek();
   if (!cls) return;
+  await switchLesson(cls.id, sceneId);
+}
+
+/** THE lesson jump: class + scene in one flush-then-swap move — the
+ *  suggestion banner's click and the auto-switch both land here. */
+export async function switchLesson(
+  classId: string,
+  sceneId: string | null,
+): Promise<void> {
   await flushPending();
-  const snap = await window.api.lessonSwitch(cls.id, sceneId);
+  const snap = await window.api.lessonSwitch(classId, sceneId);
   adoptSwitch(snap);
 }
 

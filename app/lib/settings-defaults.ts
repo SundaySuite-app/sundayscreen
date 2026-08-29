@@ -12,4 +12,5 @@ export const SETTINGS_DEFAULTS: Settings = {
   snapEnabled: true,
   window: null,
   updateChannel: "stable",
+  autoSwitchScenes: false,
 };

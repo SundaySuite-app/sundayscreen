@@ -1,6 +1,31 @@
 /* The scroll + margin:auto pattern (F9-funn U#12): a centered flex overflow
    clips BOTH ends of a long message with the beginning unreachable; auto
    margins centre short content and let long content scroll from the top. */
+/*
+ * THE SIZE LIVES HERE, not in the component.
+ *
+ * TextWidget passes only `--text-scale` (the teacher's own A−/A+ factor); the
+ * formula is CSS's, and both branches — the display and the editor — read the
+ * same one, so what you type can no longer be a different size from what the
+ * class then reads.
+ *
+ * The old `8cqmin × scale` measured the SHORT side, which on the default
+ * 520×240 card is the height: 19px on a projector, from eight metres, for the
+ * widget a teacher reaches for most. It is now ~52px.
+ *
+ * The budget:
+ *   26cqh   with line-height 1.25 and var(--sp-4) of padding, the default
+ *           240px-high card holds about THREE lines before it scrolls. That
+ *           is the deliberate frame: this is a message board, not a paragraph.
+ *           A fourth line means a bigger card or fewer words, and both are
+ *           better answers than shrinking the type.
+ *   10cqw   the width ceiling, so one long compound word («naturfagsprøve»)
+ *           cannot burst a narrow tall box.
+ *
+ * The `1` fallback is load-bearing, not tidiness: if the custom property is
+ * ever missing the editor still renders at readable size instead of at the
+ * browser's default `font-size` for a textarea.
+ */
 .display {
   width: 100%;
   height: 100%;
@@ -9,6 +34,7 @@
   border: none;
   background: none;
   color: var(--ink);
+  font-size: calc(var(--text-scale, 1) * min(26cqh, 10cqw));
   cursor: text;
   overflow-y: auto;
 }
@@ -48,6 +74,7 @@
   background: none;
   color: var(--ink);
   font-family: var(--font);
+  font-size: calc(var(--text-scale, 1) * min(26cqh, 10cqw));
   font-weight: 600;
   line-height: 1.25;
   text-align: center;

@@ -9,8 +9,12 @@
   padding: var(--sp-3);
 }
 
+/* Like the clock: cqmin measured the short side, which on a landscape timer
+   card is the height, so the widget under-used the width it actually has.
+   40cqmin is +21 % on the default card; the 20cqw term is what keeps the
+   eight glyphs of «10:00:00» inside the box all the way down to 172px wide. */
 .display {
-  font-size: 26cqmin;
+  font-size: min(40cqmin, 20cqw);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
@@ -18,8 +22,10 @@
   line-height: 1;
 }
 
+/* --warn-ink, not --warn: amber is a fill (2.21:1 as text) and this is the
+   one number the class is watching. */
 .timer[data-tone="warn"] .display {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .timer[data-tone="done"] .display {
@@ -38,7 +44,10 @@
   border: 1px solid var(--gold-line);
   background: var(--gold-soft);
   color: var(--ink);
-  font-size: 5cqmin;
+  /* A FLOOR under every control: cqmin alone let «Start» shrink to a few
+     pixels on a small card, which makes the widget's own buttons the least
+     readable thing on the board. Pure cqmin scales down forever; max() stops. */
+  font-size: max(var(--fs-base), 5cqmin);
   font-weight: 700;
   cursor: pointer;
 }
@@ -54,10 +63,12 @@
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink-2);
-  font-size: 4cqmin;
+  font-size: max(var(--fs-sm), 4cqmin);
   cursor: pointer;
 }
 
+/* No font-size: this button holds an SVG and nothing else, so the declaration
+   that used to sit here (var(--fs-lg)) styled no glyph at any size. */
 .small {
   width: 40px;
   height: 40px;
@@ -65,7 +76,6 @@
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-size: var(--fs-lg);
   line-height: 1;
   cursor: pointer;
 }

@@ -5,7 +5,9 @@ export const agendaWidgetDef: WidgetDef = {
   kind: "agenda",
   labelKey: "widget.label.agenda",
   icon: "agenda",
-  defaultSizePx: { w: 380, h: 420 },
+  // The default grows with the type (see agenda.module.css); the MINIMUM does
+  // not — a teacher who deliberately shrinks the card keeps that right.
+  defaultSizePx: { w: 460, h: 520 },
   minSizePx: { w: 240, h: 200 },
   aspect: "free",
   defaultConfig: () => ({

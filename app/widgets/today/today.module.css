@@ -13,8 +13,14 @@
   flex-direction: column;
 }
 
+/* HEADING : CONTENT, turned the right way up.
+ *
+ * «Tirsdag» at 10cqmin over lessons at 4.6cqmin said the day of the week was
+ * the widget's message. Nobody in the room needs to be told what day it is —
+ * they need to read the timetable. The header steps down, the rows step up,
+ * and the card starts answering the question it is on the wall to answer. */
 .weekday {
-  font-size: 10cqmin;
+  font-size: 7.5cqmin;
   font-weight: 700;
   color: var(--ink);
   line-height: 1.1;
@@ -22,7 +28,7 @@
 }
 
 .date {
-  font-size: 5.5cqmin;
+  font-size: 4.5cqmin;
   color: var(--ink-2);
 }
 
@@ -45,13 +51,13 @@
   display: flex;
   align-items: baseline;
   gap: 2cqmin;
-  font-size: 4.6cqmin;
+  font-size: 6.5cqmin;
   color: var(--ink);
 }
 
 .time {
   flex: none;
-  color: var(--ink-3);
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -67,20 +73,27 @@
   font-weight: 700;
 }
 
+/* Same size as .lesson on purpose: «Ingen timer i dag» occupies the row a
+   lesson would have, so it must not read as a smaller class of information. */
 .emptyRow {
   color: var(--ink-3);
-  font-size: 4.6cqmin;
+  font-size: 6.5cqmin;
 }
 
+/* Notes are capped and do NOT flex: without this, three or four messages grow
+   the notes list, squeeze .lessons and push the timetable into a scroll area —
+   and nobody scrolls a projector. The timetable keeps the card. */
 .notes {
   border-top: 1px solid var(--line);
   padding-top: 2cqmin;
+  max-height: 45%;
+  flex: none;
 }
 
 .note {
   display: flex;
   gap: 1.6cqmin;
-  font-size: 4.2cqmin;
+  font-size: 5.5cqmin;
   color: var(--ink-2);
 }
 

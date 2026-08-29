@@ -260,8 +260,8 @@
   -webkit-user-select: text;
 }
 
+/* Gold = active field, ring (base.css) = keyboard position. Keep both. */
 .namesArea:focus {
-  outline: none;
   border-color: var(--gold-line);
 }
 

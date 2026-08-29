@@ -9,16 +9,46 @@
   padding: var(--sp-3);
 }
 
+/*
+ * WIDTH, not cqmin, is what a digital clock runs out of.
+ *
+ * 30cqmin alone measured the SHORT side, so on any box that is not much wider
+ * than it is tall the glyphs simply ran past both edges — and a centred flex
+ * clips symmetrically, so «09:41:07» lost the 0 and the 7 at once and still
+ * looked deliberate. With seconds on it never fitted at ANY size: the string
+ * needed ~103 % of the width 30cqmin asked for.
+ *
+ * The budget, in ems of the font-size we are solving for (Inter 700 with
+ * tabular-nums: a digit advances 0.6465em, a colon 0.2686em):
+ *
+ *   «HH:MM»      4 × 0.6465 + 0.2686              = 2.85em
+ *   «:SS» at 0.55em  (2 × 0.6465 + 0.2686) × 0.55 = 0.86em
+ *                                          total  = 3.72em
+ *
+ * The divisors below are 2.95 and 3.85 — about 3 % of slack, which is what
+ * pays for the system-stack fallback rendering the frame before the bundled
+ * Inter lands. `.shell` is `container-type: size`, so 100cqw is the card's
+ * content box, and `.clock` spends 2 × var(--sp-3) = 24px of it on padding.
+ *
+ * These are `min()`, so they can only ever SHRINK: on a wide card the cqmin
+ * term still wins and nothing about today's boards changes.
+ */
 .digital {
-  font-size: 30cqmin;
+  font-size: min(30cqmin, calc((100cqw - 24px) / 2.95));
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
   line-height: 1;
 }
 
+.digital[data-seconds] {
+  font-size: min(30cqmin, calc((100cqw - 24px) / 3.85));
+}
+
+/* em, not cqmin: locked to the hour digits, so the proportion survives every
+   size the formula above lands on. */
 .seconds {
-  font-size: 16cqmin;
+  font-size: 0.55em;
   color: var(--ink-2);
 }
 

@@ -9,14 +9,22 @@
   padding: 4cqmin;
 }
 
+/* «12» and «dager igjen» are one line until the card is narrow, and then they
+   have to become two — without the wrap the unit was simply cut off in a tall
+   narrow box, which is a shape a teacher gets by dragging one corner. */
 .count {
   display: flex;
   align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 2.5cqmin;
 }
 
+/* 34cqmin spent the whole card on the numeral and left nothing for the words
+   that make it mean something. The number steps down, the unit and the title
+   step up, and the widget says «Innlevering — 3 dager igjen» instead of «3». */
 .big {
-  font-size: 34cqmin;
+  font-size: 28cqmin;
   font-weight: 800;
   line-height: 1;
   color: var(--ink);
@@ -24,7 +32,7 @@
 }
 
 .deadline[data-urgency="warn"] .big {
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 
 .deadline[data-urgency="critical"] .big {
@@ -32,19 +40,21 @@
 }
 
 .unit {
-  font-size: 8cqmin;
+  font-size: 12cqmin;
   font-weight: 700;
   color: var(--ink-2);
 }
 
 .small {
-  font-size: 6cqmin;
-  color: var(--ink-3);
+  font-size: 7cqmin;
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
 
+/* «Fristen er passert» was the SECOND SMALLEST text in the widget — the most
+   urgent thing it can ever say, whispered. It is now the loudest. */
 .overdue {
-  font-size: 10cqmin;
+  font-size: 18cqmin;
   font-weight: 800;
   color: var(--bad);
   text-align: center;
@@ -61,7 +71,7 @@
   background: none;
   padding: 0.5cqmin 2cqmin;
   border-radius: var(--r-sm);
-  font-size: 6.5cqmin;
+  font-size: 9cqmin;
   font-weight: 600;
   color: var(--ink-2);
   cursor: text;
@@ -82,7 +92,7 @@
   background: var(--surface);
   color: var(--ink);
   font: inherit;
-  font-size: 5cqmin;
+  font-size: 7cqmin;
   text-align: center;
 }
 

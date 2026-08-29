@@ -5,7 +5,7 @@ export const deadlineWidgetDef: WidgetDef = {
   kind: "deadline",
   labelKey: "widget.label.deadline",
   icon: "deadline",
-  defaultSizePx: { w: 320, h: 220 },
+  defaultSizePx: { w: 420, h: 300 },
   minSizePx: { w: 180, h: 130 },
   aspect: "free",
   defaultConfig: () => ({

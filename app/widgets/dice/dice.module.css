@@ -1,3 +1,23 @@
+/*
+ * The die is sized from the ROW it has to fit in, not from a percentage of
+ * one die.
+ *
+ * `max-width: 30%` used to cap every face at 30 % of the card, so a single
+ * die on the default 300×240 board was drawn 24.5px across — the widget's
+ * whole content, illegible from the second row — while three dice at minimum
+ * size still ran off the edge, because the cap says nothing about how many
+ * faces share the width. The cap was the defect; it was never the guard.
+ *
+ * The real budget, all three of which have to hold at once:
+ *   - 56cqmin        keeps a die from swallowing a large card
+ *   - the row width  100cqw − 24px (.dice padding) − 16px (.rollArea padding)
+ *                    − (n−1) × 12px (var(--sp-3) between faces), split n ways
+ *   - the column     100cqh minus padding, the roll area's own padding, the
+ *                    sum line and the gaps ≈ 92px
+ *
+ * One die on the default card now lands at ~134px; three at minSizePx fit
+ * exactly rather than clipping. e2e/readability.spec.ts pins the second half.
+ */
 .dice {
   width: 100%;
   height: 100%;
@@ -7,6 +27,15 @@
   justify-content: center;
   gap: var(--sp-2);
   padding: var(--sp-3);
+  --die: min(56cqmin, calc(100cqw - 40px), calc(100cqh - 92px));
+}
+
+.dice[data-count="2"] {
+  --die: min(56cqmin, calc((100cqw - 52px) / 2), calc(100cqh - 92px));
+}
+
+.dice[data-count="3"] {
+  --die: min(56cqmin, calc((100cqw - 64px) / 3), calc(100cqh - 92px));
 }
 
 .rollArea {
@@ -25,9 +54,8 @@
 }
 
 .die {
-  width: 34cqmin;
-  height: 34cqmin;
-  max-width: 30%;
+  width: var(--die);
+  height: var(--die);
 }
 
 .face {

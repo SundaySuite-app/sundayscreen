@@ -27,34 +27,75 @@
   --line: #e4dfd2;
   --line-2: #cfc8b6;
 
-  /* ── Ink, three levels ───────────────────────────────────────────────── */
+  /* ── Ink, three levels — every one of them a READING level ───────────
+   *
+   * `--ink-3` is not «the third grey»; it is MUTED TEXT WITH A CONTRAST
+   * FLOOR. It was #8b9099 (3.21:1 on --surface) and carried ~38 usages —
+   * times, hints, empty states — i.e. text a pupil reads from the back of a
+   * lit classroom. Muted is a HIERARCHY, not a licence to fall under AA.
+   * `app/styles/tokens.test.ts` holds all three levels at ≥ 4.5:1 against
+   * --surface and --raised (and every semantic ink against its own soft plate
+   * as well); move a value and the guard says so before the projector does. */
   --ink: #23272f;
   --ink-2: #5c636e;
-  --ink-3: #8b9099;
+  --ink-3: #6f757f;
 
   /* ── Gold: the accent, and the only one ──────────────────────────────── */
+  /*
+   * GOLD IS A SURFACE, NOT INK. #ebb84b reaches 1.80:1 as text on --raised,
+   * so a gold word is decoration that happens to be shaped like a sentence.
+   * Use it as a fill (--gold with --on-gold on top: 9.00:1), as a tint
+   * (--gold-soft) or as an edge (--gold-line) — never as `color:` on text
+   * anyone has to read. The two survivors are deliberately not text: the
+   * clock's second hand (a stroke) and the today widget's bullet.
+   */
   --gold: #ebb84b;
   --gold-soft: rgba(235, 184, 75, 0.16);
   --gold-line: rgba(235, 184, 75, 0.55);
   --on-gold: #1b1f2a;
 
   /* ── Semantics, separate from the accent ─────────────────────────────── */
-  --good: #2e9e5b;
-  --good-soft: rgba(46, 158, 91, 0.14);
-  --good-line: rgba(46, 158, 91, 0.45);
+  /*
+   * Each triad is ONE rgb in three strengths — ink, tint, edge. Deriving the
+   * soft/line from a different red than the text red is how a widget ends up
+   * with two reds in the same box, and nobody can name which is the state.
+   *
+   * `--warn` is the odd one out: amber is a fine FILL and an unreadable ink
+   * (2.21:1 on --surface). So warn has two tokens — `--warn` for surfaces and
+   * `--warn-ink` for the words. `--warn` has no caller right now precisely
+   * because every warn usage in the app was text; it is NOT dead, it is the
+   * fill half waiting for the widget that wants a warn plate. */
+  --good: #1d7040;
+  --good-soft: rgba(29, 112, 64, 0.14);
+  --good-line: rgba(29, 112, 64, 0.45);
   --warn: #e0a426;
+  --warn-ink: #8a6210;
   --warn-soft: rgba(224, 164, 38, 0.16);
   --warn-line: rgba(224, 164, 38, 0.5);
-  --bad: #d64545;
-  --bad-soft: rgba(214, 69, 69, 0.12);
-  --bad-line: rgba(214, 69, 69, 0.5);
+  --bad: #b3332f;
+  --bad-soft: rgba(179, 51, 47, 0.12);
+  --bad-line: rgba(179, 51, 47, 0.5);
+
+  /* The keyboard's own mark. Same value as --ink on purpose: a focus ring is
+     not a new hue in the system, it is the system's ink drawn OUTSIDE the
+     control. Blue would import a palette this app does not have, and gold
+     never reaches 3:1 against the surfaces it would sit on. */
+  --focus: #23272f;
 
   /* Traffic-light lamps — their own tokens so the widget's red/yellow/green
-     can be tuned without touching the semantic states. */
-  --light-red: #e04a3f;
+     can be tuned without touching the semantic states.
+
+     AN UNLIT LAMP IS DARK. The old --light-off (#d9d4c7) sat at 10.12:1
+     against the housing while a LIT red managed 3.72:1 — the widget's whole
+     half-second signal ran backwards, and the brightest thing in the lantern
+     was the lamp that was off. Now: off 1.71:1, red 4.35:1. */
+  --light-red: #f0554a;
   --light-yellow: #f2c53d;
   --light-green: #3cb864;
-  --light-off: #d9d4c7;
+  --light-off: #454b57;
+  /* A hairline of glass on every lamp, lit or not, so the dark ones still
+     read as lamps rather than as holes in the housing. */
+  --lamp-rim: rgba(255, 255, 255, 0.1);
 
   /* The veil behind a modal/manage overlay. */
   --scrim: rgba(35, 39, 47, 0.45);

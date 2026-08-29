@@ -25,7 +25,7 @@ export function TextWidget({ widget }: { widget: WidgetInstance }) {
     return (
       <textarea
         class={styles.editor}
-        style={{ fontSize: `${8 * cfg.fontScale}cqmin` }}
+        style={{ "--text-scale": cfg.fontScale }}
         value={cfg.content}
         data-no-drag
         autofocus
@@ -46,7 +46,7 @@ export function TextWidget({ widget }: { widget: WidgetInstance }) {
       class={styles.display}
       data-align={cfg.align}
       data-empty={empty || undefined}
-      style={{ fontSize: `${8 * cfg.fontScale}cqmin` }}
+      style={{ "--text-scale": cfg.fontScale }}
       onClick={() => setEditing(true)}
     >
       <span class={styles.inner}>

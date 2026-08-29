@@ -50,3 +50,26 @@ button {
   font: inherit;
   color: inherit;
 }
+
+/*
+ * ONE focus ring, designed once.
+ *
+ * Before this there was no `:focus-visible` rule anywhere in app/, and five
+ * places wrote `outline: none` and put a gold border in its place — 1.39:1,
+ * i.e. a state you can only see if you already know where you are. Gold and
+ * the ring now say different things and both stay: GOLD means «this field is
+ * the active one», the RING means «the keyboard is here».
+ *
+ * --focus is --ink, deliberately: a ring is the system's own ink drawn just
+ * outside the control, not a sixth colour. It is `:focus-visible`, so a mouse
+ * click on a button never paints it.
+ *
+ * The selector list is the real controls and NOT `[tabindex]`. Nothing in the
+ * app uses tabindex today, and including it would be a standing invitation
+ * for this ring to appear one day on the board itself, in front of a class.
+ * :where() keeps specificity at zero so any component can still opt out.
+ */
+:where(button, a, input, textarea, select, summary):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

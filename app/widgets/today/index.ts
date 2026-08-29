@@ -5,7 +5,7 @@ export const todayWidgetDef: WidgetDef = {
   kind: "today",
   labelKey: "widget.label.today",
   icon: "today",
-  defaultSizePx: { w: 420, h: 360 },
+  defaultSizePx: { w: 520, h: 420 },
   minSizePx: { w: 260, h: 180 },
   aspect: "free",
   defaultConfig: () => ({

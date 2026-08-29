@@ -93,18 +93,24 @@
   color: var(--ink-2);
 }
 
+/* «Angre» is the app's ONLY undo, it lives on a timer, and it was gold text
+   on a --raised plate: 1.80:1, i.e. a word you have to already know is there.
+   As a filled pill it carries --on-gold at 9.00:1 and reads as the button it
+   is. Hover darkens the PLATE (`filter`) — recolouring the ink on a gold fill
+   is a change nobody can see. */
 .snackbarAction {
   border: none;
-  background: none;
-  color: var(--gold);
+  background: var(--gold);
+  color: var(--on-gold);
+  border-radius: var(--r-pill);
   font-weight: 700;
   font-size: var(--fs-base);
   cursor: pointer;
-  padding: var(--sp-1) var(--sp-2);
+  padding: var(--sp-1) var(--sp-4);
 }
 
 .snackbarAction:hover {
-  color: var(--ink);
+  filter: brightness(0.94);
 }
 
 /* The always-there way back to the toolbar: a small pill hugging the

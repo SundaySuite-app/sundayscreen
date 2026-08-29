@@ -61,7 +61,7 @@
   background: none;
   padding: 0;
   color: var(--ink);
-  font-size: 6cqmin;
+  font-size: 7cqmin;
   line-height: 1.3;
   cursor: text;
   overflow-wrap: anywhere;
@@ -72,6 +72,9 @@
   text-decoration: line-through;
 }
 
+/* The font-size here MUST equal .textBtn's. They are the same row in two
+   states, so any difference is a visible jump the moment a teacher clicks to
+   edit — and the list below it jumps with it. */
 .editInput {
   flex: 1;
   min-width: 0;
@@ -82,7 +85,7 @@
   background: var(--surface);
   color: var(--ink);
   font: inherit;
-  font-size: 5cqmin;
+  font-size: 7cqmin;
 }
 
 .removeBtn {
@@ -115,7 +118,7 @@
   justify-content: center;
   margin: 0;
   color: var(--ink-3);
-  font-size: 5cqmin;
+  font-size: 5.5cqmin;
   text-align: center;
 }
 
@@ -132,11 +135,11 @@
   background: none;
   color: var(--ink);
   font: inherit;
-  font-size: 4.5cqmin;
+  font-size: 5cqmin;
 }
 
+/* Gold = active field, ring (base.css) = keyboard position. Keep both. */
 .addInput:focus {
-  outline: none;
   border-color: var(--gold-line);
   border-style: solid;
   background: var(--surface);

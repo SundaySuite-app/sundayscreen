@@ -5,7 +5,7 @@ export const checklistWidgetDef: WidgetDef = {
   kind: "checklist",
   labelKey: "widget.label.checklist",
   icon: "checklist",
-  defaultSizePx: { w: 340, h: 380 },
+  defaultSizePx: { w: 400, h: 460 },
   minSizePx: { w: 200, h: 160 },
   aspect: "free",
   defaultConfig: () => ({

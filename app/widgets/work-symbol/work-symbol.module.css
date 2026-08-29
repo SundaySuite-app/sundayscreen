@@ -10,8 +10,8 @@
 }
 
 .glyph {
-  width: 40cqmin;
-  height: 40cqmin;
+  width: 44cqmin;
+  height: 44cqmin;
   color: var(--ink);
 }
 
@@ -25,9 +25,15 @@
   height: var(--icon-md);
 }
 
+/* 12cqmin, not 13: at 13 the English «Work together» hits the card's width to
+   the millimetre and starts wrapping mid-phrase. `text-wrap: balance` splits
+   what does wrap into even lines instead of leaving one orphan word, and 1.15
+   keeps a two-line label from drifting away from its glyph. */
 .label {
-  font-size: 9cqmin;
+  font-size: 12cqmin;
   font-weight: 700;
+  line-height: 1.15;
+  text-wrap: balance;
   color: var(--ink);
   text-align: center;
 }

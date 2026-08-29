@@ -125,7 +125,7 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
     : null;
 
   return (
-    <div class={styles.dice}>
+    <div class={styles.dice} data-count={count}>
       <button
         class={styles.rollArea}
         data-no-drag

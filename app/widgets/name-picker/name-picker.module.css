@@ -28,15 +28,18 @@
   color: var(--ink-2);
 }
 
+/* «3 igjen i runden» was gold text at 1.80:1 — the accent used as ink. It is
+   a line the class reads, so it takes the ink-2 rung; gold stays a surface.
+   The floor keeps both lines legible when the card is dragged small. */
 .round {
-  font-size: 5cqmin;
-  color: var(--gold);
+  font-size: max(var(--fs-sm), 5cqmin);
+  color: var(--ink-2);
   font-weight: 600;
 }
 
 .hint {
-  font-size: 5cqmin;
-  color: var(--ink-3);
+  font-size: max(var(--fs-sm), 5cqmin);
+  color: var(--ink-2);
 }
 
 .draw {
@@ -45,7 +48,7 @@
   border: 1px solid var(--gold-line);
   background: var(--gold-soft);
   color: var(--ink);
-  font-size: 6cqmin;
+  font-size: max(var(--fs-base), 6cqmin);
   font-weight: 700;
   cursor: pointer;
 }

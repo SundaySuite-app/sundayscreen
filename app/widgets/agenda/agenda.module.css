@@ -21,19 +21,19 @@
   background: var(--gold-soft);
   border: 1px solid var(--gold-line);
   color: var(--ink-2);
-  font-size: 3.4cqmin;
+  font-size: 4cqmin;
   font-weight: 700;
 }
 
 .title {
-  font-size: 8cqmin;
+  font-size: 8.5cqmin;
   font-weight: 700;
   color: var(--ink);
   line-height: 1.15;
 }
 
 .meta {
-  font-size: 4cqmin;
+  font-size: 4.6cqmin;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
@@ -107,16 +107,19 @@
   background: none;
   padding: 0;
   color: var(--ink);
-  font-size: 5cqmin;
+  font-size: 6cqmin;
   line-height: 1.3;
   cursor: pointer;
   overflow-wrap: anywhere;
 }
 
+/* A start time is something a pupil READS off the board, not chrome — it
+   belongs on the ink-2 rung. (--ink-3 stays for what is genuinely secondary:
+   empty states and struck-through, done items.) */
 .time {
   flex: none;
-  font-size: 3.8cqmin;
-  color: var(--ink-3);
+  font-size: 4.4cqmin;
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -146,7 +149,7 @@
 .empty {
   margin: auto;
   color: var(--ink-3);
-  font-size: 5cqmin;
+  font-size: 5.5cqmin;
   text-align: center;
 }
 
@@ -163,11 +166,13 @@
   background: none;
   color: var(--ink);
   font: inherit;
-  font-size: 4cqmin;
+  font-size: 4.6cqmin;
 }
 
+/* The gold border stays — it says «this field is active». The focus ring from
+   base.css is a different statement («the keyboard is here») and both belong;
+   `outline: none` used to delete the second one. */
 .addInput:focus {
-  outline: none;
   border-color: var(--gold-line);
   border-style: solid;
   background: var(--surface);

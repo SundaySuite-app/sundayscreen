@@ -32,7 +32,7 @@ export function ClockWidget({ widget }: { widget: WidgetInstance }) {
   return (
     <div class={styles.clock}>
       {cfg.face === "digital" ? (
-        <div class={styles.digital}>
+        <div class={styles.digital} data-seconds={cfg.showSeconds || undefined}>
           {pad(now.getHours())}:{pad(now.getMinutes())}
           {cfg.showSeconds && (
             <span class={styles.seconds}>:{pad(now.getSeconds())}</span>

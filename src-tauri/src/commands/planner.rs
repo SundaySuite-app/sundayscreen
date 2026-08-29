@@ -10,6 +10,10 @@ use sundayscreen_core::schedule::{
 use tauri::State;
 use ts_rs::TS;
 
+// The date-key gate is SHARED with the picker's attendance date — the rule
+// itself is pure (`sundayscreen_core::schedule::is_valid_date`), the
+// AppError translation lives once in `commands/mod.rs`.
+use crate::commands::valid_date;
 use crate::db::planner as pstore;
 use crate::db::store::new_id;
 use crate::db::Db;
@@ -92,39 +96,6 @@ fn valid_lesson_weekday(weekday: u8) -> AppResult<()> {
 fn valid_any_weekday(weekday: u8) -> AppResult<()> {
     if !(1..=7).contains(&weekday) {
         return Err(AppError::Validation("weekday must be 1..=7".into()));
-    }
-    Ok(())
-}
-
-/// The date key is frontend-minted; keep hand-edited garbage out of the
-/// keyspace (a malformed key would orphan its rows invisibly).
-fn valid_date(date: &str) -> AppResult<()> {
-    let bytes = date.as_bytes();
-    let ok = bytes.len() == 10
-        && bytes[4] == b'-'
-        && bytes[7] == b'-'
-        && date
-            .chars()
-            .enumerate()
-            .all(|(i, c)| (i == 4 || i == 7) || c.is_ascii_digit());
-    if !ok {
-        return Err(AppError::Validation("date must be YYYY-MM-DD".into()));
-    }
-    // Shape alone let `2026-99-99` into the keyspace (F-funn B8), where its
-    // rows would be unreachable from any real calendar day.
-    let month: u32 = date[5..7].parse().unwrap_or(0);
-    let day: u32 = date[8..10].parse().unwrap_or(0);
-    let year: i32 = date[0..4].parse().unwrap_or(0);
-    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-    let days_in_month = match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if leap => 29,
-        2 => 28,
-        _ => 0,
-    };
-    if day == 0 || day > days_in_month {
-        return Err(AppError::Validation("date is not a real day".into()));
     }
     Ok(())
 }

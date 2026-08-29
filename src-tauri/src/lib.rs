@@ -92,7 +92,22 @@ pub fn run() {
             // the projector setup comes back without a visible jump.
             match tauri::async_runtime::block_on(settings::load(&pool)) {
                 Ok(loaded) => {
-                    window::restore_window_state(app.handle(), &loaded);
+                    if window::restore_window_state(app.handle(), &loaded) {
+                        // Fullscreen was asked for and could not be applied.
+                        // Leaving the flag stored would make the frontend
+                        // believe it is fullscreen — and a frontend in that
+                        // belief saves NO window geometry for the whole
+                        // session.
+                        if let Err(e) =
+                            tauri::async_runtime::block_on(settings::update(&pool, |s| {
+                                if let Some(w) = &mut s.window {
+                                    w.fullscreen = false;
+                                }
+                            }))
+                        {
+                            tracing::warn!("clearing the stale fullscreen flag failed: {e}");
+                        }
+                    }
                     // The silent boot check — the app's ONE network call, and
                     // it swallows every failure (offline is the normal
                     // classroom state).
@@ -137,7 +152,9 @@ pub fn run() {
             commands::picker::picker_draw,
             commands::picker::picker_reset,
             commands::picker::groups_split,
+            commands::picker::attendance_set,
             window::window_set_fullscreen,
+            window::window_is_fullscreen,
             update::update_check,
             update::update_install,
         ])

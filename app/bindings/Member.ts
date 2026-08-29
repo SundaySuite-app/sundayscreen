@@ -3,4 +3,11 @@
 /**
  * One pupil row. Exported to TS as `Member`.
  */
-export type Member = { id: string, name: string, sortIndex: number, };
+export type Member = { id: string, name: string, sortIndex: number, 
+/**
+ * The local wall date this pupil was marked away, or `None`. "Away
+ * today" is `absent_on == today` — a DATE STAMP, so yesterday's absence
+ * expires by itself, with no reset job to miss a day (migration 0005).
+ * Overwritten, never appended to: there is no attendance history here.
+ */
+absentOn: string | null, };

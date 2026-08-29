@@ -6,8 +6,8 @@ import type { Member } from "./Member";
  */
 export type DrawResult = { member: Member, 
 /**
- * How many are still undrawn in this round AFTER this draw (always the
- * full class in repeat-allowed mode).
+ * How many are still undrawn in this round AFTER this draw (the whole
+ * PRESENT class in repeat-allowed mode).
  */
 remaining: number, 
 /**

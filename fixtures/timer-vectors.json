@@ -210,6 +210,67 @@
       },
       "action": { "type": "pause" },
       "expect": { "phase": "swPaused", "accumulatedMs": 2000 }
+    },
+    {
+      "name": "adjust moves a RUNNING countdown's target — «to minutter til»",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 3000,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "action": { "type": "adjust", "deltaMs": 60000 },
+      "expect": { "phase": "running", "targetEpochMs": 66000 }
+    },
+    {
+      "name": "adjust extends a PAUSED remainder without reading the clock",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 999999,
+      "state": { "phase": "paused", "remainingMs": 3500 },
+      "action": { "type": "adjust", "deltaMs": 60000 },
+      "expect": { "phase": "paused", "remainingMs": 63500 }
+    },
+    {
+      "name": "shortening past zero clamps the target to now, never below",
+      "mode": "countdown",
+      "durationMs": 5000,
+      "nowMs": 5000,
+      "state": { "phase": "running", "targetEpochMs": 6000 },
+      "action": { "type": "adjust", "deltaMs": -60000 },
+      "expect": { "phase": "running", "targetEpochMs": 5000 }
+    },
+    {
+      "name": "the tick AFTER a clamping shorten is what finishes it, with sound",
+      "nowMs": 5000,
+      "state": { "phase": "running", "targetEpochMs": 5000 },
+      "tick": true,
+      "expect": { "phase": "finished", "atEpochMs": 5000 },
+      "expectSound": true
+    },
+    {
+      "name": "adjust is inert on a stopwatch — there is no finish line to move",
+      "mode": "stopwatch",
+      "durationMs": 0,
+      "nowMs": 10000,
+      "state": {
+        "phase": "swRunning",
+        "startedEpochMs": 4000,
+        "accumulatedMs": 2000
+      },
+      "action": { "type": "adjust", "deltaMs": 60000 },
+      "expect": {
+        "phase": "swRunning",
+        "startedEpochMs": 4000,
+        "accumulatedMs": 2000
+      }
+    },
+    {
+      "name": "adjust in idle is inert — the duration pills own that edge",
+      "mode": "countdown",
+      "durationMs": 300000,
+      "nowMs": 1000,
+      "state": { "phase": "idle" },
+      "action": { "type": "adjust", "deltaMs": 60000 },
+      "expect": { "phase": "idle" }
     }
   ]
 }

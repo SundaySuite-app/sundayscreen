@@ -57,6 +57,23 @@ export function transition(
         };
       }
       return state;
+    // Move the FINISH LINE, keep the phase. Shortening past zero clamps (to
+    // `now` while running, to 0 while paused) and stops there — `tick` alone
+    // owns the zero-crossing, so the chime keeps having one author.
+    case "adjust":
+      if (state.phase === "running") {
+        return {
+          phase: "running",
+          targetEpochMs: Math.max(state.targetEpochMs + action.deltaMs, nowMs),
+        };
+      }
+      if (state.phase === "paused") {
+        return {
+          phase: "paused",
+          remainingMs: Math.max(state.remainingMs + action.deltaMs, 0),
+        };
+      }
+      return state;
   }
 }
 

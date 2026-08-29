@@ -7,6 +7,7 @@ import { useState } from "preact/hooks";
 
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tf } from "../../i18n";
+import { localDateStr } from "../../planner/date-core";
 import { members } from "../../state/classes";
 import {
   activeClass,
@@ -28,7 +29,13 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
     if (!cls || busy || empty) return;
     setBusy(true);
     try {
-      const groups = await window.api.groupsSplit(cls.id, cfg.mode, cfg.n);
+      // Minted per click, not per module load — see NamePickerWidget.
+      const groups = await window.api.groupsSplit(
+        cls.id,
+        cfg.mode,
+        cfg.n,
+        localDateStr(new Date()),
+      );
       // Merge into the CURRENT config (F9-funn S#6).
       updateWidgetConfigBy(widget.id, (c) =>
         c.kind === "groups"

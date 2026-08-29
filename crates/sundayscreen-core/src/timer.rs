@@ -56,14 +56,28 @@ pub enum TimerState {
 /// What a button press means. `Start` always starts FRESH (from any state) —
 /// in countdown mode with the configured duration, in stopwatch mode from
 /// zero.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+///
+/// (`Eq` is gone since `Adjust` carries an f64 — `PartialEq` is what the
+/// vectors compare with anyway.)
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "TimerAction.ts")]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum TimerAction {
     Start,
     Pause,
     Resume,
     Reset,
+    /// «To minutter til» / «ett minutt mindre» — move the FINISH LINE, keep
+    /// the phase. Only the countdown family has a line to move; every other
+    /// state is inert (a stopwatch has no target, and idle is the duration
+    /// buttons' edge).
+    Adjust {
+        delta_ms: f64,
+    },
 }
 
 /// Apply a button press. Pure: `now_ms` is an argument, never read.
@@ -106,6 +120,18 @@ pub fn transition(
             S::SwPaused { accumulated_ms } => S::SwRunning {
                 started_epoch_ms: now_ms,
                 accumulated_ms,
+            },
+            other => other,
+        },
+        // Shortening past zero CLAMPS (to `now` while running, to 0 while
+        // paused) and stops there: `tick` alone owns the zero-crossing, so
+        // the chime and the `Finished` state keep having exactly one author.
+        A::Adjust { delta_ms } => match state {
+            S::Running { target_epoch_ms } => S::Running {
+                target_epoch_ms: (target_epoch_ms + delta_ms).max(now_ms),
+            },
+            S::Paused { remaining_ms } => S::Paused {
+                remaining_ms: (remaining_ms + delta_ms).max(0.0),
             },
             other => other,
         },

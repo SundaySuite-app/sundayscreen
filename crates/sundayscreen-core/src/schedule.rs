@@ -257,6 +257,41 @@ fn lookup(map: &HashMap<String, String>, id: &Option<String>) -> Option<String> 
     id.as_ref().and_then(|i| map.get(i).cloned())
 }
 
+/// Is this a real local wall date, `YYYY-MM-DD`?
+///
+/// Date keys are minted by the FRONTEND (JS owns the wall clock; this crate
+/// never reads one) — so Rust validates the SHAPE and the CALENDAR, and
+/// nothing else. Shape alone once let `2026-99-99` into the keyspace
+/// (F-funn B8), where its rows were unreachable from any real calendar day.
+///
+/// Every caller that takes a date from the frontend runs this: the planner's
+/// day/agenda/override writes, and the picker's "who is here today".
+pub fn is_valid_date(date: &str) -> bool {
+    let bytes = date.as_bytes();
+    let shaped = bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && date
+            .chars()
+            .enumerate()
+            .all(|(i, c)| (i == 4 || i == 7) || c.is_ascii_digit());
+    if !shaped {
+        return false;
+    }
+    let year: i32 = date[0..4].parse().unwrap_or(0);
+    let month: u32 = date[5..7].parse().unwrap_or(0);
+    let day: u32 = date[8..10].parse().unwrap_or(0);
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => 0,
+    };
+    day != 0 && day <= days_in_month
+}
+
 /// Clamp and order a period template: labels truncated, times clamped into
 /// the day, `end > start` enforced (a broken row is DROPPED — the editor
 /// validates before saving; this is the belt for hand-edited data), sorted
@@ -452,6 +487,39 @@ mod tests {
         let c = period("c", 555, 600, PeriodKind::Lesson);
         assert!(periods_overlap(&[a.clone(), b]));
         assert!(!periods_overlap(&[a, c]));
+    }
+
+    #[test]
+    fn is_valid_date_accepts_real_days_and_nothing_else() {
+        assert!(is_valid_date("2026-08-31"));
+        assert!(is_valid_date("2028-02-29"), "a leap day IS a real day");
+        assert!(is_valid_date("2026-01-01"));
+
+        // Shape.
+        for bad in ["", "31-08-2026", "2026-8-31", "2026-08-31 ", "2026/08/31"] {
+            assert!(!is_valid_date(bad), "{bad} must be refused");
+        }
+        // Calendar (F-funn B8 — shape alone let these through).
+        for bad in [
+            "2026-99-99",
+            "2026-13-01",
+            "2026-00-10",
+            "2026-02-30",
+            "2026-04-31",
+            "2026-08-00",
+            "2027-02-29",
+        ] {
+            assert!(!is_valid_date(bad), "{bad} must be refused");
+        }
+    }
+
+    #[test]
+    fn is_valid_date_does_not_panic_on_multibyte_input() {
+        // The byte slicing is only reached after the ASCII-digit check —
+        // "2026-08-Ω" is exactly 10 BYTES, so it clears the length gate and
+        // the char check is what has to catch it.
+        assert!(!is_valid_date("2026-08-Ω"));
+        assert!(!is_valid_date("ææææææææææ"));
     }
 
     #[test]

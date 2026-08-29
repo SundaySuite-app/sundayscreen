@@ -328,8 +328,17 @@ const api = {
 
   // Draw/split are WRITES against the round state — rejections travel, so
   // the widgets can say "no names yet" instead of fabricating a pupil.
-  pickerDraw: async (classId: string, noRepeat: boolean): Promise<DrawResult> =>
-    invoke<DrawResult>("picker_draw", { classId, noRepeat }),
+  //
+  // `today` is the LOCAL wall date, `YYYY-MM-DD` (ADR-009: JS owns the wall
+  // clock, Rust validates the shape). It decides who is marked away — mint
+  // it at CALL time, never at module load: a machine left on overnight would
+  // otherwise deal yesterday's absences into today's lesson.
+  pickerDraw: async (
+    classId: string,
+    noRepeat: boolean,
+    today: string,
+  ): Promise<DrawResult> =>
+    invoke<DrawResult>("picker_draw", { classId, noRepeat, today }),
 
   pickerReset: async (classId: string): Promise<void> =>
     invoke<void>("picker_reset", { classId }),
@@ -338,13 +347,32 @@ const api = {
     classId: string,
     mode: GroupMode,
     n: number,
+    today: string,
   ): Promise<Member[][]> =>
-    invoke<Member[][]>("groups_split", { classId, mode, n }),
+    invoke<Member[][]>("groups_split", { classId, mode, n, today }),
+
+  // WRITE — rejection travels: a chip must never dim on a write that did not
+  // land. Answers with the whole updated member list, so the panel renders
+  // from what was actually stored.
+  attendanceSet: async (
+    classId: string,
+    memberId: string,
+    absent: boolean,
+    today: string,
+  ): Promise<Member[]> =>
+    invoke<Member[]>("attendance_set", { classId, memberId, absent, today }),
 
   // WRITE-ish (window management) — rejection travels so the chrome can
   // revert its optimistic flag in a plain browser.
   windowSetFullscreen: async (fullscreen: boolean): Promise<void> =>
     invoke<void>("window_set_fullscreen", { fullscreen }),
+
+  // A READ, so the typed fallback is legal: in a plain browser there is no
+  // window to measure and `false` is simply true. Asking the BACKEND rather
+  // than `win.isFullscreen()` is the point — on macOS the JS answer is
+  // `false` during simple fullscreen, which would seed the wrong flag.
+  windowIsFullscreen: async (): Promise<boolean> =>
+    call<boolean>("window_is_fullscreen", undefined, false),
 
   // The manual update check answers with a STATUS (errors included) — the
   // panel shows it; only a broken IPC rejects. Install is a WRITE: a

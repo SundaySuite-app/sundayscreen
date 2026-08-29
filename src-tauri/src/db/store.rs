@@ -193,29 +193,96 @@ pub struct MemberRow {
     // i64 would map to `bigint` in TS; force `number`.
     #[ts(type = "number")]
     pub sort_index: i64,
+    /// The local wall date this pupil was marked away, or `None`. "Away
+    /// today" is `absent_on == today` — a DATE STAMP, so yesterday's absence
+    /// expires by itself, with no reset job to miss a day (migration 0005).
+    /// Overwritten, never appended to: there is no attendance history here.
+    #[serde(default)]
+    pub absent_on: Option<String>,
 }
 
-/// A class's members, in display order. Generic over the executor so the
-/// picker can read them inside its draw transaction (F9-funn #2).
+/// The SELECT list every member read shares — one place to change when the
+/// row grows a column.
+const MEMBER_COLS: &str = "id, name, sort_index, absent_on";
+
+fn row_to_member(r: sqlx::sqlite::SqliteRow) -> MemberRow {
+    MemberRow {
+        id: r.get("id"),
+        name: r.get("name"),
+        sort_index: r.get("sort_index"),
+        absent_on: r.get("absent_on"),
+    }
+}
+
+/// A class's members, in display order — EVERYONE, including whoever is
+/// marked away today (the manage panel and the attendance panel both need
+/// the full list). Generic over the executor so the picker can read them
+/// inside its draw transaction (F9-funn #2).
 pub async fn list_members<'e, E>(executor: E, class_id: &str) -> AppResult<Vec<MemberRow>>
 where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
-    let rows = sqlx::query(
-        "SELECT id, name, sort_index FROM class_member
-         WHERE class_id = ?1 ORDER BY sort_index, created_at",
-    )
+    // AssertSqlSafe: `MEMBER_COLS` is a const in this file, never input.
+    let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SELECT {MEMBER_COLS} FROM class_member
+         WHERE class_id = ?1 ORDER BY sort_index, created_at"
+    )))
     .bind(class_id)
     .fetch_all(executor)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(|r| MemberRow {
-            id: r.get("id"),
-            name: r.get("name"),
-            sort_index: r.get("sort_index"),
-        })
-        .collect())
+    Ok(rows.into_iter().map(row_to_member).collect())
+}
+
+/// A class's members who are HERE today, in display order.
+///
+/// `today` is the frontend's local wall date (ADR-009). The comparison is
+/// `absent_on <> today` rather than "clear it at midnight", which is what
+/// makes a machine that stood switched off across the day change correct on
+/// its own: an old stamp simply stops matching.
+///
+/// This is the list the picker and the group split deal from —
+/// [`list_members`] stays untouched so the manage panel keeps showing the
+/// whole class.
+pub async fn list_present_members<'e, E>(
+    executor: E,
+    class_id: &str,
+    today: &str,
+) -> AppResult<Vec<MemberRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    // AssertSqlSafe: `MEMBER_COLS` is a const in this file, never input.
+    let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SELECT {MEMBER_COLS} FROM class_member
+         WHERE class_id = ?1 AND (absent_on IS NULL OR absent_on <> ?2)
+         ORDER BY sort_index, created_at"
+    )))
+    .bind(class_id)
+    .bind(today)
+    .fetch_all(executor)
+    .await?;
+    Ok(rows.into_iter().map(row_to_member).collect())
+}
+
+/// Mark one pupil away today (`absent = true` stamps `today`) or back
+/// (`false` clears the stamp). Returns whether a row was actually touched —
+/// the `class_id` predicate is the same discipline as `replace_members`
+/// (F9-funn #1): a member id from another class must MISS, never write.
+pub async fn set_member_absent(
+    pool: &SqlitePool,
+    class_id: &str,
+    member_id: &str,
+    absent: bool,
+    today: &str,
+) -> AppResult<bool> {
+    let stamp = absent.then(|| today.to_string());
+    let res = sqlx::query("UPDATE class_member SET absent_on = ?1 WHERE id = ?2 AND class_id = ?3")
+        .bind(stamp)
+        .bind(member_id)
+        .bind(class_id)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected() > 0)
 }
 
 /// Replace a class's member list from reconciled specs, in one transaction.
@@ -249,7 +316,6 @@ pub async fn replace_members(
     }
 
     let stamp = now_ms();
-    let mut out = Vec::with_capacity(specs.len());
     for (i, spec) in specs.iter().enumerate() {
         let sort_index = i as i64;
         match &spec.id {
@@ -273,34 +339,29 @@ pub async fn replace_members(
                         "member row {id} vanished mid-save — retry the save"
                     )));
                 }
-                out.push(MemberRow {
-                    id: id.clone(),
-                    name: spec.name.clone(),
-                    sort_index,
-                });
             }
             None => {
-                let id = new_id();
                 sqlx::query(
                     "INSERT INTO class_member (id, class_id, name, sort_index, created_at)
                      VALUES (?1, ?2, ?3, ?4, ?5)",
                 )
-                .bind(&id)
+                .bind(new_id())
                 .bind(class_id)
                 .bind(&spec.name)
                 .bind(sort_index)
                 .bind(stamp)
                 .execute(&mut *tx)
                 .await?;
-                out.push(MemberRow {
-                    id,
-                    name: spec.name.clone(),
-                    sort_index,
-                });
             }
         }
     }
 
+    // Read the rows BACK instead of assembling them from the specs: the
+    // UPDATE deliberately leaves `absent_on` alone (editing the name list
+    // must not un-mark today's absences), and a hand-built row would have to
+    // guess that column — the first quiet way for the returned list and the
+    // database to disagree.
+    let out = list_members(&mut *tx, class_id).await?;
     tx.commit().await?;
     Ok(out)
 }
@@ -803,6 +864,150 @@ mod tests {
 
         let listed = list_members(&pool, &class.id).await.unwrap();
         assert_eq!(listed, second, "list agrees with the returned rows");
+    }
+
+    #[tokio::test]
+    async fn absence_is_a_date_stamp_so_yesterday_expires_by_itself() {
+        use sundayscreen_core::members::MemberSpec;
+        let (pool, _d) = temp_pool().await;
+        let class = insert_class(&pool, "7B").await.unwrap();
+        let members = replace_members(
+            &pool,
+            &class.id,
+            &["Kari", "Ola", "Nils"]
+                .iter()
+                .map(|n| MemberSpec {
+                    id: None,
+                    name: (*n).into(),
+                })
+                .collect::<Vec<_>>(),
+        )
+        .await
+        .unwrap();
+        assert!(members.iter().all(|m| m.absent_on.is_none()));
+
+        assert!(
+            set_member_absent(&pool, &class.id, &members[1].id, true, "2026-08-31")
+                .await
+                .unwrap()
+        );
+
+        let present = list_present_members(&pool, &class.id, "2026-08-31")
+            .await
+            .unwrap();
+        assert_eq!(
+            present.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+            vec!["Kari", "Nils"]
+        );
+        // The manage panel still sees everyone, absence and all.
+        let all = list_members(&pool, &class.id).await.unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[1].absent_on.as_deref(), Some("2026-08-31"));
+
+        // THE POINT of a date stamp: the next day needs no reset job. A
+        // machine that stood switched off across midnight is correct anyway.
+        let tomorrow = list_present_members(&pool, &class.id, "2026-09-01")
+            .await
+            .unwrap();
+        assert_eq!(tomorrow.len(), 3, "yesterday's absence expired on its own");
+
+        // Marking present again clears the stamp.
+        assert!(
+            set_member_absent(&pool, &class.id, &members[1].id, false, "2026-08-31")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            list_present_members(&pool, &class.id, "2026-08-31")
+                .await
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+
+    #[tokio::test]
+    async fn an_absence_write_for_another_class_misses() {
+        use sundayscreen_core::members::MemberSpec;
+        let (pool, _d) = temp_pool().await;
+        let a = insert_class(&pool, "7B").await.unwrap();
+        let b = insert_class(&pool, "8A").await.unwrap();
+        let members = replace_members(
+            &pool,
+            &a.id,
+            &[MemberSpec {
+                id: None,
+                name: "Kari".into(),
+            }],
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            !set_member_absent(&pool, &b.id, &members[0].id, true, "2026-08-31")
+                .await
+                .unwrap(),
+            "a member id from another class must MISS, never write"
+        );
+        assert!(
+            !set_member_absent(&pool, &a.id, "ghost", true, "2026-08-31")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            list_present_members(&pool, &a.id, "2026-08-31")
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn editing_the_name_list_does_not_un_mark_todays_absences() {
+        use sundayscreen_core::members::{reconcile, MemberSpec};
+        let (pool, _d) = temp_pool().await;
+        let class = insert_class(&pool, "7B").await.unwrap();
+        let first = replace_members(
+            &pool,
+            &class.id,
+            &[
+                MemberSpec {
+                    id: None,
+                    name: "Kari".into(),
+                },
+                MemberSpec {
+                    id: None,
+                    name: "Ola".into(),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+        set_member_absent(&pool, &class.id, &first[0].id, true, "2026-08-31")
+            .await
+            .unwrap();
+
+        // The teacher adds a pupil mid-lesson; Kari is still away.
+        let existing: Vec<(String, String)> = first
+            .iter()
+            .map(|m| (m.id.clone(), m.name.clone()))
+            .collect();
+        let specs = reconcile(&existing, &["Kari".into(), "Ola".into(), "Nils".into()]);
+        let after = replace_members(&pool, &class.id, &specs).await.unwrap();
+        assert_eq!(
+            after[0].absent_on.as_deref(),
+            Some("2026-08-31"),
+            "the returned list must report the absence it kept"
+        );
+        assert_eq!(after[2].absent_on, None, "a fresh row starts present");
+        assert_eq!(
+            list_present_members(&pool, &class.id, "2026-08-31")
+                .await
+                .unwrap()
+                .len(),
+            2
+        );
     }
 
     #[tokio::test]

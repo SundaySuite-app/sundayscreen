@@ -4,5 +4,8 @@
  * What a button press means. `Start` always starts FRESH (from any state) —
  * in countdown mode with the configured duration, in stopwatch mode from
  * zero.
+ *
+ * (`Eq` is gone since `Adjust` carries an f64 — `PartialEq` is what the
+ * vectors compare with anyway.)
  */
-export type TimerAction = { "type": "start" } | { "type": "pause" } | { "type": "resume" } | { "type": "reset" };
+export type TimerAction = { "type": "start" } | { "type": "pause" } | { "type": "resume" } | { "type": "reset" } | { "type": "adjust", deltaMs: number, };

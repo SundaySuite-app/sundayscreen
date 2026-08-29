@@ -40,14 +40,34 @@ async function saveGeometry(): Promise<void> {
   }
 }
 
+/**
+ * MEASURE the fullscreen state instead of assuming it. The stored flag only
+ * says what the app WANTED at the last quit: a restore can fail (the saved
+ * geometry pointed at a monitor that is gone, `set_fullscreen` errored), and
+ * then the two disagree. The direction that hurts is believing we ARE
+ * fullscreen when we are not — `saveGeometry` returns early on the flag, so
+ * one wrong `true` costs the window position for the WHOLE session.
+ *
+ * The backend answers, not `win.isFullscreen()`: on macOS the app uses
+ * SIMPLE fullscreen, which that JS call reports as `false`.
+ */
+async function refreshFullscreen(): Promise<void> {
+  fullscreen.value = await window.api.windowIsFullscreen();
+}
+
 /** Start following the window. No-op outside Tauri. */
 export async function initWindowState(): Promise<void> {
   if (!isTauri()) return;
-  fullscreen.value = settings.peek().window?.fullscreen ?? false;
+  await refreshFullscreen();
 
   const win = getCurrentWebviewWindow();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const schedule = () => {
+    // Re-measure on every move/resize, BEFORE the debounced save decides:
+    // fullscreen can be entered or left without passing through our own
+    // toggle (the green button, the window manager's own shortcut), and
+    // both of those arrive here as a resize.
+    void refreshFullscreen();
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => void saveGeometry(), SAVE_DEBOUNCE_MS);
   };

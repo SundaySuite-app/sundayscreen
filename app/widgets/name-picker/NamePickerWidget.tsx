@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tn } from "../../i18n";
+import { localDateStr } from "../../planner/date-core";
 import { members } from "../../state/classes";
 import {
   activeClass,
@@ -52,7 +53,13 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
     setSpinning(true);
     setRound(null);
     try {
-      const result = await window.api.pickerDraw(cls.id, cfg.noRepeat);
+      // The date is minted HERE, per click — a machine left on overnight
+      // must not deal yesterday's absences into this morning's lesson.
+      const result = await window.api.pickerDraw(
+        cls.id,
+        cfg.noRepeat,
+        localDateStr(new Date()),
+      );
       const names = members.peek().map((m) => m.name);
       timers.current.interval = setInterval(() => {
         setPreview(names[Math.floor(Math.random() * names.length)] ?? null);

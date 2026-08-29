@@ -36,7 +36,14 @@ export async function installFixtures(
       activeSceneId: string | null;
       members: Record<
         string,
-        { id: string; name: string; sortIndex: number }[]
+        {
+          id: string;
+          name: string;
+          sortIndex: number;
+          /** Local wall date the pupil was marked away, mirroring the real
+           *  `class_member.absent_on` (migration 0005). */
+          absentOn?: string | null;
+        }[]
       >;
       /** Keyed by SCENE id — the real schema's write key. */
       layouts: Record<string, unknown[]>;
@@ -79,6 +86,17 @@ export async function installFixtures(
 
     const defaultSceneId = (classId: string) => `default-${classId}`;
 
+    /** The two STABLE refusals from `commands/picker.rs`, verbatim — the
+     *  widgets tell "add some names" from "everybody is away" on them. */
+    const ERR_NO_MEMBERS = "validation: class has no members";
+    const ERR_ALL_AWAY = "validation: all members are away";
+
+    /** The real `list_present_members` filter: away = stamped with TODAY. */
+    const present = <T extends { absentOn?: string | null }>(
+      members: T[],
+      today: unknown,
+    ): T[] => members.filter((m) => !m.absentOn || m.absentOn !== today);
+
     const load = (): E2eDb =>
       (JSON.parse(localStorage.getItem(DB_KEY) ?? "null") as E2eDb | null) ?? {
         classes: [{ id: "c1", name: "7B", sortIndex: 0, createdAt: 1 }],
@@ -98,6 +116,7 @@ export async function installFixtures(
             id: `m-c1-${i}`,
             name,
             sortIndex: i,
+            absentOn: null,
           })),
         },
         layouts: { "default-c1": [] },
@@ -558,15 +577,24 @@ export async function installFixtures(
           .map((n) => n.trim())
           .filter((n) => n.length > 0);
         const freeIds = new Map<string, string[]>();
+        const wasAway = new Map<string, string | null>();
         for (const m of db.members[classId] ?? []) {
           const key = m.name.trim().toLowerCase();
           freeIds.set(key, [...(freeIds.get(key) ?? []), m.id]);
+          wasAway.set(m.id, m.absentOn ?? null);
         }
         db.members[classId] = names.map((name, i) => {
           const key = name.toLowerCase();
           const queue = freeIds.get(key);
           const kept = queue?.shift();
-          return { id: kept ?? mint(db), name, sortIndex: i };
+          return {
+            id: kept ?? mint(db),
+            name,
+            sortIndex: i,
+            // The real UPDATE never touches `absent_on`: editing the name
+            // list must not un-mark today's absences.
+            absentOn: kept ? (wasAway.get(kept) ?? null) : null,
+          };
         });
         const liveIds = new Set(db.members[classId].map((m) => m.id));
         db.drawn[classId] = (db.drawn[classId] ?? []).filter((id) =>
@@ -587,13 +615,19 @@ export async function installFixtures(
 
       // The draw is DETERMINISTIC here (first undrawn wins) — randomness is
       // the real backend's unit-tested job; journeys want stable answers.
+      //
+      // The ATTENDANCE semantics are mirrored exactly, though: present-only
+      // pools and the two DISTINCT refusals. A fake that dealt absent pupils
+      // would hide the very seam this feature can break at.
       picker_draw: (args?: Record<string, unknown>) => {
         const db = load();
         db.drawn ??= {};
         const classId = String(arg(args, "classId"));
         const noRepeat = !!arg(args, "noRepeat");
-        const members = db.members[classId] ?? [];
-        if (members.length === 0) throw new Error("validation");
+        const all = db.members[classId] ?? [];
+        if (all.length === 0) throw new Error(ERR_NO_MEMBERS);
+        const members = present(all, arg(args, "today"));
+        if (members.length === 0) throw new Error(ERR_ALL_AWAY);
         const drawnIds = db.drawn[classId] ?? [];
         let pool = noRepeat
           ? members.filter((m) => !drawnIds.includes(m.id))
@@ -619,10 +653,24 @@ export async function installFixtures(
         db.drawn[String(arg(args, "classId"))] = [];
         save(db);
       },
+      attendance_set: (args?: Record<string, unknown>) => {
+        const db = load();
+        const classId = String(arg(args, "classId"));
+        const memberId = String(arg(args, "memberId"));
+        const today = String(arg(args, "today"));
+        const hit = (db.members[classId] ?? []).find((m) => m.id === memberId);
+        // A miss REJECTS, exactly like the real command (promise 4).
+        if (!hit) throw new Error("not_found");
+        hit.absentOn = arg(args, "absent") ? today : null;
+        save(db);
+        return db.members[classId];
+      },
       groups_split: (args?: Record<string, unknown>) => {
         const db = load();
-        const members = db.members[String(arg(args, "classId"))] ?? [];
-        if (members.length === 0) throw new Error("validation");
+        const all = db.members[String(arg(args, "classId"))] ?? [];
+        if (all.length === 0) throw new Error(ERR_NO_MEMBERS);
+        const members = present(all, arg(args, "today"));
+        if (members.length === 0) throw new Error(ERR_ALL_AWAY);
         const mode = String(arg(args, "mode"));
         const n = Math.max(Number(arg(args, "n")) || 2, 1);
         const count =

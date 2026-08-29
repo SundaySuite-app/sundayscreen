@@ -326,17 +326,10 @@ console.log(
   `  (scanned ${files.length} files under ${SEARCH_ROOTS.join(", ")}, comments stripped)`,
 );
 
-const AUDIT = { registered: 178, reachable: 118, unreachable: 60 };
-if (
-  commands.length !== AUDIT.registered ||
-  reachable.length !== AUDIT.reachable ||
-  unreachable.length !== AUDIT.unreachable
-) {
-  console.log(
-    `  ⚠ differs from docs/COMMAND_AUDIT_2026-08.md's ${AUDIT.registered}/${AUDIT.reachable}/${AUDIT.unreachable} ` +
-      `— expected: the audit is a snapshot and the tree has moved since. Not a failure by itself.`,
-  );
-}
+// (An inherited AUDIT constant used to compare these numbers against a
+// sibling project's audit document that never existed here — it warned on
+// every run and told no one anything. The baseline file below is this
+// repo's actual regression guard.)
 
 // ── write mode ────────────────────────────────────────────────────────────
 

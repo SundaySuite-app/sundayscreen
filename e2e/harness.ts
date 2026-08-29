@@ -42,6 +42,38 @@ export async function installFixtures(
       layouts: Record<string, unknown[]>;
       drawn?: Record<string, string[]>;
       settings?: Record<string, unknown>;
+      periods?: {
+        id: string;
+        label: string;
+        startMin: number;
+        endMin: number;
+        kind: string;
+        sortIndex: number;
+      }[];
+      slots?: Record<
+        string,
+        { classId: string | null; subject: string; sceneId: string | null }
+      >;
+      overrides?: Record<
+        string,
+        {
+          kind: string;
+          classId: string | null;
+          subject: string;
+          sceneId: string | null;
+          title: string;
+        }
+      >;
+      agenda?: Record<
+        string,
+        {
+          id: string;
+          text: string;
+          durationMin: number | null;
+          done: boolean;
+        }[]
+      >;
+      notes?: Record<string, { id: string; body: string }[]>;
       nextId: number;
     }
 
@@ -306,6 +338,175 @@ export async function installFixtures(
         }));
         save(db);
         return copy;
+      },
+
+      // ── Planner (samme skygge-semantikk som backend) ────────────────
+      planner_periods_get: () => load().periods ?? [],
+      planner_periods_set: (args?: Record<string, unknown>) => {
+        const db = load();
+        const specs =
+          (arg(args, "periods") as {
+            id: string | null;
+            label: string;
+            startMin: number;
+            endMin: number;
+            kind: string;
+          }[]) ?? [];
+        const sorted = [...specs].sort((a, b) => a.startMin - b.startMin);
+        for (let i = 1; i < sorted.length; i++) {
+          if (sorted[i].startMin < sorted[i - 1].endMin)
+            throw new Error("validation");
+        }
+        const keep = new Set(
+          sorted.map((s) => s.id).filter((x): x is string => x != null),
+        );
+        // Cascade: slots/agenda for dropped periods die.
+        for (const key of Object.keys(db.slots ?? {})) {
+          const pid = key.split(":")[1];
+          if (!keep.has(pid)) delete db.slots![key];
+        }
+        for (const key of Object.keys(db.agenda ?? {})) {
+          const pid = key.split(":")[1];
+          if (!keep.has(pid)) delete db.agenda![key];
+        }
+        db.periods = sorted.map((s, i) => ({
+          id: s.id ?? mint(db),
+          label: s.label,
+          startMin: s.startMin,
+          endMin: s.endMin,
+          kind: s.kind,
+          sortIndex: i,
+        }));
+        save(db);
+        return db.periods;
+      },
+      planner_week_get: () => {
+        const db = load();
+        return Object.entries(db.slots ?? {}).map(([key, v]) => {
+          const [weekday, periodId] = key.split(":");
+          return { id: key, weekday: Number(weekday), periodId, ...v };
+        });
+      },
+      planner_slot_set: (args?: Record<string, unknown>) => {
+        const db = load();
+        db.slots ??= {};
+        const key = `${Number(arg(args, "weekday"))}:${String(arg(args, "periodId"))}`;
+        const slot = arg(args, "slot") as {
+          classId: string | null;
+          subject: string;
+          sceneId: string | null;
+        } | null;
+        if (slot == null) delete db.slots[key];
+        else db.slots[key] = slot;
+        save(db);
+      },
+      planner_override_set: (args?: Record<string, unknown>) => {
+        const db = load();
+        db.overrides ??= {};
+        const key = `${String(arg(args, "date"))}:${String(arg(args, "periodId"))}`;
+        const ovr = arg(args, "ovr") as {
+          kind: string;
+          classId: string | null;
+          subject: string;
+          sceneId: string | null;
+          title: string;
+        } | null;
+        if (ovr == null) delete db.overrides[key];
+        else db.overrides[key] = ovr;
+        save(db);
+      },
+      planner_day_get: (args?: Record<string, unknown>) => {
+        const db = load();
+        const date = String(arg(args, "date"));
+        const weekday = Number(arg(args, "weekday"));
+        const className = (id: string | null) =>
+          db.classes.find((c) => c.id === id)?.name ?? null;
+        const sceneName = (id: string | null) =>
+          db.scenes.find((s) => s.id === id)?.name ?? null;
+        const entries = (db.periods ?? []).map((p) => {
+          let lesson = null;
+          if (p.kind !== "break") {
+            const ovr = (db.overrides ?? {})[`${date}:${p.id}`];
+            if (ovr) {
+              lesson =
+                ovr.kind === "cancelled"
+                  ? null
+                  : {
+                      classId: ovr.classId,
+                      className: className(ovr.classId),
+                      subject: ovr.subject,
+                      sceneId: ovr.sceneId,
+                      sceneName: sceneName(ovr.sceneId),
+                      title: ovr.title,
+                      overridden: true,
+                    };
+            } else {
+              const slot = (db.slots ?? {})[`${weekday}:${p.id}`];
+              if (slot && (slot.classId || slot.subject)) {
+                lesson = {
+                  classId: slot.classId,
+                  className: className(slot.classId),
+                  subject: slot.subject,
+                  sceneId: slot.sceneId,
+                  sceneName: sceneName(slot.sceneId),
+                  title: "",
+                  overridden: false,
+                };
+              }
+            }
+          }
+          const agenda = ((db.agenda ?? {})[`${date}:${p.id}`] ?? []).map(
+            (a, i) => ({ ...a, date, periodId: p.id, sortIndex: i }),
+          );
+          return { period: p, lesson, agenda };
+        });
+        const notes = ((db.notes ?? {})[date] ?? []).map((n, i) => ({
+          ...n,
+          date,
+          sortIndex: i,
+        }));
+        return { date, weekday, entries, notes };
+      },
+      planner_agenda_set: (args?: Record<string, unknown>) => {
+        const db = load();
+        db.agenda ??= {};
+        const date = String(arg(args, "date"));
+        const periodId = String(arg(args, "periodId"));
+        const items = (
+          (arg(args, "items") as {
+            id: string | null;
+            text: string;
+            durationMin: number | null;
+            done: boolean;
+          }[]) ?? []
+        ).map((i) => ({ ...i, id: i.id ?? mint(db) }));
+        db.agenda[`${date}:${periodId}`] = items;
+        save(db);
+        return items.map((a, i) => ({ ...a, date, periodId, sortIndex: i }));
+      },
+      planner_agenda_check: (args?: Record<string, unknown>) => {
+        const db = load();
+        const id = String(arg(args, "itemId"));
+        for (const list of Object.values(db.agenda ?? {})) {
+          const hit = list.find((a) => a.id === id);
+          if (hit) {
+            hit.done = !!arg(args, "done");
+            save(db);
+            return;
+          }
+        }
+        throw new Error("not_found");
+      },
+      planner_notes_set: (args?: Record<string, unknown>) => {
+        const db = load();
+        db.notes ??= {};
+        const date = String(arg(args, "date"));
+        const notes = (
+          (arg(args, "notes") as { id: string | null; body: string }[]) ?? []
+        ).map((n) => ({ ...n, id: n.id ?? mint(db) }));
+        db.notes[date] = notes;
+        save(db);
+        return notes.map((n, i) => ({ ...n, date, sortIndex: i }));
       },
 
       members_get: (args?: Record<string, unknown>) =>

@@ -5,6 +5,7 @@
 import { classMenuOpen, managePanelOpen } from "../state/classes";
 import { addMenuOpen } from "../state/chrome";
 import { sceneMenuOpen } from "../state/scenes";
+import { plannerPanelOpen } from "../state/planner";
 import { chromeActivity, fullscreen, toggleFullscreen } from "../state/chrome";
 import { escapeTarget } from "./chrome-core";
 
@@ -32,7 +33,7 @@ export function installKeyboard(): () => void {
       escapeTarget({
         addMenuOpen: addMenuOpen.peek(),
         menuOpen: classMenuOpen.peek() || sceneMenuOpen.peek(),
-        overlayOpen: managePanelOpen.peek(),
+        overlayOpen: managePanelOpen.peek() || plannerPanelOpen.peek(),
         fullscreen: fullscreen.peek(),
       })
     ) {
@@ -45,6 +46,7 @@ export function installKeyboard(): () => void {
         break;
       case "overlay":
         managePanelOpen.value = false;
+        plannerPanelOpen.value = false;
         break;
       case "fullscreen":
         void toggleFullscreen();

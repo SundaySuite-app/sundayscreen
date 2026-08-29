@@ -174,6 +174,9 @@ pub struct NameLookup {
 
 /// THE shadowing rule. `periods` must be sorted (see [`normalize_periods`]);
 /// `slots` are the weekday's, `overrides`/`agenda`/`notes` the date's.
+/// (Eight arguments because a day genuinely has eight inputs — bundling
+/// them into a struct would just move the same list one level down.)
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_day(
     date: &str,
     weekday: u8,

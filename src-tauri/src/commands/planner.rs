@@ -211,14 +211,12 @@ pub async fn planner_override_set(
         db.pool(),
         &date,
         &period_id,
-        ovr.as_ref().map(|o| {
-            (
-                o.kind,
-                &o.class_id,
-                o.subject.as_str(),
-                &o.scene_id,
-                o.title.as_str(),
-            )
+        ovr.as_ref().map(|o| pstore::OverrideWrite {
+            kind: o.kind,
+            class_id: &o.class_id,
+            subject: &o.subject,
+            scene_id: &o.scene_id,
+            title: &o.title,
         }),
     )
     .await
@@ -269,6 +267,23 @@ pub async fn planner_notes_set(
         })
         .collect();
     pstore::replace_notes(db.pool(), &date, &rows).await
+}
+
+/// Test seam for the targeted check-off (the command wrapper needs managed
+/// state; tests call this).
+#[cfg(test)]
+pub(crate) async fn planner_agenda_check_inner(
+    pool: &SqlitePool,
+    item_id: &str,
+    done: bool,
+) -> AppResult<()> {
+    if !pstore::set_agenda_done(pool, item_id, done).await? {
+        return Err(AppError::NotFound {
+            entity: "agenda_item",
+            id: item_id.to_string(),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -406,17 +421,18 @@ mod tests {
         )
         .await
         .unwrap();
+        let ovr_class = Some(class.id.clone());
         pstore::set_override(
             &pool,
             "2026-08-31",
             &p1,
-            Some((
-                OverrideKind::Lesson,
-                &Some(class.id.clone()),
-                "Matte",
-                &None,
-                "Prøve",
-            )),
+            Some(pstore::OverrideWrite {
+                kind: OverrideKind::Lesson,
+                class_id: &ovr_class,
+                subject: "Matte",
+                scene_id: &None,
+                title: "Prøve",
+            }),
         )
         .await
         .unwrap();
@@ -467,21 +483,4 @@ mod tests {
             "validation"
         );
     }
-}
-
-/// Test seam for the targeted check-off (the command wrapper needs managed
-/// state; tests call this).
-#[cfg(test)]
-pub(crate) async fn planner_agenda_check_inner(
-    pool: &SqlitePool,
-    item_id: &str,
-    done: bool,
-) -> AppResult<()> {
-    if !pstore::set_agenda_done(pool, item_id, done).await? {
-        return Err(AppError::NotFound {
-            entity: "agenda_item",
-            id: item_id.to_string(),
-        });
-    }
-    Ok(())
 }

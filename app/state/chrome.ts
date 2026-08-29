@@ -11,6 +11,7 @@ import type { WindowState } from "../bindings/WindowState";
 import { settings } from "./settings";
 import { classMenuOpen, managePanelOpen } from "./classes";
 import { sceneMenuOpen } from "./scenes";
+import { plannerPanelOpen } from "./planner";
 
 export const chromeVisible = signal(true);
 export const fullscreen = signal(false);
@@ -39,6 +40,7 @@ export function initChrome(): () => void {
       managePanelOpen.peek() ||
       classMenuOpen.peek() ||
       sceneMenuOpen.peek() ||
+      plannerPanelOpen.peek() ||
       addMenuOpen.peek();
     if (
       chromeVisible.peek() &&

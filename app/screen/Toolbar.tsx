@@ -14,7 +14,8 @@ import {
 } from "../state/chrome";
 import { t } from "../i18n";
 import { Icon } from "../ui/Icon";
-import { sceneMenuOpen } from "../state/scenes";
+import { loadScenes, sceneMenuOpen } from "../state/scenes";
+import { plannerPanelOpen, refreshPlanner } from "../state/planner";
 import { AddMenu } from "./AddMenu";
 import { ClassSwitcher } from "./ClassSwitcher";
 import { SceneSwitcher } from "./SceneSwitcher";
@@ -23,6 +24,7 @@ import styles from "./Toolbar.module.css";
 export function Toolbar() {
   const shown =
     chromeVisible.value ||
+    plannerPanelOpen.value ||
     managePanelOpen.value ||
     classMenuOpen.value ||
     sceneMenuOpen.value ||
@@ -41,6 +43,18 @@ export function Toolbar() {
       <span class={styles.brand}>{t("app.name")}</span>
       <AddMenu />
       <span class={styles.meta}>
+        <button
+          class={styles.iconBtn}
+          aria-label={t("planner.title")}
+          title={t("planner.title")}
+          onClick={() => {
+            plannerPanelOpen.value = true;
+            void refreshPlanner();
+            void loadScenes();
+          }}
+        >
+          <Icon name="planner" size="md" />
+        </button>
         <SceneSwitcher />
         <ClassSwitcher />
         <button

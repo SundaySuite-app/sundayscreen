@@ -199,13 +199,21 @@ pub async fn overrides_for_date(pool: &SqlitePool, date: &str) -> AppResult<Vec<
         .collect())
 }
 
+/// The content of one override write.
+pub struct OverrideWrite<'a> {
+    pub kind: OverrideKind,
+    pub class_id: &'a Option<String>,
+    pub subject: &'a str,
+    pub scene_id: &'a Option<String>,
+    pub title: &'a str,
+}
+
 /// Upsert (Some) or clear (None) one (date, period) override.
-#[allow(clippy::too_many_arguments)]
 pub async fn set_override(
     pool: &SqlitePool,
     date: &str,
     period_id: &str,
-    ovr: Option<(OverrideKind, &Option<String>, &str, &Option<String>, &str)>,
+    ovr: Option<OverrideWrite<'_>>,
 ) -> AppResult<()> {
     match ovr {
         None => {
@@ -215,7 +223,7 @@ pub async fn set_override(
                 .execute(pool)
                 .await?;
         }
-        Some((kind, class_id, subject, scene_id, title)) => {
+        Some(w) => {
             sqlx::query(
                 "INSERT INTO date_override
                    (id, date, period_id, kind, class_id, subject, scene_id, title, created_at)
@@ -226,11 +234,11 @@ pub async fn set_override(
             .bind(new_id())
             .bind(date)
             .bind(period_id)
-            .bind(override_kind_tag(kind))
-            .bind(class_id)
-            .bind(subject)
-            .bind(scene_id)
-            .bind(title)
+            .bind(override_kind_tag(w.kind))
+            .bind(w.class_id)
+            .bind(w.subject)
+            .bind(w.scene_id)
+            .bind(w.title)
             .bind(now_ms())
             .execute(pool)
             .await?;

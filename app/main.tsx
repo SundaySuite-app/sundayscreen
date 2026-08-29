@@ -25,6 +25,15 @@ import { Shell } from "./Shell";
 import { loadAppInfo } from "./state/app-info";
 import { loadClasses, loadMembers } from "./state/classes";
 import { loadScenes } from "./state/scenes";
+import { parseGoto } from "@lib/goto-core";
+import {
+  initPlanner,
+  plannerPanelOpen,
+  plannerTab,
+  refreshPlanner,
+  type PlannerTab,
+} from "./state/planner";
+import { managePanelOpen } from "./state/classes";
 import { initChrome } from "./state/chrome";
 import { activeClass, initLayout } from "./state/layout";
 import { hydrateSettings, settings } from "./state/settings";
@@ -73,6 +82,19 @@ async function boot(): Promise<void> {
   if (cls) void loadMembers(cls.id);
   void loadClasses();
   void loadScenes();
+  void initPlanner();
+
+  // `?goto=` deep links (dev + the browser test tier).
+  const goto = parseGoto(location.search);
+  if (goto?.page === "manage") managePanelOpen.value = true;
+  if (goto?.page === "planner") {
+    plannerPanelOpen.value = true;
+    void refreshPlanner();
+    const tab = goto.tab?.replace(/^planner-/, "");
+    if (tab === "periods" || tab === "week" || tab === "day") {
+      plannerTab.value = tab as PlannerTab;
+    }
+  }
   // A one-shot read the footer shows. No await — a line that can render "—"
   // until the number lands should not delay boot.
   void loadAppInfo();

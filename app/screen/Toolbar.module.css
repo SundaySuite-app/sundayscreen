@@ -4,6 +4,10 @@
   transform: translateX(-50%);
   bottom: var(--sp-4);
   z-index: var(--z-chrome);
+  /* An absolutely positioned box at left:50% only has the RIGHT half of the
+   * screen as available width, so shrink-to-fit wrapped the single row onto
+   * two at any viewport. Ask for the content's width explicitly. */
+  width: max-content;
   display: flex;
   align-items: center;
   flex-wrap: wrap;

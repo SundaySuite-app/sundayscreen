@@ -130,3 +130,21 @@ test("adding from the menu closes it and lands the widget", async ({
     page.getByRole("button", { name: "Rødt lys — stille" }),
   ).toBeVisible();
 });
+
+test("the toolbar stays ONE row at 1280×800 with every control", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  // Brand, add menu, planner, scene switcher, class switcher, fullscreen and
+  // the version all fit on one line — the whole point of the R2 redesign.
+  // (An absolutely positioned box at left:50% only gets the right half of
+  // the screen as available width, which used to force a wrap.)
+  const box = await page.locator("footer").boundingBox();
+  expect(box!.height).toBeLessThan(70);
+  await expect(page.getByRole("button", { name: "Planlegger" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bytt skjerm" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bytt klasse" })).toBeVisible();
+});

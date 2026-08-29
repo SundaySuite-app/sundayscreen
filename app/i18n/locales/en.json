@@ -25,7 +25,9 @@
       "trafficlight": "Traffic light",
       "worksymbol": "Work symbol",
       "agenda": "This lesson",
-      "today": "Today"
+      "today": "Today",
+      "deadline": "Deadline",
+      "checklist": "Checklist"
     },
     "text": {
       "placeholder": "Write a message …"
@@ -221,5 +223,29 @@
     "noLessons": "No lessons today",
     "showLessons": "Timetable",
     "showNotes": "Messages"
+  },
+  "deadline": {
+    "pickDate": "Pick a date",
+    "titlePlaceholder": "What is due?",
+    "overdue": "The deadline has passed",
+    "showHours": "Hours",
+    "days": {
+      "one": "day left",
+      "other": "days left"
+    },
+    "hours": {
+      "one": "hour left",
+      "other": "hours left"
+    },
+    "hoursShort": {
+      "one": "+ {n} hour",
+      "other": "+ {n} hours"
+    }
+  },
+  "checklist": {
+    "addPlaceholder": "New item …",
+    "check": "Mark done",
+    "remove": "Remove the item",
+    "empty": "No items yet"
   }
 }

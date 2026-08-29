@@ -168,6 +168,23 @@ pub struct ManualAgendaItem {
 pub const MANUAL_AGENDA_MAX_ITEMS: usize = 30;
 pub const MANUAL_AGENDA_TEXT_MAX_CHARS: usize = 500;
 
+/// One line of the checklist widget.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "ChecklistItem.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct ChecklistItem {
+    pub id: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub done: bool,
+}
+
+/// Caps for the deadline and checklist widgets.
+pub const DEADLINE_TITLE_MAX_CHARS: usize = 120;
+pub const CHECKLIST_MAX_ITEMS: usize = 30;
+pub const CHECKLIST_TEXT_MAX_CHARS: usize = 200;
+
 /// Per-kind widget configuration. The serde tag IS the `kind` column value —
 /// a renamed variant is a broken database.
 ///
@@ -286,6 +303,29 @@ pub enum WidgetConfig {
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
     },
+    /// «Frist» — a long-horizon countdown in days/hours to a wall date.
+    /// `target_epoch_ms = 0.0` is the honest "not set yet" state (clamp is
+    /// pure and cannot know `now`, so there is no now-relative default).
+    Deadline {
+        #[serde(default)]
+        title: String,
+        #[serde(default)]
+        target_epoch_ms: f64,
+        #[serde(default = "default_true_flag")]
+        show_hours: bool,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
+    },
+    /// «Sjekkliste» — big check-off rows; checked state is config, so a
+    /// restart restores it exactly.
+    Checklist {
+        #[serde(default)]
+        items: Vec<ChecklistItem>,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
+    },
     /// «Dagen i dag» — date, today's lessons and messages.
     Today {
         #[serde(default = "default_true_flag")]
@@ -315,6 +355,8 @@ impl WidgetConfig {
             WidgetConfig::TrafficLight { .. } => "trafficlight",
             WidgetConfig::WorkSymbol { .. } => "worksymbol",
             WidgetConfig::Agenda { .. } => "agenda",
+            WidgetConfig::Deadline { .. } => "deadline",
+            WidgetConfig::Checklist { .. } => "checklist",
             WidgetConfig::Today { .. } => "today",
         }
     }
@@ -366,6 +408,16 @@ impl WidgetConfig {
                 mode: WorkMode::default(),
                 extra: Default::default(),
             }),
+            "deadline" => Some(WidgetConfig::Deadline {
+                title: String::new(),
+                target_epoch_ms: 0.0,
+                show_hours: true,
+                extra: Default::default(),
+            }),
+            "checklist" => Some(WidgetConfig::Checklist {
+                items: Vec::new(),
+                extra: Default::default(),
+            }),
             "agenda" => Some(WidgetConfig::Agenda {
                 source: AgendaSource::default(),
                 show_times: true,
@@ -394,6 +446,8 @@ impl WidgetConfig {
             | WidgetConfig::TrafficLight { extra, .. }
             | WidgetConfig::WorkSymbol { extra, .. }
             | WidgetConfig::Agenda { extra, .. }
+            | WidgetConfig::Deadline { extra, .. }
+            | WidgetConfig::Checklist { extra, .. }
             | WidgetConfig::Today { extra, .. } => extra,
         }
     }
@@ -474,6 +528,26 @@ impl WidgetConfig {
                             .collect();
                     }
                     item.duration_min = item.duration_min.map(|d| d.clamp(1, 600));
+                }
+            }
+            WidgetConfig::Deadline {
+                title,
+                target_epoch_ms,
+                ..
+            } => {
+                if title.chars().count() > DEADLINE_TITLE_MAX_CHARS {
+                    *title = title.chars().take(DEADLINE_TITLE_MAX_CHARS).collect();
+                }
+                if !target_epoch_ms.is_finite() || *target_epoch_ms < 0.0 {
+                    *target_epoch_ms = 0.0;
+                }
+            }
+            WidgetConfig::Checklist { items, .. } => {
+                items.truncate(CHECKLIST_MAX_ITEMS);
+                for item in items.iter_mut() {
+                    if item.text.chars().count() > CHECKLIST_TEXT_MAX_CHARS {
+                        item.text = item.text.chars().take(CHECKLIST_TEXT_MAX_CHARS).collect();
+                    }
                 }
             }
             WidgetConfig::Today { .. } => {}

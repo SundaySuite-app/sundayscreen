@@ -25,7 +25,9 @@
       "trafficlight": "Trafikklys",
       "worksymbol": "Arbeidssymbol",
       "agenda": "Dagens time",
-      "today": "Dagen i dag"
+      "today": "Dagen i dag",
+      "deadline": "Frist",
+      "checklist": "Sjekkliste"
     },
     "text": {
       "placeholder": "Skriv en beskjed …"
@@ -221,5 +223,29 @@
     "noLessons": "Ingen timer i dag",
     "showLessons": "Timeplan",
     "showNotes": "Beskjeder"
+  },
+  "deadline": {
+    "pickDate": "Velg dato",
+    "titlePlaceholder": "Hva er fristen?",
+    "overdue": "Fristen er passert",
+    "showHours": "Timer",
+    "days": {
+      "one": "dag igjen",
+      "other": "dager igjen"
+    },
+    "hours": {
+      "one": "time igjen",
+      "other": "timer igjen"
+    },
+    "hoursShort": {
+      "one": "+ {n} time",
+      "other": "+ {n} timer"
+    }
+  },
+  "checklist": {
+    "addPlaceholder": "Nytt punkt …",
+    "check": "Merk gjort",
+    "remove": "Fjern punkt",
+    "empty": "Ingen punkter ennå"
   }
 }

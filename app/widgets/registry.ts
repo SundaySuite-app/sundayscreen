@@ -4,6 +4,8 @@
 
 import { clockWidgetDef } from "./clock";
 import { agendaWidgetDef } from "./agenda";
+import { checklistWidgetDef } from "./checklist";
+import { deadlineWidgetDef } from "./deadline";
 import { diceWidgetDef } from "./dice";
 import { groupsWidgetDef } from "./groups";
 import { namePickerWidgetDef } from "./name-picker";
@@ -27,6 +29,8 @@ export const WIDGET_REGISTRY: Record<WidgetKind, WidgetDef> = {
   dice: diceWidgetDef,
   agenda: agendaWidgetDef,
   today: todayWidgetDef,
+  deadline: deadlineWidgetDef,
+  checklist: checklistWidgetDef,
 };
 
 export const WIDGET_KINDS = Object.keys(WIDGET_REGISTRY) as WidgetKind[];

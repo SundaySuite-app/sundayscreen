@@ -23,7 +23,9 @@
       "groups": "Groups",
       "dice": "Dice",
       "trafficlight": "Traffic light",
-      "worksymbol": "Work symbol"
+      "worksymbol": "Work symbol",
+      "agenda": "This lesson",
+      "today": "Today"
     },
     "text": {
       "placeholder": "Write a message …"
@@ -202,5 +204,22 @@
     "addNote": "Add a message",
     "notePlaceholder": "A message for the class …",
     "saveNotes": "Save the messages"
+  },
+  "agenda": {
+    "empty": "No lesson right now",
+    "next": "Next lesson",
+    "plan": "Plan the lesson in the planner",
+    "sourcePlanner": "Planner",
+    "sourceManual": "Manual",
+    "showTimes": "Times",
+    "addPlaceholder": "New activity …",
+    "check": "Mark done",
+    "pin": "Mark as now",
+    "remove": "Remove the activity"
+  },
+  "today": {
+    "noLessons": "No lessons today",
+    "showLessons": "Timetable",
+    "showNotes": "Messages"
   }
 }

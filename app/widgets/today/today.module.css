@@ -1,0 +1,91 @@
+.today {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2cqmin;
+  padding: 4cqmin;
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+}
+
+.weekday {
+  font-size: 10cqmin;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+  text-transform: capitalize;
+}
+
+.date {
+  font-size: 5.5cqmin;
+  color: var(--ink-2);
+}
+
+.lessons,
+.notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8cqmin;
+  overflow-y: auto;
+}
+
+.lessons {
+  flex: 1;
+}
+
+.lesson {
+  display: flex;
+  align-items: baseline;
+  gap: 2cqmin;
+  font-size: 4.6cqmin;
+  color: var(--ink);
+}
+
+.time {
+  flex: none;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.subject {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.className {
+  flex: none;
+  color: var(--ink-2);
+  font-weight: 700;
+}
+
+.emptyRow {
+  color: var(--ink-3);
+  font-size: 4.6cqmin;
+}
+
+.notes {
+  border-top: 1px solid var(--line);
+  padding-top: 2cqmin;
+}
+
+.note {
+  display: flex;
+  gap: 1.6cqmin;
+  font-size: 4.2cqmin;
+  color: var(--ink-2);
+}
+
+.note::before {
+  content: "•";
+  color: var(--gold);
+  font-weight: 700;
+}

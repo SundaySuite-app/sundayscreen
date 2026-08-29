@@ -3,10 +3,12 @@
 // `WidgetConfig` variant + i18n keys). Nothing else changes.
 
 import { clockWidgetDef } from "./clock";
+import { agendaWidgetDef } from "./agenda";
 import { diceWidgetDef } from "./dice";
 import { groupsWidgetDef } from "./groups";
 import { namePickerWidgetDef } from "./name-picker";
 import { textWidgetDef } from "./text";
+import { todayWidgetDef } from "./today";
 import { timerWidgetDef } from "./timer";
 import { trafficLightWidgetDef } from "./traffic-light";
 import { workSymbolWidgetDef } from "./work-symbol";
@@ -23,6 +25,8 @@ export const WIDGET_REGISTRY: Record<WidgetKind, WidgetDef> = {
   namepicker: namePickerWidgetDef,
   groups: groupsWidgetDef,
   dice: diceWidgetDef,
+  agenda: agendaWidgetDef,
+  today: todayWidgetDef,
 };
 
 export const WIDGET_KINDS = Object.keys(WIDGET_REGISTRY) as WidgetKind[];

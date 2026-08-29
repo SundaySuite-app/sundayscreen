@@ -137,6 +137,37 @@ fn default_sound_on() -> bool {
 pub const TIMER_MIN_MS: f64 = 5_000.0;
 pub const TIMER_MAX_MS: f64 = 86_400_000.0; // 24 h
 
+/// Where «Dagens time» gets its content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "AgendaSource.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum AgendaSource {
+    /// Bound to the planner: the widget shows today's current lesson.
+    #[default]
+    Planner,
+    /// Free-standing items stored in the config.
+    Manual,
+}
+
+/// One line of a manual agenda (planner-free mode).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "ManualAgendaItem.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct ManualAgendaItem {
+    pub id: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub duration_min: Option<u32>,
+    #[serde(default)]
+    pub done: bool,
+}
+
+/// Caps for the manual agenda (the planner-backed one is capped backend-side).
+pub const MANUAL_AGENDA_MAX_ITEMS: usize = 30;
+pub const MANUAL_AGENDA_TEXT_MAX_CHARS: usize = 500;
+
 /// Per-kind widget configuration. The serde tag IS the `kind` column value —
 /// a renamed variant is a broken database.
 ///
@@ -239,6 +270,36 @@ pub enum WidgetConfig {
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
     },
+    /// «Dagens time» — the lesson's agenda, planner-bound or manual. The
+    /// pin is the teacher's manual override of the clock-driven now-marker;
+    /// persisted so a restart mid-lesson restores the exact screen.
+    Agenda {
+        #[serde(default)]
+        source: AgendaSource,
+        #[serde(default = "default_true_flag")]
+        show_times: bool,
+        #[serde(default)]
+        manual_items: Vec<ManualAgendaItem>,
+        #[serde(default)]
+        pinned_item_id: Option<String>,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
+    },
+    /// «Dagen i dag» — date, today's lessons and messages.
+    Today {
+        #[serde(default = "default_true_flag")]
+        show_lessons: bool,
+        #[serde(default = "default_true_flag")]
+        show_notes: bool,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
+    },
+}
+
+fn default_true_flag() -> bool {
+    true
 }
 
 impl WidgetConfig {
@@ -253,6 +314,8 @@ impl WidgetConfig {
             WidgetConfig::Dice { .. } => "dice",
             WidgetConfig::TrafficLight { .. } => "trafficlight",
             WidgetConfig::WorkSymbol { .. } => "worksymbol",
+            WidgetConfig::Agenda { .. } => "agenda",
+            WidgetConfig::Today { .. } => "today",
         }
     }
 
@@ -303,6 +366,18 @@ impl WidgetConfig {
                 mode: WorkMode::default(),
                 extra: Default::default(),
             }),
+            "agenda" => Some(WidgetConfig::Agenda {
+                source: AgendaSource::default(),
+                show_times: true,
+                manual_items: Vec::new(),
+                pinned_item_id: None,
+                extra: Default::default(),
+            }),
+            "today" => Some(WidgetConfig::Today {
+                show_lessons: true,
+                show_notes: true,
+                extra: Default::default(),
+            }),
             _ => None,
         }
     }
@@ -317,7 +392,9 @@ impl WidgetConfig {
             | WidgetConfig::Groups { extra, .. }
             | WidgetConfig::Dice { extra, .. }
             | WidgetConfig::TrafficLight { extra, .. }
-            | WidgetConfig::WorkSymbol { extra, .. } => extra,
+            | WidgetConfig::WorkSymbol { extra, .. }
+            | WidgetConfig::Agenda { extra, .. }
+            | WidgetConfig::Today { extra, .. } => extra,
         }
     }
 
@@ -386,6 +463,20 @@ impl WidgetConfig {
             }
             WidgetConfig::TrafficLight { .. } => {}
             WidgetConfig::WorkSymbol { .. } => {}
+            WidgetConfig::Agenda { manual_items, .. } => {
+                manual_items.truncate(MANUAL_AGENDA_MAX_ITEMS);
+                for item in manual_items.iter_mut() {
+                    if item.text.chars().count() > MANUAL_AGENDA_TEXT_MAX_CHARS {
+                        item.text = item
+                            .text
+                            .chars()
+                            .take(MANUAL_AGENDA_TEXT_MAX_CHARS)
+                            .collect();
+                    }
+                    item.duration_min = item.duration_min.map(|d| d.clamp(1, 600));
+                }
+            }
+            WidgetConfig::Today { .. } => {}
         }
     }
 }

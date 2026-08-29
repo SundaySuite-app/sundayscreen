@@ -23,7 +23,9 @@
       "groups": "Grupper",
       "dice": "Terning",
       "trafficlight": "Trafikklys",
-      "worksymbol": "Arbeidssymbol"
+      "worksymbol": "Arbeidssymbol",
+      "agenda": "Dagens time",
+      "today": "Dagen i dag"
     },
     "text": {
       "placeholder": "Skriv en beskjed …"
@@ -202,5 +204,22 @@
     "addNote": "Legg til beskjed",
     "notePlaceholder": "Beskjed til klassen …",
     "saveNotes": "Lagre beskjeder"
+  },
+  "agenda": {
+    "empty": "Ingen time nå",
+    "next": "Neste time",
+    "plan": "Planlegg timen i planleggeren",
+    "sourcePlanner": "Planlegger",
+    "sourceManual": "Manuell",
+    "showTimes": "Tider",
+    "addPlaceholder": "Ny aktivitet …",
+    "check": "Merk gjort",
+    "pin": "Merk som nå",
+    "remove": "Fjern aktivitet"
+  },
+  "today": {
+    "noLessons": "Ingen timer i dag",
+    "showLessons": "Timeplan",
+    "showNotes": "Beskjeder"
   }
 }

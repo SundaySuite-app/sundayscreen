@@ -7,10 +7,11 @@ do not need to be a developer to make one.
 
 ## The most valuable thing you can do
 
-**Use it for something real and tell us what broke.** The apps send nothing home
-unless you opt in to anonymous telemetry, so when something fails we usually have no
-idea. A two-line bug report is a genuine contribution — open an issue here, or email
-dev@sundaysuite.app if GitHub is not your thing.
+**Use it for something real and tell us what broke.** SundayScreen has no telemetry
+at all — not even opt-in — and pupil names never leave the machine, so when something
+fails we have no idea unless you tell us. A two-line bug report is a genuine
+contribution — open an issue here, or email dev@sundaysuite.app if GitHub is not your
+thing.
 
 ## Ways in
 
@@ -19,7 +20,8 @@ dev@sundaysuite.app if GitHub is not your thing.
 - **Write code** — open an issue to say hello first, then send a pull request.
 - **Translate** — Norwegian Bokmal and Nynorsk are first-class here, and more languages
   are very welcome. Translation files are friendly territory for a first contribution.
-- **Design** — icons, layouts, the feel of a screen in a dark room.
+- **Design** — icons, layouts, and how a screen reads from the back row of a lit
+  classroom (this one is light-first on purpose; see docs/DECISIONS.md, ADR-006).
 - **Improve the docs** — the guides on sundaysuite.app are written for volunteers, not
   developers. If one confused you, that is a bug.
 - **Tell us what your church or classroom actually needs** — this shapes the roadmap

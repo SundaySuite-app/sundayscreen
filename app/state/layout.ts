@@ -87,7 +87,7 @@ function nextZ(): number {
 export function addWidget(kind: WidgetKind): void {
   const def = WIDGET_REGISTRY[kind];
   const rect = placeNew(
-    widgets.value.length,
+    widgets.value.map((w) => w.rect),
     def.defaultSizePx,
     surfaceSize.value,
   );

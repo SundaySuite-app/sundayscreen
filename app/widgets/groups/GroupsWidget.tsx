@@ -49,7 +49,10 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
 
   return (
     <div class={styles.groups}>
-      <div class={styles.result}>
+      <div
+        class={styles.result}
+        style={gridStyle(cfg.lastResult.length, longestGroup(cfg.lastResult))}
+      >
         {cfg.lastResult.length === 0 ? (
           <div class={styles.empty}>
             {empty ? t("widget.noNames") : t("groups.empty")}
@@ -118,4 +121,26 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Groups are laid out on a grid whose column count comes from HOW MANY
+ * groups there are — flex-wrap gave 3-per-row always, so four groups broke
+ * into 3 + 1 and the last one was clipped. Near-square reads best on a
+ * board: 2→2, 3→3, 4→2×2, 5–6→3, 7–9→3, more→4.
+ */
+function gridStyle(count: number, longest: number): string {
+  if (count === 0) return "";
+  const cols = count <= 3 ? count : count <= 4 ? 2 : count <= 9 ? 3 : 4;
+  const rows = Math.ceil(count / cols);
+  // Names shrink as the board fills up, so a big class in many groups still
+  // fits without scrolling (a scrollbar is invisible from the back row).
+  const crowding = Math.max(rows, Math.ceil(longest / 5));
+  const scale =
+    crowding <= 1 ? 1 : crowding === 2 ? 0.72 : crowding === 3 ? 0.56 : 0.45;
+  return `grid-template-columns: repeat(${cols}, minmax(0, 1fr)); --group-scale: ${scale}`;
+}
+
+function longestGroup(groups: string[][]): number {
+  return groups.reduce((max, g) => Math.max(max, g.length), 0);
 }

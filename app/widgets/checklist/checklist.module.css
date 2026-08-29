@@ -19,6 +19,12 @@
   flex: 1;
 }
 
+/* An empty list must not claim the height and press «Ingen punkter ennå»
+ * against the input at the bottom — the message belongs in the middle. */
+.list:empty {
+  flex: 0;
+}
+
 .item {
   display: flex;
   align-items: center;
@@ -103,7 +109,11 @@
 }
 
 .empty {
-  margin: auto;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
   color: var(--ink-3);
   font-size: 5cqmin;
   text-align: center;

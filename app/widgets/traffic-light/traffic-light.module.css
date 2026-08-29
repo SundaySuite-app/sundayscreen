@@ -17,13 +17,16 @@
   justify-content: space-evenly;
   background: var(--ink);
   border-radius: var(--r-lg);
-  padding: 6cqmin 4cqmin;
+  padding: 4cqmin 3cqmin;
 }
 
+/* The lamps size against the HOUSING, not the widget: cqmin measures the
+ * whole card, so a tall narrow light got lamps at ~29 % of the housing
+ * width where a real signal head is nearer 70 %. The signal itself is what
+ * the back row has to read. */
 .lamp {
-  width: 24cqmin;
-  height: 24cqmin;
-  max-width: 70%;
+  width: 72%;
+  height: auto;
   aspect-ratio: 1;
   border-radius: var(--r-pill);
   border: none;

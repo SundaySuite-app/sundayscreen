@@ -110,6 +110,14 @@
   justify-content: center;
   gap: var(--sp-1);
   max-width: calc(100% - var(--sp-4));
+  /* The row floats OVER the widget's own content, and content that centres
+     itself (the work symbol's label, a deadline's title) ended up printed
+     through the buttons. A soft plate of the card's own colour keeps both
+     readable without adding another visible box to the board. */
+  padding: var(--sp-1);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: 0 0 0 var(--sp-2) var(--surface);
   /* Hidden means UNHITTABLE (F9-funn U#9) — a tap on the bottom of a
      running timer must not hit an invisible mode button. */
   opacity: 0;

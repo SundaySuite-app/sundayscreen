@@ -157,6 +157,9 @@ translateX(-50%)` — og et element med transform blir containing block for
 1. **Projektor-typografien.** Standardkortene vokser: agenda 460×520, frist
    420×300, dagen i dag 520×420. På en 1024×768-projektor blir agendakortet
    45 % × 68 % av flata. Riktig for «hva skjer nå» — men se det på rigg.
+   **Målt bivirkning:** på 1280×800 finner allerede det TREDJE kortet (tekst +
+   navnetrekker + sjekkliste) ingen ledig plass og legger seg oppå det forrige.
+   Det er ærlig oppførsel — men det er raskere fullt enn før.
 2. **`--bg` fra `#f6f3ec` til `#eae5d8`?** Widgetkortene skiller seg i dag fra
    tavla nesten utelukkende med en 10 %-skygge, og en projektor i et lyst rom
    gjengir den ikke.

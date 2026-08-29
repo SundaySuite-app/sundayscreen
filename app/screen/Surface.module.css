@@ -39,6 +39,9 @@
   margin: 0;
   font-size: var(--fs-base);
   color: var(--ink-3);
+  /* 32ch left «kant.» alone on a second line. This is a two-line sentence at
+     most, so balance it rather than widening the card. */
+  text-wrap: balance;
 }
 
 .emptyAction {

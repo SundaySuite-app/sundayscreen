@@ -71,3 +71,38 @@ Stable-ringen tas i bruk først når eier eksplisitt ber om en stabil utgivelse.
 - **Banneret rendrer bare.** Pekere flyttes av lærerens klikk eller den
   eksplisitt påslåtte automatikken — aldri av rendering. Én nøkkel per
   time-instans gjør «Ikke nå» og fyr-én-gang strukturelle.
+
+## ADR-010 — Fravær er et datostempel, ikke en boolean (2026-08-30)
+
+`class_member.absent_on TEXT` (migrasjon 0005). «Borte» betyr
+`absent_on == dagens dato`. Alternativet — `present INTEGER` + en jobb som
+nullstiller ved døgnskifte — kan MISTE en dag: klasseromsmaskiner står
+avslått over natten, og en app som aldri kjørte ved midnatt starter
+tirsdagen med mandagens fravær stående. Med datostempel er datoskiftet
+implisitt og alltid riktig, uten noen jobb i det hele tatt.
+
+Kolonnen OVERSKRIVES, aldri appenderes: det oppstår ingen fraværshistorikk.
+Fraværsføring hører hjemme i skolens system, og PRIVACY.md lover ikke noe om
+den datakategorien. Appen vet bare hvem som er her akkurat i dag, og bare
+til i morgen.
+
+Følgekrav som er lette å bomme på: trekker og gruppedeler får de
+TILSTEDEVÆRENDE id-ene som grunnmengde — gir man dem hele klassen, blir
+no-repeat-runden aldri komplett og «gjenstår»-tellingen lyver. Og «alle er
+borte» er en EGEN feil, ikke samme melding som en tom klasse.
+
+## ADR-011 — Referanseflate 1280×800, én felles skalar (2026-08-30)
+
+`defaultSizePx` i widget-registeret er tunet mot 1280×800 og INGEN annen
+flate. Det står nå erklært i koden (`REFERENCE_SURFACE` i coords-core), og
+nye kort skaleres med **én felles skalar** `k = min(w/1280, h/800)`, gulvet
+mot widgetens eget `minSizePx` og taket på 0,9.
+
+To uavhengige aksebrøker ble forkastet: de gjør en 300×300-klokke til
+450×405 på 16:9 — formen ryker, og widgets som tegner kvadratisk inni boksen
+sin (ADR-002) får plutselig luft på sidene.
+
+Konsekvens eieren bør kjenne: på 1080p blir kortene ~1,35× større, og
+~4–5 får plass før kaskaden i stedet for ~6–7. Har man rutinemessig seks
+widgets oppe samtidig, er grepet feil — da senkes heller registertallene og
+brøken gjør resten.

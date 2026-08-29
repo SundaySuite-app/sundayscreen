@@ -1,6 +1,11 @@
 // The two-click class switch: click the class name → the list opens → click
-// a class. "Administrer klasser …" at the bottom opens the manage panel.
+// a class. Below the divider: «Hvem er her i dag?» (today's absences) and
+// "Administrer klasser …" (the manage panel).
+//
+// The attendance panel is a dialog in the SHELL, beside ManagePanel and
+// PlannerPanel. This file only opens it.
 
+import { openAttendanceFromMenu } from "../manage/AttendancePanel";
 import { t } from "../i18n";
 import { classes, classMenuOpen, managePanelOpen } from "../state/classes";
 import { activeClass } from "../state/layout";
@@ -24,7 +29,11 @@ export function ClassSwitcher() {
         }}
       >
         <Icon name="class" size="sm" class={styles.classIcon} />
-        {current?.name ?? "…"}
+        {/* Its own element so the name can be TRUNCATED — the same ceiling
+         * the screen name got, for the same reason: a teacher names her
+         * classes freely and the toolbar is one row on a 1024×768
+         * projector. The full name is a click away in the menu below. */}
+        <span class={styles.triggerLabel}>{current?.name ?? "…"}</span>
         <Icon name="chevron-down" size="sm" class={styles.chevron} />
       </button>
       {open && (
@@ -56,6 +65,13 @@ export function ClassSwitcher() {
               </button>
             ))}
             <div class={styles.divider} />
+            <button
+              role="menuitem"
+              class={styles.manage}
+              onClick={openAttendanceFromMenu}
+            >
+              {t("attendance.title")}
+            </button>
             <button
               role="menuitem"
               class={styles.manage}

@@ -131,6 +131,15 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--sp-1);
+  /* `left: 50%` WITHOUT a `right` leaves only the right half of the card as
+     available width, so a shrink-to-fit row caps at 50 % and wraps to two
+     lines that print over the widget's own content — a five-button timer row
+     measured 197 px inside a 394 px card and covered the Start button.
+     `width: max-content` sizes the row to its buttons; max-width then caps it
+     against the card, and flex-wrap handles the genuine overflow.
+     Same trap the toolbar hit in 5b06911 — it lives here so no widget folder
+     has to rediscover it. */
+  width: max-content;
   max-width: calc(100% - var(--sp-4));
   /* The row floats OVER the widget's own content, and content that centres
      itself (the work symbol's label, a deadline's title) ended up printed

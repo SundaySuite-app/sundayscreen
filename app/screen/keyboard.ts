@@ -1,7 +1,8 @@
 // Global keys: F11 toggles fullscreen, Cmd/Ctrl+Z takes back the deletion the
 // snackbar is offering, and Escape peels ONE layer at a time (text field →
-// class menu → manage panel → fullscreen). Installed once from main.tsx.
+// class menu → an overlay panel → fullscreen). Installed once from main.tsx.
 
+import { attendancePanelOpen } from "../state/attendance";
 import { classMenuOpen, managePanelOpen } from "../state/classes";
 import { addMenuOpen } from "../state/chrome";
 import { undoRemove, undoSlot } from "../state/layout";
@@ -59,7 +60,14 @@ export function installKeyboard(): () => void {
       escapeTarget({
         addMenuOpen: addMenuOpen.peek(),
         menuOpen: classMenuOpen.peek() || sceneMenuOpen.peek(),
-        overlayOpen: managePanelOpen.peek() || plannerPanelOpen.peek(),
+        // EVERY overlay belongs in here. An overlay the chain does not know
+        // about reads as "nothing is open", and Escape then leaves
+        // FULLSCREEN — the projector view goes away while the panel the
+        // teacher meant to dismiss stays on the board.
+        overlayOpen:
+          managePanelOpen.peek() ||
+          plannerPanelOpen.peek() ||
+          attendancePanelOpen.peek(),
         fullscreen: fullscreen.peek(),
       })
     ) {
@@ -73,6 +81,7 @@ export function installKeyboard(): () => void {
       case "overlay":
         managePanelOpen.value = false;
         plannerPanelOpen.value = false;
+        attendancePanelOpen.value = false;
         break;
       case "fullscreen":
         void toggleFullscreen();

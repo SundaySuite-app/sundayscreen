@@ -2,13 +2,17 @@
 // Decisions live in screen/chrome-core.ts; this is the thin signal/listener
 // half.
 
-import { signal } from "@preact/signals";
+import { computed, signal } from "@preact/signals";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 import { isTauri } from "@lib/api-shim";
 import { inRevealZone, shouldHide } from "../screen/chrome-core";
 import type { WindowState } from "../bindings/WindowState";
 import { settings } from "./settings";
+// One direction only: the panel/menu signals live in their own modules and
+// this one reads them — exactly how `managePanelOpen` is wired, and what
+// keeps `chrome ⇄ attendance` from becoming an import cycle.
+import { attendancePanelOpen } from "./attendance";
 import { classMenuOpen, managePanelOpen } from "./classes";
 import { widgets } from "./layout";
 import { sceneMenuOpen } from "./scenes";
@@ -19,6 +23,25 @@ export const fullscreen = signal(false);
 
 /** The add-widget popover on the toolbar (AddMenu.tsx). */
 export const addMenuOpen = signal(false);
+
+/**
+ * Is any panel or menu open? ONE list, because it is read from two places
+ * that must never disagree: the idle ticker (which may not hide the chrome
+ * out from under an open panel) and Shell's reveal handle (which may not
+ * appear ON TOP of one). Shell's copy had already drifted — it knew about
+ * the manage panel and the class menu but not the planner, the screen
+ * library, the add menu or attendance. Read it with `.peek()` where you must
+ * not subscribe, `.value` where you must.
+ */
+export const anyOverlayOpen = computed(
+  () =>
+    managePanelOpen.value ||
+    attendancePanelOpen.value ||
+    classMenuOpen.value ||
+    sceneMenuOpen.value ||
+    plannerPanelOpen.value ||
+    addMenuOpen.value,
+);
 
 let lastActivityMs = Date.now();
 
@@ -44,13 +67,7 @@ export function initChrome(): () => void {
     // DOM half's call: `shouldHide`/`CHROME_HIDE_MS` in chrome-core stay pure
     // and table-tested. It also covers deleting the LAST widget mid-lesson,
     // which "don't start the idle clock until the first input" would not.
-    const holdOpen =
-      widgets.peek().length === 0 ||
-      managePanelOpen.peek() ||
-      classMenuOpen.peek() ||
-      sceneMenuOpen.peek() ||
-      plannerPanelOpen.peek() ||
-      addMenuOpen.peek();
+    const holdOpen = widgets.peek().length === 0 || anyOverlayOpen.peek();
     if (
       chromeVisible.peek() &&
       shouldHide(lastActivityMs, Date.now(), holdOpen)

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { addWidget, installFixtures } from "./harness";
 
@@ -20,8 +20,30 @@ test("the toolbar auto-hides on idle and the handle brings it back", async ({
   await expect(toolbar).toBeVisible();
   await expect(toolbar).not.toHaveAttribute("data-hidden", "true");
 
+  // Centred, and NOT by a transform of its own: the dock (a plain flex box)
+  // does the centring so `position: fixed` inside the toolbar still measures
+  // against the viewport. Both halves are worth an assertion — the visible
+  // toolbar carries no transform, and it is still in the middle.
+  const vp = page.viewportSize()!;
+  const placed = await toolbar.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return {
+      centre: r.left + r.width / 2,
+      transform: getComputedStyle(el).transform,
+    };
+  });
+  expect(placed.transform).toBe("none");
+  expect(Math.abs(placed.centre - vp.width / 2)).toBeLessThanOrEqual(1);
+
   await page.clock.fastForward(6_000);
   await expect(toolbar).toHaveAttribute("data-hidden", "true");
+
+  // It SLID away, it did not merely fade: the whole box ends up past the
+  // bottom edge. (The hidden state now interpolates from `transform: none`,
+  // which is the one thing dropping `translateX(-50%)` could have broken.)
+  await expect
+    .poll(async () => toolbar.evaluate((el) => el.getBoundingClientRect().top))
+    .toBeGreaterThanOrEqual(vp.height);
 
   // The handle pill is the visual cue — and REACHING for it is the gesture:
   // the pointer entering the bottom zone reveals before any click could land
@@ -123,6 +145,33 @@ test("an open add menu pins the chrome and Escape closes it first", async ({
   await expect(toolbar).not.toHaveAttribute("data-hidden", "true");
 });
 
+test("the add menu's backdrop is the whole viewport, and a far click closes it", async ({
+  page,
+}) => {
+  // The third switcher on the same row, with the same `position: fixed;
+  // inset: 0` dismiss layer — and it was the same 785×52 box at the bottom
+  // edge while the toolbar carried a `transform`. Measured, then clicked.
+  await installFixtures(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Legg til verktøy" }).click();
+  await expect(page.getByRole("menuitem", { name: "Klokke" })).toBeVisible();
+
+  const vp = page.viewportSize()!;
+  const box = (await page
+    .locator('footer button[aria-label="Lukk"]')
+    .boundingBox())!;
+  expect({
+    x: Math.round(box.x),
+    y: Math.round(box.y),
+    width: Math.round(box.width),
+    height: Math.round(box.height),
+  }).toEqual({ x: 0, y: 0, width: vp.width, height: vp.height });
+
+  await page.mouse.click(vp.width - 60, 60);
+  await expect(page.getByRole("menuitem", { name: "Klokke" })).toHaveCount(0);
+});
+
 test("adding from the menu closes it and lands the widget", async ({
   page,
 }) => {
@@ -216,6 +265,99 @@ test("the empty state does not swallow the surface's deselect", async ({
   await expect(widget).not.toHaveAttribute("data-selected", "true");
 });
 
+// ── The attendance panel is an OVERLAY, on the same terms as the others ─────
+//
+// It shipped as a popover anchored in the class switcher, carrying two local
+// workarounds for what the chain did not know about it: a capture-phase
+// Escape listener, and a one-second `chromeActivity` keepalive. Both are
+// deleted; these two journeys are what they were standing in for.
+
+/**
+ * Let the browser tier reach the FULLSCREEN rung of the Escape chain.
+ *
+ * `window_set_fullscreen` is a write with no typed fallback: outside Tauri
+ * there is no window to resize, so it REJECTS and `toggleFullscreen` returns
+ * without flipping the signal — honest, and it means no journey here can get
+ * past the layer above. Call AFTER `installFixtures`; init scripts run in the
+ * order they were added, so this one finds the map already there.
+ */
+async function allowFullscreen(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (
+      window as unknown as Record<string, Record<string, unknown>>
+    ).__SUNDAYSCREEN_FIXTURES__.window_set_fullscreen = () => undefined;
+  });
+}
+
+test("Escape closes the attendance panel and stays in fullscreen", async ({
+  page,
+}) => {
+  await installFixtures(page, { memberNames: ["Kari", "Ola"] });
+  await allowFullscreen(page);
+  await page.goto("/");
+
+  // Fullscreen first — this is the failure the missing `overlayOpen` term
+  // caused: Escape read "nothing is open", turned the projector view OFF and
+  // left the panel standing.
+  // `exact` on both names, because the accessible-name match is a SUBSTRING
+  // one and «Fullskjerm» is a prefix of «Avslutt fullskjerm» — without it the
+  // locator matches whichever state the button is in and asserts nothing.
+  const enterFs = page.getByRole("button", { name: "Fullskjerm", exact: true });
+  const exitFs = page.getByRole("button", {
+    name: "Avslutt fullskjerm",
+    exact: true,
+  });
+  await enterFs.click();
+  await expect(exitFs).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Hvem er her i dag?" }).click();
+  const panel = page.getByRole("region", { name: "Hvem er her i dag?" });
+  await expect(panel).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(exitFs).toHaveAttribute("aria-pressed", "true");
+
+  // …and the NEXT press is the one that leaves fullscreen: one layer each.
+  await page.keyboard.press("Escape");
+  await expect(enterFs).toBeVisible();
+});
+
+test("an open attendance panel pins the chrome", async ({ page }) => {
+  await installFixtures(page, { memberNames: ["Kari", "Ola"] });
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  // A widget on the board, so the pin under test is the PANEL's and not the
+  // empty board's.
+  await addWidget(page, "Tekst");
+
+  const footer = page.locator("footer");
+  const panel = page.getByRole("region", { name: "Hvem er her i dag?" });
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Hvem er her i dag?" }).click();
+  await expect(panel).toBeVisible();
+
+  // Reading a name list is exactly the kind of stillness the four-second
+  // idle clock trips over. Well past it, twice over.
+  await page.clock.fastForward(10_000);
+  await expect(footer).not.toHaveAttribute("data-hidden", "true");
+
+  // The pin has to be the IDLE CLOCK's (`holdOpen` in state/chrome.ts) and
+  // not merely the toolbar's render condition, so CLOSE the panel and look
+  // again: `shown` in Toolbar.tsx satisfies the assertion above all by
+  // itself, and the toolbar would then snap away the instant the panel did.
+  // The clock is frozen here, so nothing hides between these two lines
+  // except a `chromeVisible` that was already false.
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(footer).not.toHaveAttribute("data-hidden", "true");
+
+  // And it resumes its ordinary auto-hide from there.
+  await page.clock.fastForward(6_000);
+  await expect(footer).toHaveAttribute("data-hidden", "true");
+});
+
 test("the toolbar stays ONE row at 1280×800 with every control", async ({
   page,
 }) => {
@@ -225,8 +367,10 @@ test("the toolbar stays ONE row at 1280×800 with every control", async ({
 
   // Brand, add menu, planner, scene switcher, class switcher, fullscreen and
   // the version all fit on one line — the whole point of the R2 redesign.
-  // (An absolutely positioned box at left:50% only gets the right half of
-  // the screen as available width, which used to force a wrap.)
+  // (The wrap this guards against came from centring the toolbar with an
+  // absolute `left: 50%`, which left only the right half of the screen as
+  // available width. The dock centres it with flex now — see
+  // Toolbar.module.css — and `width: max-content` stayed.)
   const box = await page.locator("footer").boundingBox();
   expect(box!.height).toBeLessThan(70);
   await expect(page.getByRole("button", { name: "Planlegger" })).toBeVisible();

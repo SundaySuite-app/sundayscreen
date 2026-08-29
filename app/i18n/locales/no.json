@@ -65,7 +65,20 @@
     "saveNames": "Lagre navneliste",
     "pasteHint": "Ett navn per linje — lim gjerne inn fra Excel.",
     "savedReceipt": "Lagret",
-    "actionFailed": "Noe gikk galt — prøv igjen."
+    "actionFailed": "Noe gikk galt — prøv igjen.",
+    "confirmName": "Lagre navnet",
+    "renamePlaceholder": "Nytt navn … (Enter lagrer)"
+  },
+  "attendance": {
+    "title": "Hvem er her i dag?",
+    "open": "Fravær",
+    "hint": "Klikk et navn for å markere eleven borte i dag. Merket nullstilles av seg selv i morgen.",
+    "here": "Til stede",
+    "away": "Borte i dag",
+    "presentCount": {
+      "one": "{n} av {total} til stede",
+      "other": "{n} av {total} til stede"
+    }
   },
   "timer": {
     "start": "Start",
@@ -76,7 +89,11 @@
     "minusMinute": "Ett minutt mindre",
     "sound": "Lydvarsel",
     "modeCountdown": "Nedtelling",
-    "modeStopwatch": "Stoppeklokke"
+    "modeStopwatch": "Stoppeklokke",
+    "presetMinutes": {
+      "one": "Sett til {n} minutt",
+      "other": "Sett til {n} minutter"
+    }
   },
   "clock": {
     "digital": "Digital",
@@ -94,7 +111,8 @@
     },
     "roundDone": "Alle er trukket — neste trekk starter ny runde",
     "reset": "Ny runde",
-    "noRepeat": "Ingen gjentak"
+    "noRepeat": "Ingen gjentak",
+    "allAway": "Alle er borte i dag"
   },
   "groups": {
     "modeCount": "X grupper",
@@ -103,7 +121,8 @@
     "header": "Gruppe {n}",
     "increase": "Øk tallet",
     "decrease": "Senk tallet",
-    "empty": "Trykk «Del inn» for å lage grupper"
+    "empty": "Trykk «Del inn» for å lage grupper",
+    "allAway": "Alle er borte i dag"
   },
   "dice": {
     "roll": "Kast",
@@ -153,8 +172,12 @@
   "scene": {
     "switch": "Bytt skjerm",
     "default": "Standard",
+    "defaultLabel": "Standard skjerm",
     "saveAs": "Lagre som ny skjerm …",
-    "namePlaceholder": "Navn på skjermen …",
+    "namePlaceholder": "Navn på skjermen … (Enter lagrer)",
+    "emptyHint": "Lagre tavla slik den står nå, og hent den fram igjen til samme time neste uke.",
+    "confirmName": "Lagre navnet",
+    "renamePlaceholder": "Nytt navn … (Enter lagrer)",
     "deleteConfirm": "Slett skjermen"
   },
   "planner": {
@@ -172,12 +195,15 @@
     "end": "Slutt",
     "lesson": "Time",
     "break": "Pause",
-    "addPeriod": "Legg til økt",
+    "addPeriod": "Legg til time",
+    "addBreak": "Legg til pause",
     "savePeriods": "Lagre timeoppsett",
     "defaultPeriodLabel": "Time {n}",
+    "defaultBreakLabel": "Friminutt",
     "badTime": "Ugyldig klokkeslett — bruk TT:MM, og slutt må være etter start.",
     "overlap": "Øktene overlapper hverandre.",
     "noPeriodsYet": "Ingen økter definert ennå — start i Timeoppsett-fanen.",
+    "goToPeriods": "Start i Timeoppsett",
     "weekday": {
       "1": "Mandag",
       "2": "Tirsdag",
@@ -214,7 +240,8 @@
     "saveNotes": "Lagre beskjeder",
     "autoSwitch": "Bytt skjerm automatisk når timen starter",
     "emptyLabel": "Alle økter må ha et navn.",
-    "readFailed": "Fikk ikke lest planen"
+    "readFailed": "Fikk ikke lest planen",
+    "noTimetable": "Ingen timeplan satt opp ennå"
   },
   "agenda": {
     "empty": "Ingen time nå",
@@ -256,12 +283,19 @@
     "addPlaceholder": "Nytt punkt …",
     "check": "Merk gjort",
     "remove": "Fjern punkt",
-    "empty": "Ingen punkter ennå"
+    "empty": "Ingen punkter ennå",
+    "resetAll": "Nullstill avkryssingene"
   },
   "suggest": {
     "next": "Neste:",
     "now": "Nå:",
     "switch": "Bytt til timen",
     "dismiss": "Ikke nå"
+  },
+  "text": {
+    "alignLeft": "Venstre",
+    "alignCenter": "Midtstilt",
+    "smaller": "Mindre tekst",
+    "bigger": "Større tekst"
   }
 }

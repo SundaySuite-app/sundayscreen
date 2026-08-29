@@ -5,6 +5,9 @@
 .trigger {
   display: inline-flex;
   align-items: center;
+  /* Same 36 px target as SceneSwitcher's trigger — the round that set the
+     floor missed this one, and it is a toolbar control like the rest. */
+  min-height: 36px;
   gap: var(--sp-1);
   padding: var(--sp-1) var(--sp-3);
   border-radius: var(--r-pill);
@@ -19,6 +22,20 @@
 .trigger:hover {
   border-color: var(--gold-line);
   color: var(--ink);
+}
+
+/* The class name is free text and the toolbar is ONE row on a 1024×768
+ * projector, so the name gets a ceiling instead of the row getting a second
+ * line — «10B Naturfag og miljølære» is an ordinary name, not an edge case.
+ * The full name is still the trigger's TEXT (only the pixels are clipped)
+ * and it is spelled out in the menu below. Its own element because ellipsis
+ * needs a block box: the trigger itself is a flex container, where
+ * `text-overflow` does nothing. Kept in step with SceneSwitcher's. */
+.triggerLabel {
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .classIcon {

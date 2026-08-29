@@ -4,13 +4,15 @@
 
 import styles from "./Shell.module.css";
 import { t } from "./i18n";
+import { AttendancePanel } from "./manage/AttendancePanel";
 import { ManagePanel } from "./manage/ManagePanel";
 import { PlannerPanel } from "./planner/PlannerPanel";
 import { SuggestionBanner } from "./screen/SuggestionBanner";
 import { Surface } from "./screen/Surface";
 import { Toolbar } from "./screen/Toolbar";
-import { classMenuOpen, managePanelOpen } from "./state/classes";
-import { chromeActivity, chromeVisible } from "./state/chrome";
+import { attendancePanelOpen } from "./state/attendance";
+import { managePanelOpen } from "./state/classes";
+import { anyOverlayOpen, chromeActivity, chromeVisible } from "./state/chrome";
 import {
   layoutHydrated,
   saveError,
@@ -63,17 +65,21 @@ export function Shell() {
         </div>
       )}
       <Toolbar />
-      {!chromeVisible.value &&
-        !managePanelOpen.value &&
-        !classMenuOpen.value && (
-          <button
-            class={styles.chromeHandle}
-            aria-label={t("chrome.show")}
-            title={t("chrome.show")}
-            onClick={chromeActivity}
-          />
-        )}
+      {/* The reveal handle may never appear on top of an open panel. The
+          list of what counts as "open" lives ONCE, in state/chrome.ts — this
+          condition used to carry its own copy and had already drifted past
+          the planner, the screen library, the add menu and attendance. */}
+      {!chromeVisible.value && !anyOverlayOpen.value && (
+        <button
+          class={styles.chromeHandle}
+          aria-label={t("chrome.show")}
+          title={t("chrome.show")}
+          onClick={chromeActivity}
+        />
+      )}
       {managePanelOpen.value && <ManagePanel />}
+      {/* Gated here so the panel's hooks only exist while it is open. */}
+      {attendancePanelOpen.value && <AttendancePanel />}
       <PlannerPanel />
     </main>
   );

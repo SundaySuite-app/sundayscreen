@@ -65,7 +65,20 @@
     "saveNames": "Save name list",
     "pasteHint": "One name per line — paste from Excel if you like.",
     "savedReceipt": "Saved",
-    "actionFailed": "Something went wrong — try again."
+    "actionFailed": "Something went wrong — try again.",
+    "confirmName": "Save the name",
+    "renamePlaceholder": "New name … (Enter saves)"
+  },
+  "attendance": {
+    "title": "Who is here today?",
+    "open": "Attendance",
+    "hint": "Click a name to mark that pupil away today. The mark clears by itself tomorrow.",
+    "here": "Present",
+    "away": "Away today",
+    "presentCount": {
+      "one": "{n} of {total} present",
+      "other": "{n} of {total} present"
+    }
   },
   "timer": {
     "start": "Start",
@@ -76,7 +89,11 @@
     "minusMinute": "One minute less",
     "sound": "Sound alert",
     "modeCountdown": "Countdown",
-    "modeStopwatch": "Stopwatch"
+    "modeStopwatch": "Stopwatch",
+    "presetMinutes": {
+      "one": "Set to {n} minute",
+      "other": "Set to {n} minutes"
+    }
   },
   "clock": {
     "digital": "Digital",
@@ -94,7 +111,8 @@
     },
     "roundDone": "Everyone has been drawn — the next draw starts a new round",
     "reset": "New round",
-    "noRepeat": "No repeats"
+    "noRepeat": "No repeats",
+    "allAway": "Everyone is away today"
   },
   "groups": {
     "modeCount": "X groups",
@@ -103,7 +121,8 @@
     "header": "Group {n}",
     "increase": "Increase",
     "decrease": "Decrease",
-    "empty": "Press “Split” to make groups"
+    "empty": "Press “Split” to make groups",
+    "allAway": "Everyone is away today"
   },
   "dice": {
     "roll": "Roll",
@@ -153,8 +172,12 @@
   "scene": {
     "switch": "Switch screen",
     "default": "Default",
+    "defaultLabel": "Default screen",
     "saveAs": "Save as a new screen …",
-    "namePlaceholder": "Screen name …",
+    "namePlaceholder": "Screen name … (Enter saves)",
+    "emptyHint": "Save the board exactly as it stands now, and bring it back for the same lesson next week.",
+    "confirmName": "Save the name",
+    "renamePlaceholder": "New name … (Enter saves)",
     "deleteConfirm": "Delete the screen"
   },
   "planner": {
@@ -172,12 +195,15 @@
     "end": "End",
     "lesson": "Lesson",
     "break": "Break",
-    "addPeriod": "Add a period",
+    "addPeriod": "Add a lesson",
+    "addBreak": "Add a break",
     "savePeriods": "Save the template",
     "defaultPeriodLabel": "Lesson {n}",
+    "defaultBreakLabel": "Break",
     "badTime": "Invalid time — use HH:MM, and the end must be after the start.",
     "overlap": "The periods overlap.",
     "noPeriodsYet": "No periods defined yet — start in the Day template tab.",
+    "goToPeriods": "Start in the Day template",
     "weekday": {
       "1": "Monday",
       "2": "Tuesday",
@@ -214,7 +240,8 @@
     "saveNotes": "Save the messages",
     "autoSwitch": "Switch the screen automatically when the lesson starts",
     "emptyLabel": "Every period needs a name.",
-    "readFailed": "Could not read the plan"
+    "readFailed": "Could not read the plan",
+    "noTimetable": "No timetable set up yet"
   },
   "agenda": {
     "empty": "No lesson right now",
@@ -256,12 +283,19 @@
     "addPlaceholder": "New item …",
     "check": "Mark done",
     "remove": "Remove the item",
-    "empty": "No items yet"
+    "empty": "No items yet",
+    "resetAll": "Clear every check"
   },
   "suggest": {
     "next": "Next:",
     "now": "Now:",
     "switch": "Switch to the lesson",
     "dismiss": "Not now"
+  },
+  "text": {
+    "alignLeft": "Left",
+    "alignCenter": "Centred",
+    "smaller": "Smaller text",
+    "bigger": "Larger text"
   }
 }

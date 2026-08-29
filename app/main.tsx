@@ -75,7 +75,9 @@ async function boot(): Promise<void> {
   // layout bootstrap (the default class name is translated copy).
   await hydrateSettings();
   await setLocale(resolveStartupLocale(settings.peek().language));
-  // After the settings (it reads window.fullscreen), before anything slow.
+  // After the settings, before anything slow. It MEASURES the fullscreen
+  // flag from the window rather than trusting the persisted setting: a
+  // restore that lands on a monitor that is gone leaves the two disagreeing.
   void initWindowState();
   await initLayout();
   const cls = activeClass.peek();

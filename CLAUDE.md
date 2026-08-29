@@ -49,6 +49,10 @@ visningsflaten. macOS + Windows.
 - Dev-port **1433** — asserted i vite.config, tauri.conf (devUrl + devCsp),
   playwright.config. CSP i `app/index.html` er byte-identisk med
   tauri.conf.json (test).
+- e2e: Playwrights `getByRole(role, { name })` matcher **delstreng**, ikke
+  eksakt. `"Fullskjerm"` treffer også `"Avslutt fullskjerm"`, så en assertion
+  kan bli tom uten å bli rød. Bruk `{ exact: true }` når navnet er prefikset
+  av et annet navn i samme visning.
 - Commits: conventional (commitlint). `npm run check` skal være grønn før
   hver PR; `npm run ci` speiler CI.
 - Versjon i synk: package.json / src-tauri/Cargo.toml / tauri.conf.json.

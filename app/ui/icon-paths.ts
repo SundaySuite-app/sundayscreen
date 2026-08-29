@@ -179,6 +179,10 @@ export const ICON_PATHS = {
     "M8 4.5V9h7V4.5",
     "M7.5 19.5v-5.75h9v5.75",
   ],
+  copy: [
+    "M6 8h8a1.5 1.5 0 0 1 1.5 1.5v9.5A1.5 1.5 0 0 1 14 20.5H6A1.5 1.5 0 0 1 4.5 19V9.5A1.5 1.5 0 0 1 6 8z",
+    "M8.5 8V5.5A1.5 1.5 0 0 1 10 4h8a1.5 1.5 0 0 1 1.5 1.5V14a1.5 1.5 0 0 1-1.5 1.5h-2.5",
+  ],
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

@@ -48,7 +48,33 @@ export function toNorm(rect: PxRect, surface: Size): NormRect {
 }
 
 /**
- * Where a NEW widget lands: the first FREE spot, scanned in reading order.
+ * The surface the registry's `defaultSizePx` numbers were tuned against:
+ * commit e6d68a3 sized every widget from 1280×800 screenshots. Nothing
+ * declared it, so those pixel counts silently meant "34 % of the wall" on
+ * the machine they were picked on and "23 % of the wall" on a 1080p
+ * projector. Declaring the reference is what lets `placeNew` scale them.
+ */
+export const REFERENCE_SURFACE = { w: 1280, h: 800 };
+
+/**
+ * How much bigger this surface is than the one the defaults were tuned on.
+ *
+ * ONE shared scalar, deliberately — not a fraction per axis. Independent
+ * fractions would turn the 300×300 clock into 450×405 on 16:9: the SHAPE
+ * goes, and a square widget stops being square. With `min()` the clock stays
+ * square, and every card keeps the same proportion of the wall it had on the
+ * reference screen.
+ */
+function surfaceScale(surface: Size): number {
+  return Math.min(
+    surface.w / REFERENCE_SURFACE.w,
+    surface.h / REFERENCE_SURFACE.h,
+  );
+}
+
+/**
+ * Where a NEW widget lands: the first FREE spot, scanned in reading order,
+ * at a size scaled to the surface it is landing on.
  *
  * The old rule was "centre, plus 32 px per existing widget", which is fine
  * for two cards and a pile for six — the teacher had to drag every widget
@@ -57,19 +83,35 @@ export function toNorm(rect: PxRect, surface: Size): NormRect {
  * only when genuinely nothing fits do we fall back to the old cascade (a
  * full board should still accept one more card rather than refuse).
  *
- * Pure function of (existing rects, wanted px size, surface).
+ * `minPx` is the kind's own minimum from the registry: it is the FLOOR, so
+ * no widget is ever born smaller than the interaction layer would let the
+ * teacher drag it to. (Capped by the 0.9 ceiling, which keeps the card on
+ * the surface whatever a registry entry claims.)
+ *
+ * Pure function of (existing rects, wanted px size, minimum px size,
+ * surface).
  */
 export function placeNew(
   existing: readonly NormRect[],
   wantedPx: Size,
+  minPx: Size,
   surface: Size,
 ): NormRect {
   if (surface.w <= 0 || surface.h <= 0) {
     // No measured surface yet — a sane normalised default.
     return { x: 0.35, y: 0.35, w: 0.3, h: 0.3 };
   }
-  const w = Math.min(wantedPx.w / surface.w, 0.9);
-  const h = Math.min(wantedPx.h / surface.h, 0.9);
+  const k = surfaceScale(surface);
+  const w = clamp(
+    (wantedPx.w * k) / surface.w,
+    Math.min(minPx.w / surface.w, 0.9),
+    0.9,
+  );
+  const h = clamp(
+    (wantedPx.h * k) / surface.h,
+    Math.min(minPx.h / surface.h, 0.9),
+    0.9,
+  );
 
   // A small margin keeps new cards off the very edge, and the bottom band
   // is where the toolbar lives — a card there is hidden behind chrome the
@@ -98,8 +140,17 @@ export function placeNew(
   };
 }
 
-/** How much of the surface's bottom the toolbar occupies, in px. */
-const CHROME_BAND_PX = 96;
+/** What the app itself calls "clear of the chrome": MIRRORS
+ *  `--chrome-clearance: 84px` in app/styles/tokens.css, which is the same
+ *  measurement (the snackbar sits on it). A pure module cannot read a CSS
+ *  custom property, so the two are kept in step by hand — change one,
+ *  change the other. */
+const CHROME_CLEARANCE_PX = 84;
+
+/** How much of the surface's bottom a NEW card must stay out of, in px: the
+ *  clearance plus a little air, so a fresh widget does not land flush
+ *  against the toolbar's top edge. */
+const CHROME_BAND_PX = CHROME_CLEARANCE_PX + 12;
 
 /** How finely the free-spot scan steps across the surface. */
 const SCAN_STEPS = 24;
@@ -137,6 +188,37 @@ function firstFreeSpot(
   return null;
 }
 
+/** How far a duplicate sits from its original, in px. */
+const DUPLICATE_OFFSET_PX = 32;
+
+/**
+ * Where a DUPLICATE lands: the original nudged 32 px down-right — or
+ * UP-LEFT when the original is already against the far edge.
+ *
+ * The negative direction is the whole point. Plain clamping at the edge
+ * would put the copy at exactly the original's coordinates, and a
+ * «Dupliser» that visibly does nothing is worse than one that refuses:
+ * the teacher clicks it again, and again.
+ *
+ * Not `placeNew` — that centres on a free spot at the kind's DEFAULT size,
+ * which would throw away the size and position the teacher just chose.
+ */
+export function offsetRect(rect: NormRect, surface: Size): NormRect {
+  if (surface.w <= 0 || surface.h <= 0) return rect;
+  return {
+    x: offsetAxis(rect.x, rect.w, DUPLICATE_OFFSET_PX / surface.w),
+    y: offsetAxis(rect.y, rect.h, DUPLICATE_OFFSET_PX / surface.h),
+    w: rect.w,
+    h: rect.h,
+  };
+}
+
+function offsetAxis(pos: number, size: number, step: number): number {
+  const max = Math.max(1 - size, 0);
+  if (pos + step <= max) return pos + step;
+  return Math.max(pos - step, 0);
+}
+
 /** Do two normalised rects share any area? Edge-touching does not count. */
 export function overlaps(a: NormRect, b: NormRect): boolean {
   return (
@@ -146,4 +228,8 @@ export function overlaps(a: NormRect, b: NormRect): boolean {
 
 function clamp01(v: number, max: number): number {
   return Math.min(Math.max(v, 0), Math.max(max, 0));
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(Math.max(v, lo), hi);
 }

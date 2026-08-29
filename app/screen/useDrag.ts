@@ -15,6 +15,7 @@ import {
   isDrag,
   resizeSE,
   snapRect,
+  snapResize,
   type SnapResult,
 } from "./interact-core";
 import { WIDGET_REGISTRY } from "../widgets/registry";
@@ -124,14 +125,22 @@ export function startMove(e: PointerEvent, widget: WidgetInstance): void {
   });
 }
 
-/** Pointerdown on the SE resize handle. */
+/** Pointerdown on the SE resize handle. Mirrors `startMove`: same sibling
+ *  set, same snap setting — scaling a card lines it up with its neighbours
+ *  the way moving one does. */
 export function startResize(e: PointerEvent, widget: WidgetInstance): void {
   e.stopPropagation();
   bringToFront(widget.id);
   const surface = surfaceSize.peek();
   const startPx = fromNorm(widget.rect, surface);
   const min = WIDGET_REGISTRY[widget.config.kind].minSizePx;
-  beginTracking(e, widget, (dx, dy) => ({
-    rect: resizeSE(startPx, dx, dy, min, surface),
-  }));
+  const siblings = widgets
+    .peek()
+    .filter((w) => w.id !== widget.id)
+    .map((w) => fromNorm(w.rect, surface));
+  const snap = settings.peek().snapEnabled;
+  beginTracking(e, widget, (dx, dy) => {
+    const sized = resizeSE(startPx, dx, dy, min, surface);
+    return snap ? snapResize(sized, siblings, surface, min) : { rect: sized };
+  });
 }

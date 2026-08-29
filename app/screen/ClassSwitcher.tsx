@@ -2,13 +2,9 @@
 // a class. "Administrer klasser …" at the bottom opens the manage panel.
 
 import { t } from "../i18n";
-import {
-  classes,
-  classMenuOpen,
-  managePanelOpen,
-  switchClass,
-} from "../state/classes";
+import { classes, classMenuOpen, managePanelOpen } from "../state/classes";
 import { activeClass } from "../state/layout";
+import { switchClassKeepingScreen } from "../state/scenes";
 import { Icon } from "../ui/Icon";
 import { toast } from "../ui/toast";
 import styles from "./ClassSwitcher.module.css";
@@ -48,7 +44,7 @@ export function ClassSwitcher() {
                 class={styles.item}
                 data-current={cls.id === current?.id || undefined}
                 onClick={() =>
-                  switchClass(cls.id).catch((e) => {
+                  switchClassKeepingScreen(cls.id).catch((e) => {
                     // The panel path surfaces this via run(); the toolbar
                     // path must not fail into silence (F9-funn U#5).
                     console.warn("[switcher] class switch failed", e);

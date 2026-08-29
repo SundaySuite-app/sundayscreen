@@ -23,7 +23,7 @@ import type { NormRect } from "../bindings/NormRect";
 import type { WidgetConfig } from "../bindings/WidgetConfig";
 import type { WidgetInstance } from "../bindings/WidgetInstance";
 import { t } from "../i18n";
-import { placeNew } from "../screen/coords-core";
+import { offsetRect, placeNew } from "../screen/coords-core";
 import { WIDGET_REGISTRY, type WidgetKind } from "../widgets/registry";
 import { settings } from "./settings";
 import { surfaceSize } from "./surface";
@@ -69,13 +69,20 @@ export async function initLayout(): Promise<void> {
   }
 }
 
-/** Adopt a switch snapshot: class, scene and widgets in one move. */
+/** Adopt a switch snapshot: class, scene and widgets in one move.
+ *
+ *  The pending UNDO dies with the old board (R3-funn 3.2): the slot holds a
+ *  widget that belonged to the scene we just left, and `undoRemove` writes
+ *  into whatever scene is active NOW — so an Undo tapped after a class or
+ *  scene switch would resurrect a card into the WRONG screen and save it
+ *  there. Clearing it here is also what makes a longer [`UNDO_MS`] safe. */
 export function adoptSnapshot(snap: ClassSnapshot): void {
   activeClass.value = snap.class;
   activeScene.value = snap.scene;
   widgets.value = snap.widgets;
   layoutHydrated.value = true;
   selectedWidgetId.value = null;
+  clearUndo();
 }
 
 /** The next z on top of the current stack — NOT the list length: deletions
@@ -89,6 +96,7 @@ export function addWidget(kind: WidgetKind): void {
   const rect = placeNew(
     widgets.value.map((w) => w.rect),
     def.defaultSizePx,
+    def.minSizePx,
     surfaceSize.value,
   );
   const inst: WidgetInstance = {
@@ -102,14 +110,55 @@ export function addWidget(kind: WidgetKind): void {
   saveNow();
 }
 
-/** How long the undo snackbar stays. */
-export const UNDO_MS = 5000;
+/**
+ * Copy a widget: the same SIZE and the same settings, nudged clear of the
+ * original. Two work symbols, two deadlines, a second checklist — all of
+ * them are "the one I just set up, again", and rebuilding one from the add
+ * menu throws away every choice.
+ *
+ * `structuredClone`, NOT a spread. A `WidgetConfig` carries arrays and
+ * objects (`items`, `manualItems`, `lastResult`, `lastRoll`, `extra`); a
+ * shallow copy would leave the two cards sharing them, which turns "no
+ * widget mutates its config in place" from a convention into a load-bearing
+ * assumption spread across twelve folders. It also breaks promise 2 the
+ * moment one is violated: tick an item on the copy, and the original's
+ * stored config changed without ever being saved.
+ */
+export function duplicateWidget(id: string): void {
+  const source = widgets.value.find((w) => w.id === id);
+  if (!source) return;
+  const inst: WidgetInstance = {
+    id: crypto.randomUUID(),
+    rect: offsetRect(source.rect, surfaceSize.value),
+    z: nextZ(),
+    config: structuredClone(source.config),
+  };
+  widgets.value = [...widgets.value, inst];
+  selectedWidgetId.value = inst.id;
+  saveNow();
+}
+
+/** How long the undo snackbar stays. Fifteen seconds, not five: the teacher
+ *  who deletes the wrong card looks at the board, THEN at the message —
+ *  five seconds ran out while she was still working out what vanished. Safe
+ *  only because `adoptSnapshot` clears the slot, so a longer window can
+ *  never span a class or scene switch. */
+export const UNDO_MS = 15000;
 
 /** The most recently removed widget, restorable for [`UNDO_MS`]. No confirm
  *  dialog — a dialog slows the teacher forty times to prevent one mistake;
  *  the snackbar fixes the one mistake instead. */
 export const undoSlot = signal<{ widget: WidgetInstance } | null>(null);
 let undoTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Drop the pending undo and its timer. */
+function clearUndo(): void {
+  undoSlot.value = null;
+  if (undoTimer !== undefined) {
+    clearTimeout(undoTimer);
+    undoTimer = undefined;
+  }
+}
 
 export function removeWidget(id: string): void {
   const removed = widgets.value.find((w) => w.id === id);
@@ -134,8 +183,7 @@ export function removeWidget(id: string): void {
 export function undoRemove(): void {
   const slot = undoSlot.value;
   if (!slot) return;
-  undoSlot.value = null;
-  if (undoTimer !== undefined) clearTimeout(undoTimer);
+  clearUndo();
   widgets.value = [...widgets.value, { ...slot.widget, z: nextZ() }];
   saveNow();
 }

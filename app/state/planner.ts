@@ -16,7 +16,12 @@ import { computed, signal } from "@preact/signals";
 import type { DayPlan } from "../bindings/DayPlan";
 import type { Period } from "../bindings/Period";
 import type { WeekSlot } from "../bindings/WeekSlot";
-import { localDateStr, minutesOfDay, weekdayOf } from "../planner/date-core";
+import {
+  localDateStr,
+  minutesOfDay,
+  rebasedDate,
+  weekdayOf,
+} from "../planner/date-core";
 import { lessonKeyInWindow, suggest } from "../planner/suggest-core";
 import { switchLesson } from "./scenes";
 import { settings } from "./settings";
@@ -44,6 +49,12 @@ export async function refreshPlanner(): Promise<void> {
     ]);
     periods.value = p;
     weekSlots.value = w;
+    // BEFORE the day read, or the panel opens on yesterday's plan and the
+    // first read is already of the wrong date.
+    selectedDate.value = rebasedDate(
+      selectedDate.peek(),
+      localDateStr(new Date()),
+    );
     await refreshSelectedDay();
     plannerHydrated.value = true;
   } catch (e) {
@@ -170,9 +181,18 @@ export async function initPlanner(): Promise<void> {
   if (ticker !== undefined) clearInterval(ticker);
   ticker = setInterval(() => {
     plannerNowMs.value = Date.now();
+    const today = localDateStr(new Date());
     const current = todayPlan.peek();
-    if (current && current.date !== localDateStr(new Date())) {
+    if (current && current.date !== today) {
       void refreshToday();
+    }
+    // Its OWN statement, deliberately not nested in the branch above: that
+    // one dies silently when `todayPlan` is null (a failed first read), and
+    // a machine that has been asleep is exactly where a stale
+    // `selectedDate` outlives a failed read. Not while the panel is open —
+    // moving the date under the teacher's hands would be worse than stale.
+    if (!plannerPanelOpen.peek()) {
+      selectedDate.value = rebasedDate(selectedDate.peek(), today);
     }
     maybeAutoSwitch();
   }, 30_000);

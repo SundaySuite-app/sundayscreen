@@ -1,9 +1,10 @@
-// Global keys: F11 toggles fullscreen, Escape peels ONE layer at a time
-// (text field → class menu → manage panel → fullscreen). Installed once
-// from main.tsx.
+// Global keys: F11 toggles fullscreen, Cmd/Ctrl+Z takes back the deletion the
+// snackbar is offering, and Escape peels ONE layer at a time (text field →
+// class menu → manage panel → fullscreen). Installed once from main.tsx.
 
 import { classMenuOpen, managePanelOpen } from "../state/classes";
 import { addMenuOpen } from "../state/chrome";
+import { undoRemove, undoSlot } from "../state/layout";
 import { sceneMenuOpen } from "../state/scenes";
 import { plannerPanelOpen } from "../state/planner";
 import { chromeActivity, fullscreen, toggleFullscreen } from "../state/chrome";
@@ -20,9 +21,8 @@ export function installKeyboard(): () => void {
       void toggleFullscreen();
       return;
     }
-    if (e.key !== "Escape") return;
-
-    // A focused text field owns its own Escape: leave editing first.
+    // A focused text field owns its own Escape — and its own Cmd/Ctrl+Z:
+    // the browser's text undo belongs to the field, not to the board.
     const active = document.activeElement;
     // A checkbox/radio has nothing to "leave" — Escape there should close a
     // layer, not be swallowed (F-funn C17).
@@ -31,6 +31,25 @@ export function installKeyboard(): () => void {
       (active.tagName === "TEXTAREA" ||
         (active instanceof HTMLInputElement &&
           !["checkbox", "radio", "button", "submit"].includes(active.type)));
+
+    // Cmd/Ctrl+Z puts back the widget the snackbar is offering — and ONLY
+    // that. The `undoSlot` guard is the whole point: with nothing to take
+    // back the binding is INERT, so it never promises an undo history the
+    // app does not have. Lower-case "z" only, so Cmd+Shift+Z (redo) falls
+    // through rather than un-deleting something.
+    if (
+      (e.metaKey || e.ctrlKey) &&
+      e.key === "z" &&
+      !isTextField &&
+      undoSlot.peek()
+    ) {
+      e.preventDefault();
+      undoRemove();
+      return;
+    }
+
+    if (e.key !== "Escape") return;
+
     if (isTextField) {
       (active as HTMLElement).blur();
       return;

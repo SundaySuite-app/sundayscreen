@@ -14,10 +14,10 @@
   box-shadow: var(--shadow-widget-active);
 }
 
-.delete {
+.delete,
+.duplicate {
   position: absolute;
   top: var(--sp-2);
-  right: var(--sp-2);
   width: 36px;
   height: 36px;
   border-radius: var(--r-pill);
@@ -28,7 +28,8 @@
   line-height: 1;
   cursor: pointer;
   /* Hidden means UNHITTABLE (F9-funn U#9): opacity alone left an invisible
-     delete button a touch-tap could fire. */
+     delete button a touch-tap could fire. `display: none` would be worse
+     still — it takes the button out of the accessibility tree entirely. */
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -37,12 +38,33 @@
     visibility 120ms ease;
 }
 
+.delete {
+  right: var(--sp-2);
+}
+
+/* Immediately left of «Fjern» — the destructive control keeps the corner it
+   has always had, so the new button never lands under a finger aiming for
+   the old one. */
+.duplicate {
+  right: calc(var(--sp-2) + 36px + var(--sp-1));
+  display: grid;
+  place-items: center;
+}
+
 .shell:hover .delete,
 .shell:focus-within .delete,
-.shell[data-selected] .delete {
+.shell[data-selected] .delete,
+.shell:hover .duplicate,
+.shell:focus-within .duplicate,
+.shell[data-selected] .duplicate {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+}
+
+.duplicate:hover {
+  color: var(--ink);
+  border-color: var(--gold-line);
 }
 
 .delete:hover {

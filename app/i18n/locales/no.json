@@ -32,8 +32,14 @@
     "text": {
       "placeholder": "Skriv en beskjed …"
     },
+    "duplicate": "Dupliser",
     "resize": "Endre størrelse",
     "noNames": "Legg inn navn i klassen først"
+  },
+  "board": {
+    "emptyTitle": "Tavla er tom",
+    "emptyHint": "Verktøylinja ligger langs nederste kant.",
+    "emptyAction": "Velg et verktøy"
   },
   "undo": {
     "removed": "Widget fjernet",

@@ -36,8 +36,21 @@ export function dragMove(
   };
 }
 
-/** Resize from the SE corner by the pointer delta: position fixed, size
- *  clamped to [minPx, the surface edge]. */
+/**
+ * Resize from the SE corner by the pointer delta: position fixed, size
+ * clamped to [minPx, the surface edge].
+ *
+ * THE SURFACE EDGE WINS OVER THE MINIMUM. A projector swap can leave a card
+ * narrower than its own minimum right against the right edge; the old rule
+ * (`max(surface.w - x, minPx.w)`) then let the FIRST pixel of a resize snap
+ * it out past the edge, `.surface` clipped it, and the next boot's
+ * `clamp_rect` teleported it ~200 px back — promise 2 broken, silently.
+ *
+ * So the invariant this owes the rest of the app is not the minimum: it is
+ * that the committed rect is a FIXPOINT for `clamp_rect`, i.e.
+ * `x + w <= surface.w` and `y + h <= surface.h`. Where there is room for the
+ * minimum it still applies, which is every ordinary resize.
+ */
 export function resizeSE(
   start: PxRect,
   dx: number,
@@ -45,11 +58,13 @@ export function resizeSE(
   minPx: Size,
   surface: Size,
 ): PxRect {
+  const maxW = Math.max(surface.w - start.x, 0);
+  const maxH = Math.max(surface.h - start.y, 0);
   return {
     x: start.x,
     y: start.y,
-    w: clamp(start.w + dx, minPx.w, Math.max(surface.w - start.x, minPx.w)),
-    h: clamp(start.h + dy, minPx.h, Math.max(surface.h - start.y, minPx.h)),
+    w: clamp(start.w + dx, Math.min(minPx.w, maxW), maxW),
+    h: clamp(start.h + dy, Math.min(minPx.h, maxH), maxH),
   };
 }
 
@@ -113,6 +128,78 @@ export function snapRect(
   }
 
   return { rect: { x, y, w: rect.w, h: rect.h }, guidesV, guidesH };
+}
+
+/**
+ * Snap a RESIZING rect: the right and bottom EDGES are pulled onto the same
+ * candidate lines `snapRect` uses (surface edges and centre, every sibling's
+ * edges), so a card lines up with its neighbour while it is being scaled
+ * exactly as it does while it is being moved — and the guides come free.
+ *
+ * No centre variant: `c - w/2` means "move the box so its centre lands on
+ * c", which is a MOVE. Here the position is fixed and only the size changes,
+ * so the only meaningful question is where the far edge lands.
+ *
+ * The re-clamp at the end is load-bearing: a sibling edge 6 px inside the
+ * minimum would otherwise let a snap pull the card under `minSizePx`, past
+ * a floor `resizeSE` had just enforced. Same "the surface edge wins over the
+ * minimum" rule as `resizeSE`, for the same reason.
+ */
+export function snapResize(
+  rect: PxRect,
+  siblings: PxRect[],
+  surface: Size,
+  minPx: Size,
+  threshold: number = SNAP_PX,
+): SnapResult {
+  const vCandidates: number[] = [
+    0,
+    surface.w / 2,
+    surface.w,
+    ...siblings.flatMap((s) => [s.x, s.x + s.w]),
+  ];
+  const hCandidates: number[] = [
+    0,
+    surface.h / 2,
+    surface.h,
+    ...siblings.flatMap((s) => [s.y, s.y + s.h]),
+  ];
+
+  let w = rect.w;
+  const guidesV: number[] = [];
+  for (const c of vCandidates) {
+    if (Math.abs(rect.x + rect.w - c) <= threshold) {
+      w = c - rect.x;
+      guidesV.push(c);
+      break;
+    }
+  }
+
+  let h = rect.h;
+  const guidesH: number[] = [];
+  for (const c of hCandidates) {
+    if (Math.abs(rect.y + rect.h - c) <= threshold) {
+      h = c - rect.y;
+      guidesH.push(c);
+      break;
+    }
+  }
+
+  const maxW = Math.max(surface.w - rect.x, 0);
+  const maxH = Math.max(surface.h - rect.y, 0);
+  const clampedW = clamp(w, Math.min(minPx.w, maxW), maxW);
+  const clampedH = clamp(h, Math.min(minPx.h, maxH), maxH);
+  // A guide is a PROMISE about where the edge landed. If the clamp overrode
+  // the snap, the edge is not on that line — drawing it anyway would be a
+  // gold line through empty space.
+  if (clampedW !== w) guidesV.length = 0;
+  if (clampedH !== h) guidesH.length = 0;
+
+  return {
+    rect: { x: rect.x, y: rect.y, w: clampedW, h: clampedH },
+    guidesV,
+    guidesH,
+  };
 }
 
 /** Whether a press has travelled far enough to be a drag. */

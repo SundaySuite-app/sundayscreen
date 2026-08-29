@@ -10,6 +10,7 @@ import { inRevealZone, shouldHide } from "../screen/chrome-core";
 import type { WindowState } from "../bindings/WindowState";
 import { settings } from "./settings";
 import { classMenuOpen, managePanelOpen } from "./classes";
+import { widgets } from "./layout";
 import { sceneMenuOpen } from "./scenes";
 import { plannerPanelOpen } from "./planner";
 
@@ -36,7 +37,15 @@ export function initChrome(): () => void {
   window.addEventListener("pointermove", onPointerMove);
 
   const ticker = setInterval(() => {
-    const pinned =
+    // An EMPTY board holds the chrome open. Four seconds after the splash a
+    // first-time teacher was left with a wordless rectangle and the only way
+    // forward slid off the bottom of the screen — and so was anyone building
+    // their fifth screen, because every new screen starts empty. This is the
+    // DOM half's call: `shouldHide`/`CHROME_HIDE_MS` in chrome-core stay pure
+    // and table-tested. It also covers deleting the LAST widget mid-lesson,
+    // which "don't start the idle clock until the first input" would not.
+    const holdOpen =
+      widgets.peek().length === 0 ||
       managePanelOpen.peek() ||
       classMenuOpen.peek() ||
       sceneMenuOpen.peek() ||
@@ -44,7 +53,7 @@ export function initChrome(): () => void {
       addMenuOpen.peek();
     if (
       chromeVisible.peek() &&
-      shouldHide(lastActivityMs, Date.now(), pinned)
+      shouldHide(lastActivityMs, Date.now(), holdOpen)
     ) {
       chromeVisible.value = false;
     }

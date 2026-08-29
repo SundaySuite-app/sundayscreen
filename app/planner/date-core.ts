@@ -34,6 +34,25 @@ export function dateAtNoon(date: string): Date {
   return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0, 0);
 }
 
+/**
+ * The date the planner should actually be showing, given the one it has
+ * selected and what day it is now.
+ *
+ * `selectedDate` is set once at MODULE LOAD, and classroom machines sleep
+ * rather than shut down: on Tuesday morning the panel still opens on
+ * Monday. The teacher clicks «neste dag» once, believes she is on
+ * Wednesday, and saves the agenda onto the wrong day — with a green
+ * receipt, so nothing tells her.
+ *
+ * FORWARD ONLY. Yesterday is always a stale pointer; a date in the FUTURE
+ * is a deliberate choice ("plan next Tuesday"), so it survives Escape and
+ * reopening. `YYYY-MM-DD` sorts lexicographically, so the comparison needs
+ * no parsing.
+ */
+export function rebasedDate(selected: string, today: string): string {
+  return selected < today ? today : selected;
+}
+
 /** Minutes since local midnight for a Date. */
 export function minutesOfDay(d: Date): number {
   return d.getHours() * 60 + d.getMinutes();

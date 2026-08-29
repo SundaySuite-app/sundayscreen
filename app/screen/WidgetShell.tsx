@@ -6,7 +6,11 @@
 
 import type { WidgetInstance } from "../bindings/WidgetInstance";
 import { t } from "../i18n";
-import { removeWidget, selectedWidgetId } from "../state/layout";
+import {
+  duplicateWidget,
+  removeWidget,
+  selectedWidgetId,
+} from "../state/layout";
 import { Icon } from "../ui/Icon";
 import { surfaceSize } from "../state/surface";
 import { WIDGET_REGISTRY } from "../widgets/registry";
@@ -37,6 +41,15 @@ export function WidgetShell({ widget }: { widget: WidgetInstance }) {
       onPointerDown={(e) => startMove(e, widget)}
     >
       <def.Component widget={widget} />
+      <button
+        class={styles.duplicate}
+        data-no-drag
+        aria-label={t("widget.duplicate")}
+        title={t("widget.duplicate")}
+        onClick={() => duplicateWidget(widget.id)}
+      >
+        <Icon name="copy" size="sm" />
+      </button>
       <button
         class={styles.delete}
         data-no-drag

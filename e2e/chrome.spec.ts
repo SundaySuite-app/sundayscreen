@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The chrome: the toolbar slips away after four idle seconds, comes back
 // when the pointer reaches for it, and Escape peels one layer at a time.
+//
+// Every auto-hide journey puts a widget on the board first: an EMPTY board
+// holds the chrome open by design (4.1), so idling on one proves nothing.
 
 test("the toolbar auto-hides on idle and the handle brings it back", async ({
   page,
@@ -11,6 +14,7 @@ test("the toolbar auto-hides on idle and the handle brings it back", async ({
   await installFixtures(page);
   await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
   await page.goto("/");
+  await addWidget(page, "Tekst");
 
   const toolbar = page.locator("footer");
   await expect(toolbar).toBeVisible();
@@ -37,6 +41,7 @@ test("reaching for the bottom edge wakes the toolbar", async ({ page }) => {
   await installFixtures(page);
   await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
   await page.goto("/");
+  await addWidget(page, "Tekst");
 
   const toolbar = page.locator("footer");
   await page.clock.fastForward(6_000);
@@ -102,6 +107,9 @@ test("an open add menu pins the chrome and Escape closes it first", async ({
   await page.goto("/");
 
   const toolbar = page.locator("footer");
+  // A widget on the board, so the pin under test is the MENU's and not the
+  // empty board's.
+  await addWidget(page, "Tekst");
   await page.getByRole("button", { name: "Legg til verktøy" }).click();
   await expect(page.getByRole("menuitem", { name: "Klokke" })).toBeVisible();
 
@@ -129,6 +137,83 @@ test("adding from the menu closes it and lands the widget", async ({
   await expect(
     page.getByRole("button", { name: "Rødt lys — stille" }),
   ).toBeVisible();
+});
+
+test("an empty board keeps the toolbar up and points the way", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+
+  // After the splash: a title, one pointing line, one door.
+  await expect(page.getByText("Tavla er tom")).toBeVisible();
+  await expect(
+    page.getByText("Verktøylinja ligger langs nederste kant."),
+  ).toBeVisible();
+
+  // The way forward does NOT slide off the screen four seconds later.
+  await page.clock.fastForward(10_000);
+  await expect(page.locator("footer")).not.toHaveAttribute(
+    "data-hidden",
+    "true",
+  );
+
+  // The one door opens the same menu the toolbar's button does…
+  await page.getByRole("button", { name: "Velg et verktøy" }).click();
+  await expect(page.getByRole("menuitem", { name: "Klokke" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Klokke" }).click();
+
+  // …and once there is something on the board, the empty state is gone and
+  // the toolbar resumes its ordinary auto-hide.
+  await expect(page.getByText("Tavla er tom")).toHaveCount(0);
+  await page.clock.fastForward(6_000);
+  await expect(page.locator("footer")).toHaveAttribute("data-hidden", "true");
+});
+
+test("deleting the LAST widget mid-lesson brings the chrome back", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  await page.clock.fastForward(6_000);
+  await expect(page.locator("footer")).toHaveAttribute("data-hidden", "true");
+
+  // Wake the chrome the way a teacher does, then remove the only card.
+  const size = page.viewportSize()!;
+  await page.mouse.move(size.width / 2, size.height - 8);
+  const widget = page.locator('[data-widget-kind="text"]');
+  await widget.hover();
+  await page.getByRole("button", { name: "Fjern" }).click();
+  await expect(widget).toHaveCount(0);
+
+  // An empty board holds the chrome open — the teacher is not left with a
+  // wordless rectangle and no controls.
+  await page.clock.fastForward(10_000);
+  await expect(page.locator("footer")).not.toHaveAttribute(
+    "data-hidden",
+    "true",
+  );
+  await expect(page.getByText("Tavla er tom")).toBeVisible();
+});
+
+test("the empty state does not swallow the surface's deselect", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  // A click on the bare surface deselects — the empty layer is
+  // pointer-events:none, so nothing changes here when it is NOT showing…
+  const widget = page.locator('[data-widget-kind="text"]');
+  await widget.click();
+  await expect(widget).toHaveAttribute("data-selected", "true");
+  await page.locator("main").click({ position: { x: 5, y: 5 } });
+  await expect(widget).not.toHaveAttribute("data-selected", "true");
 });
 
 test("the toolbar stays ONE row at 1280×800 with every control", async ({

@@ -5,7 +5,7 @@
 import { signal } from "@preact/signals";
 
 import type { Scene } from "../bindings/Scene";
-import { adoptSwitch } from "./classes";
+import { adoptSwitch, classMenuOpen } from "./classes";
 import { activeClass, activeScene, flushPending } from "./layout";
 
 export const scenes = signal<Scene[]>([]);
@@ -21,6 +21,28 @@ export async function switchScene(sceneId: string | null): Promise<void> {
   const cls = activeClass.peek();
   if (!cls) return;
   await switchLesson(cls.id, sceneId);
+}
+
+/**
+ * Switch CLASS from the toolbar, keeping the screen where that means
+ * anything (R3-funn 3.2).
+ *
+ * ADR-009: a scene is a LAYOUT and the class is the DATA. A global library
+ * screen («Morgensamling») is class-agnostic, so following the teacher to
+ * 9B is what she asked for; a class DEFAULT screen belongs to the class she
+ * just left, so 9B lands on its own default instead of inheriting 8A's.
+ *
+ * Lives here rather than in `classes.ts` because `switchLesson` is here and
+ * the other direction would be an import cycle. `switchClass` keeps serving
+ * `createClass`/`deleteClass` unchanged — those want the backend's own
+ * pointer, not the screen on the wall.
+ */
+export async function switchClassKeepingScreen(classId: string): Promise<void> {
+  classMenuOpen.value = false;
+  if (activeClass.peek()?.id === classId) return;
+  const scene = activeScene.peek();
+  const keep = scene && scene.classId === null ? scene.id : null;
+  await switchLesson(classId, keep);
 }
 
 /** THE lesson jump: class + scene in one flush-then-swap move — the

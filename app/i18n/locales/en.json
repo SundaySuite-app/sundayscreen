@@ -32,8 +32,14 @@
     "text": {
       "placeholder": "Write a message …"
     },
+    "duplicate": "Duplicate",
     "resize": "Resize",
     "noNames": "Add names to the class first"
+  },
+  "board": {
+    "emptyTitle": "The board is empty",
+    "emptyHint": "The toolbar sits along the bottom edge.",
+    "emptyAction": "Choose a tool"
   },
   "undo": {
     "removed": "Widget removed",

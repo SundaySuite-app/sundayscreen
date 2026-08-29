@@ -7,6 +7,7 @@ import {
   localDateStr,
   minutesOfDay,
   parseTime,
+  rebasedDate,
   weekdayOf,
 } from "./date-core";
 
@@ -41,5 +42,23 @@ describe("date-core", () => {
 
   it("minutesOfDay", () => {
     expect(minutesOfDay(new Date(2026, 7, 31, 10, 5))).toBe(605);
+  });
+
+  describe("rebasedDate", () => {
+    it("a stale yesterday is pulled forward to today", () => {
+      // The machine slept from Monday to Tuesday.
+      expect(rebasedDate("2026-08-31", "2026-09-01")).toBe("2026-09-01");
+      // Across a month boundary, on the string alone.
+      expect(rebasedDate("2026-08-31", "2026-09-15")).toBe("2026-09-15");
+    });
+
+    it("today stays today", () => {
+      expect(rebasedDate("2026-09-01", "2026-09-01")).toBe("2026-09-01");
+    });
+
+    it("a deliberate FUTURE date survives — the rebase is one-way", () => {
+      // «Plan next Tuesday», Escape, reopen: still next Tuesday.
+      expect(rebasedDate("2026-09-08", "2026-09-01")).toBe("2026-09-08");
+    });
   });
 });

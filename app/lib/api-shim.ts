@@ -10,6 +10,8 @@ import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
 
 import type { AppInfo } from "../bindings/AppInfo";
 import type { Class } from "../bindings/Class";
+import type { Scene } from "../bindings/Scene";
+import type { ActiveContext } from "../bindings/ActiveContext";
 import type { ClassSnapshot } from "../bindings/ClassSnapshot";
 import type { DrawResult } from "../bindings/DrawResult";
 import type { GroupMode } from "../bindings/GroupMode";
@@ -190,15 +192,24 @@ const api = {
   // Read-or-bootstrap: outside Tauri there is nothing to bootstrap IN, so
   // the fallback is an ephemeral in-memory class — the shell renders, and
   // saves against it reject honestly.
-  classEnsureActive: async (defaultName: string): Promise<Class> =>
+  classEnsureActive: async (defaultName: string): Promise<ActiveContext> =>
     call(
       "class_ensure_active",
       { defaultName },
       {
-        id: "browser-fallback",
-        name: defaultName,
-        sortIndex: 0,
-        createdAt: 0,
+        class: {
+          id: "browser-fallback",
+          name: defaultName,
+          sortIndex: 0,
+          createdAt: 0,
+        },
+        scene: {
+          id: "browser-fallback-scene",
+          classId: "browser-fallback",
+          name: defaultName,
+          sortIndex: 0,
+          createdAt: 0,
+        },
       },
     ),
 
@@ -206,14 +217,36 @@ const api = {
   // store must know the load failed and block saving — a tolerant `[]` here
   // plus replace-all writes was a one-edit wipe of the stored layout
   // (F9-funn S#4).
-  layoutLoad: async (classId: string): Promise<WidgetInstance[]> =>
-    invoke<WidgetInstance[]>("layout_load", { classId }),
+  layoutLoad: async (sceneId: string): Promise<WidgetInstance[]> =>
+    invoke<WidgetInstance[]>("layout_load", { sceneId }),
 
   // WRITE — rejection travels (see saveSettings).
   layoutSave: async (
-    classId: string,
+    sceneId: string,
     widgets: WidgetInstance[],
-  ): Promise<void> => invoke<void>("layout_save", { classId, widgets }),
+  ): Promise<void> => invoke<void>("layout_save", { sceneId, widgets }),
+
+  // ── Scenes (the screen library) ─────────────────────────────────────────
+  sceneList: async (): Promise<Scene[]> => call("scene_list", undefined, []),
+
+  sceneCreate: async (name: string): Promise<Scene> =>
+    invoke<Scene>("scene_create", { name }),
+
+  sceneRename: async (sceneId: string, name: string): Promise<Scene> =>
+    invoke<Scene>("scene_rename", { sceneId, name }),
+
+  sceneDelete: async (sceneId: string): Promise<void> =>
+    invoke<void>("scene_delete", { sceneId }),
+
+  sceneDuplicate: async (sceneId: string, name: string): Promise<Scene> =>
+    invoke<Scene>("scene_duplicate", { sceneId, name }),
+
+  /** THE switch: class + scene in one atomic pointer move + snapshot.
+   *  `sceneId = null` lands on the class's default scene. */
+  lessonSwitch: async (
+    classId: string,
+    sceneId: string | null,
+  ): Promise<ClassSnapshot> => invoke("lesson_switch", { classId, sceneId }),
 
   classList: async (): Promise<Class[]> => call("class_list", undefined, []),
 

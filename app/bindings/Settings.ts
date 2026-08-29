@@ -21,6 +21,11 @@ language: string | null,
  */
 activeClassId: string | null, 
 /**
+ * The scene on screen: a global library scene, or the active class's
+ * default. `None`/invalid heals to the class default (Runde 2).
+ */
+activeSceneId: string | null, 
+/**
  * Snap widget edges to the surface and to siblings while dragging.
  */
 snapEnabled: boolean, 

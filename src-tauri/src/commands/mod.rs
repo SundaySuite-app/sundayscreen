@@ -4,4 +4,5 @@ pub mod app;
 pub mod classes;
 pub mod layout;
 pub mod picker;
+pub mod scenes;
 pub mod settings;

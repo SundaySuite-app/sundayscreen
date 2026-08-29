@@ -10,7 +10,7 @@ use tauri::State;
 use ts_rs::TS;
 
 use crate::commands::layout as layout_cmd;
-use crate::db::store::{self, ClassRow, MemberRow};
+use crate::db::store::{self, ClassRow, MemberRow, SceneRow};
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::settings;
@@ -18,15 +18,26 @@ use crate::settings;
 /// Longest class name we accept.
 const NAME_MAX_CHARS: usize = 80;
 
-/// Everything the frontend needs after a class switch, read in one command
-/// so the swap is atomic from the shell's point of view.
+/// Everything the frontend needs after a class/scene switch, read in one
+/// command so the swap is atomic from the shell's point of view.
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "ClassSnapshot.ts")]
 #[serde(rename_all = "camelCase")]
 pub struct ClassSnapshot {
     pub class: ClassRow,
+    pub scene: SceneRow,
     pub members: Vec<MemberRow>,
     pub widgets: Vec<WidgetInstance>,
+}
+
+/// What `class_ensure_active` resolves on boot: the active class AND the
+/// active scene (healed to the class default when the pointer is stale).
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "ActiveContext.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveContext {
+    pub class: ClassRow,
+    pub scene: SceneRow,
 }
 
 fn valid_class_name(raw: &str) -> AppResult<String> {
@@ -37,35 +48,69 @@ fn valid_class_name(raw: &str) -> AppResult<String> {
     Ok(name.chars().take(NAME_MAX_CHARS).collect())
 }
 
-async fn require_class(pool: &SqlitePool, id: &str) -> AppResult<ClassRow> {
+pub(crate) async fn require_class(pool: &SqlitePool, id: &str) -> AppResult<ClassRow> {
     store::get_class(pool, id).await?.ok_or(AppError::NotFound {
         entity: "class",
         id: id.to_string(),
     })
 }
 
-async fn snapshot_for(pool: &SqlitePool, class: ClassRow) -> AppResult<ClassSnapshot> {
+async fn snapshot_for(
+    pool: &SqlitePool,
+    class: ClassRow,
+    scene: SceneRow,
+) -> AppResult<ClassSnapshot> {
     let members = store::list_members(pool, &class.id).await?;
-    let widgets = layout_cmd::load_for(pool, &class.id).await?;
+    let widgets = layout_cmd::load_for(pool, &scene.id).await?;
     Ok(ClassSnapshot {
         class,
+        scene,
         members,
         widgets,
     })
 }
 
-/// Switch the active class: point the settings at it and read its full
-/// snapshot. The frontend flushes the OLD class's pending saves before
-/// calling this (the sequencing seam in state/layout.ts).
-pub async fn switch_for(pool: &SqlitePool, class_id: &str) -> AppResult<ClassSnapshot> {
+/// THE switch: point both pointers (class + scene) under the settings lock
+/// and read the full snapshot. `scene_id = None` means the class's default
+/// scene; `Some` must be a GLOBAL library scene (a class default belongs to
+/// its class alone). The frontend flushes the OLD scene's pending saves
+/// before calling this (the sequencing seam in state/layout.ts).
+pub async fn lesson_switch_for(
+    pool: &SqlitePool,
+    class_id: &str,
+    scene_id: Option<&str>,
+) -> AppResult<ClassSnapshot> {
     let class = require_class(pool, class_id).await?;
+    let scene = match scene_id {
+        None => store::ensure_default_scene(pool, &class).await?,
+        Some(id) => {
+            let scene = store::get_scene(pool, id)
+                .await?
+                .ok_or(AppError::NotFound {
+                    entity: "scene",
+                    id: id.to_string(),
+                })?;
+            if scene.class_id.is_some() && scene.class_id.as_deref() != Some(class_id) {
+                return Err(AppError::Validation(
+                    "a class default scene cannot be shown in another class".into(),
+                ));
+            }
+            scene
+        }
+    };
     // Serialized RMW (F9-funn B#3): a plain load→save here silently reverted
     // any settings field a concurrent save had just written.
     settings::update(pool, |s| {
         s.active_class_id = Some(class_id.to_string());
+        s.active_scene_id = Some(scene.id.clone());
     })
     .await?;
-    snapshot_for(pool, class).await
+    snapshot_for(pool, class, scene).await
+}
+
+/// Switch the active class — lands on that class's default scene.
+pub async fn switch_for(pool: &SqlitePool, class_id: &str) -> AppResult<ClassSnapshot> {
+    lesson_switch_for(pool, class_id, None).await
 }
 
 /// Delete a class. If it was the active one, the settings are repointed at
@@ -82,6 +127,11 @@ pub async fn delete_for(pool: &SqlitePool, class_id: &str) -> AppResult<()> {
     settings::update(pool, |s| {
         if s.active_class_id.as_deref() == Some(class_id) {
             s.active_class_id = fallback.clone();
+        }
+        // The class's default scene died in the cascade; a stale pointer
+        // heals to the (new) active class's default at the next resolve.
+        if s.active_scene_id.as_deref() == Some(&store::default_scene_id(class_id)) {
+            s.active_scene_id = None;
         }
     })
     .await?;
@@ -115,30 +165,52 @@ pub async fn members_set_for(
 /// passes the translated default, so DB content never depends on backend
 /// i18n).
 #[tauri::command]
-pub async fn class_ensure_active(db: State<'_, Db>, default_name: String) -> AppResult<ClassRow> {
+pub async fn class_ensure_active(
+    db: State<'_, Db>,
+    default_name: String,
+) -> AppResult<ActiveContext> {
     let pool = db.pool();
     // The whole bootstrap holds the settings lock (F9-funn B#4): two
     // concurrent ensures must not both see "no class" and mint two defaults.
     let guard = settings::lock().await;
     let mut s = settings::load(pool).await?;
 
-    if let Some(id) = &s.active_class_id {
-        if let Some(class) = store::get_class(pool, id).await? {
-            return Ok(class);
-        }
-    }
+    let class = match &s.active_class_id {
+        Some(id) => match store::get_class(pool, id).await? {
+            Some(class) => class,
+            None => resolve_class(pool, &default_name).await?,
+        },
+        None => resolve_class(pool, &default_name).await?,
+    };
 
-    let class = match store::first_class(pool).await? {
-        Some(existing) => existing,
-        None => {
-            let name = valid_class_name(&default_name)?;
-            store::insert_class(pool, &name).await?
-        }
+    // Resolve the scene pointer: keep it when it still exists AND is legal
+    // for this class (global, or this class's own default); heal otherwise.
+    let scene = match &s.active_scene_id {
+        Some(id) => match store::get_scene(pool, id).await? {
+            Some(scene)
+                if scene.class_id.is_none() || scene.class_id.as_deref() == Some(&class.id) =>
+            {
+                scene
+            }
+            _ => store::ensure_default_scene(pool, &class).await?,
+        },
+        None => store::ensure_default_scene(pool, &class).await?,
     };
 
     s.active_class_id = Some(class.id.clone());
+    s.active_scene_id = Some(scene.id.clone());
     settings::save_with(pool, s, &guard).await?;
-    Ok(class)
+    Ok(ActiveContext { class, scene })
+}
+
+async fn resolve_class(pool: &SqlitePool, default_name: &str) -> AppResult<ClassRow> {
+    match store::first_class(pool).await? {
+        Some(existing) => Ok(existing),
+        None => {
+            let name = valid_class_name(default_name)?;
+            store::insert_class(pool, &name).await
+        }
+    }
 }
 
 #[tauri::command]
@@ -230,9 +302,13 @@ mod tests {
         let (pool, _d) = temp_pool().await;
         let a = store::insert_class(&pool, "7B").await.unwrap();
         let b = store::insert_class(&pool, "8A").await.unwrap();
-        layout_cmd::save_for(&pool, &b.id, vec![text_widget("w1")])
-            .await
-            .unwrap();
+        layout_cmd::save_for(
+            &pool,
+            &store::default_scene_id(&b.id),
+            vec![text_widget("w1")],
+        )
+        .await
+        .unwrap();
         members_set_for(&pool, &b.id, vec!["Kari".into()])
             .await
             .unwrap();

@@ -150,6 +150,10 @@ pub struct Settings {
     /// class exists; the frontend then opens the manage panel.
     #[serde(default, deserialize_with = "lenient")]
     pub active_class_id: Option<String>,
+    /// The scene on screen: a global library scene, or the active class's
+    /// default. `None`/invalid heals to the class default (Runde 2).
+    #[serde(default, deserialize_with = "lenient")]
+    pub active_scene_id: Option<String>,
     /// Snap widget edges to the surface and to siblings while dragging.
     #[serde(default = "default_true", deserialize_with = "lenient_true")]
     pub snap_enabled: bool,
@@ -180,6 +184,7 @@ impl Default for Settings {
         Settings {
             language: default_language(),
             active_class_id: None,
+            active_scene_id: None,
             snap_enabled: true,
             window: None,
             update_channel: UpdateChannel::Stable,
@@ -390,6 +395,7 @@ mod tests {
         let s = Settings {
             language: Some("en".into()),
             active_class_id: Some("7b".into()),
+            active_scene_id: Some("scene-1".into()),
             snap_enabled: false,
             window: Some(WindowState {
                 x: -100.0,

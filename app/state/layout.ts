@@ -17,6 +17,8 @@
 import { signal } from "@preact/signals";
 
 import type { Class } from "../bindings/Class";
+import type { ClassSnapshot } from "../bindings/ClassSnapshot";
+import type { Scene } from "../bindings/Scene";
 import type { NormRect } from "../bindings/NormRect";
 import type { WidgetConfig } from "../bindings/WidgetConfig";
 import type { WidgetInstance } from "../bindings/WidgetInstance";
@@ -27,6 +29,8 @@ import { settings } from "./settings";
 import { surfaceSize } from "./surface";
 
 export const activeClass = signal<Class | null>(null);
+/** The scene on screen — the write key for every layout save. */
+export const activeScene = signal<Scene | null>(null);
 export const widgets = signal<WidgetInstance[]>([]);
 export const selectedWidgetId = signal<string | null>(null);
 
@@ -41,17 +45,22 @@ export const saveError = signal(false);
 /** Load (or bootstrap) the active class and its layout. Called once on boot,
  *  AFTER the locale is set — the default class name is translated copy. */
 export async function initLayout(): Promise<void> {
-  const cls = await window.api.classEnsureActive(t("class.defaultName"));
-  activeClass.value = cls;
-  // Keep the settings signal's activeClassId in step (F9-funn S#1): every
-  // whole-object settings save carries this field, and a stale copy would
-  // quietly repoint the backend at the previous class.
+  const ctx = await window.api.classEnsureActive(t("class.defaultName"));
+  activeClass.value = ctx.class;
+  activeScene.value = ctx.scene;
+  // Keep the settings signal's pointers in step (F9-funn S#1): every
+  // whole-object settings save carries these fields, and a stale copy would
+  // quietly repoint the backend at the previous class/scene.
   const s = settings.peek();
-  if (s.activeClassId !== cls.id) {
-    settings.value = { ...s, activeClassId: cls.id };
+  if (s.activeClassId !== ctx.class.id || s.activeSceneId !== ctx.scene.id) {
+    settings.value = {
+      ...s,
+      activeClassId: ctx.class.id,
+      activeSceneId: ctx.scene.id,
+    };
   }
   try {
-    widgets.value = await window.api.layoutLoad(cls.id);
+    widgets.value = await window.api.layoutLoad(ctx.scene.id);
     layoutHydrated.value = true;
   } catch (e) {
     console.warn("[layout] layout_load failed — saving is blocked", e);
@@ -60,10 +69,11 @@ export async function initLayout(): Promise<void> {
   }
 }
 
-/** Adopt a class snapshot from a successful switch. */
-export function adoptSnapshot(cls: Class, list: WidgetInstance[]): void {
-  activeClass.value = cls;
-  widgets.value = list;
+/** Adopt a switch snapshot: class, scene and widgets in one move. */
+export function adoptSnapshot(snap: ClassSnapshot): void {
+  activeClass.value = snap.class;
+  activeScene.value = snap.scene;
+  widgets.value = snap.widgets;
   layoutHydrated.value = true;
   selectedWidgetId.value = null;
 }
@@ -194,10 +204,10 @@ export const SAVE_DEBOUNCE_MS = 500;
 function flush(): Promise<void> {
   const write = inflight.then(async () => {
     if (!layoutHydrated.peek()) return;
-    const cls = activeClass.peek();
-    if (!cls) return;
+    const scene = activeScene.peek();
+    if (!scene) return;
     try {
-      await window.api.layoutSave(cls.id, widgets.peek());
+      await window.api.layoutSave(scene.id, widgets.peek());
       saveError.value = false;
     } catch (e) {
       console.warn("[layout] layout_save failed", e);

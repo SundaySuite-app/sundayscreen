@@ -115,7 +115,9 @@ pub async fn first_class(pool: &SqlitePool) -> AppResult<Option<ClassRow>> {
     Ok(row.map(row_to_class))
 }
 
-/// Create a class at the end of the display order. Returns the stored row.
+/// Create a class at the end of the display order — together with its
+/// default scene ('default-' || id, matching the 0003 backfill), in one
+/// transaction: a class without a default scene is an unrepresentable state.
 pub async fn insert_class(pool: &SqlitePool, name: &str) -> AppResult<ClassRow> {
     let next: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(sort_index) + 1, 0) FROM class")
         .fetch_one(pool)
@@ -126,13 +128,25 @@ pub async fn insert_class(pool: &SqlitePool, name: &str) -> AppResult<ClassRow> 
         sort_index: next,
         created_at: now_ms(),
     };
+    let mut tx = pool.begin().await?;
     sqlx::query("INSERT INTO class (id, name, sort_index, created_at) VALUES (?1, ?2, ?3, ?4)")
         .bind(&row.id)
         .bind(&row.name)
         .bind(row.sort_index)
         .bind(row.created_at)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+    sqlx::query(
+        "INSERT INTO scene (id, class_id, name, sort_index, created_at)
+         VALUES (?1, ?2, ?3, 0, ?4)",
+    )
+    .bind(default_scene_id(&row.id))
+    .bind(&row.id)
+    .bind(&row.name)
+    .bind(row.created_at)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     Ok(row)
 }
 
@@ -337,6 +351,133 @@ where
     Ok(())
 }
 
+// ── Scenes ───────────────────────────────────────────────────────────────────
+
+/// One scene row. `class_id = None` is a GLOBAL library scene; `Some` is a
+/// class's default screen. Exported to TS as `Scene`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "Scene.ts", rename = "Scene")]
+#[serde(rename_all = "camelCase")]
+pub struct SceneRow {
+    pub id: String,
+    pub class_id: Option<String>,
+    pub name: String,
+    #[ts(type = "number")]
+    pub sort_index: i64,
+    pub created_at: f64,
+}
+
+/// The deterministic id of a class's default scene — the same shape the
+/// 0003 backfill minted, so healing paths and tests can rely on it.
+pub fn default_scene_id(class_id: &str) -> String {
+    format!("default-{class_id}")
+}
+
+fn row_to_scene(r: sqlx::sqlite::SqliteRow) -> SceneRow {
+    SceneRow {
+        id: r.get("id"),
+        class_id: r.get("class_id"),
+        name: r.get("name"),
+        sort_index: r.get("sort_index"),
+        created_at: r.get("created_at"),
+    }
+}
+
+/// Look a scene up by id.
+pub async fn get_scene(pool: &SqlitePool, id: &str) -> AppResult<Option<SceneRow>> {
+    let row =
+        sqlx::query("SELECT id, class_id, name, sort_index, created_at FROM scene WHERE id = ?1")
+            .bind(id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.map(row_to_scene))
+}
+
+/// Every GLOBAL library scene, in display order.
+pub async fn list_global_scenes(pool: &SqlitePool) -> AppResult<Vec<SceneRow>> {
+    let rows = sqlx::query(
+        "SELECT id, class_id, name, sort_index, created_at FROM scene
+         WHERE class_id IS NULL ORDER BY sort_index, created_at",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(row_to_scene).collect())
+}
+
+/// Create a GLOBAL scene at the end of the library order.
+pub async fn insert_global_scene(pool: &SqlitePool, name: &str) -> AppResult<SceneRow> {
+    let next: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(sort_index) + 1, 0) FROM scene WHERE class_id IS NULL",
+    )
+    .fetch_one(pool)
+    .await?;
+    let row = SceneRow {
+        id: new_id(),
+        class_id: None,
+        name: name.to_string(),
+        sort_index: next,
+        created_at: now_ms(),
+    };
+    sqlx::query(
+        "INSERT INTO scene (id, class_id, name, sort_index, created_at)
+         VALUES (?1, NULL, ?2, ?3, ?4)",
+    )
+    .bind(&row.id)
+    .bind(&row.name)
+    .bind(row.sort_index)
+    .bind(row.created_at)
+    .execute(pool)
+    .await?;
+    Ok(row)
+}
+
+/// Rename a scene. Returns false when the id is unknown.
+pub async fn rename_scene(pool: &SqlitePool, id: &str, name: &str) -> AppResult<bool> {
+    let res = sqlx::query("UPDATE scene SET name = ?2 WHERE id = ?1")
+        .bind(id)
+        .bind(name)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+/// Delete a scene (its widgets cascade). Returns false when unknown.
+pub async fn delete_scene(pool: &SqlitePool, id: &str) -> AppResult<bool> {
+    let res = sqlx::query("DELETE FROM scene WHERE id = ?1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected() > 0)
+}
+
+/// A class's default scene — heals a pre-0003 edge by minting it if the row
+/// is somehow missing (the invariant says it never should be).
+pub async fn ensure_default_scene(pool: &SqlitePool, class: &ClassRow) -> AppResult<SceneRow> {
+    let id = default_scene_id(&class.id);
+    if let Some(scene) = get_scene(pool, &id).await? {
+        return Ok(scene);
+    }
+    let row = SceneRow {
+        id: id.clone(),
+        class_id: Some(class.id.clone()),
+        name: class.name.clone(),
+        sort_index: 0,
+        created_at: now_ms(),
+    };
+    sqlx::query(
+        "INSERT INTO scene (id, class_id, name, sort_index, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+    )
+    .bind(&row.id)
+    .bind(&row.class_id)
+    .bind(&row.name)
+    .bind(row.sort_index)
+    .bind(row.created_at)
+    .execute(pool)
+    .await?;
+    Ok(row)
+}
+
 // ── Widgets ──────────────────────────────────────────────────────────────────
 
 /// A raw widget row as stored. The tolerance seam
@@ -355,13 +496,13 @@ pub struct WidgetRow {
     pub config: String,
 }
 
-/// Every widget row for a class, in z order.
-pub async fn load_widget_rows(pool: &SqlitePool, class_id: &str) -> AppResult<Vec<WidgetRow>> {
+/// Every widget row for a scene, in z order.
+pub async fn load_widget_rows(pool: &SqlitePool, scene_id: &str) -> AppResult<Vec<WidgetRow>> {
     let rows = sqlx::query(
         "SELECT id, kind, x, y, w, h, z, config FROM widget_instance
-         WHERE class_id = ?1 ORDER BY z, id",
+         WHERE scene_id = ?1 ORDER BY z, id",
     )
-    .bind(class_id)
+    .bind(scene_id)
     .fetch_all(pool)
     .await?;
     Ok(rows
@@ -379,27 +520,28 @@ pub async fn load_widget_rows(pool: &SqlitePool, class_id: &str) -> AppResult<Ve
         .collect())
 }
 
-/// Replace a class's ENTIRE layout in one transaction — idempotent and
+/// Replace a SCENE's entire layout in one transaction — idempotent and
 /// atomic: a failed insert rolls the delete back, so a crash mid-save can
-/// never leave a mixed layout.
+/// never leave a mixed layout. Scene-scoped on purpose: saving scene A must
+/// never touch scene B's rows.
 pub async fn replace_widgets(
     pool: &SqlitePool,
-    class_id: &str,
+    scene_id: &str,
     rows: &[WidgetRow],
 ) -> AppResult<()> {
     let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM widget_instance WHERE class_id = ?1")
-        .bind(class_id)
+    sqlx::query("DELETE FROM widget_instance WHERE scene_id = ?1")
+        .bind(scene_id)
         .execute(&mut *tx)
         .await?;
     let stamp = now_ms();
     for row in rows {
         sqlx::query(
-            "INSERT INTO widget_instance (id, class_id, kind, x, y, w, h, z, config, created_at)
+            "INSERT INTO widget_instance (id, scene_id, kind, x, y, w, h, z, config, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )
         .bind(&row.id)
-        .bind(class_id)
+        .bind(scene_id)
         .bind(&row.kind)
         .bind(row.x)
         .bind(row.y)
@@ -428,6 +570,66 @@ mod tests {
         (pool, dir)
     }
 
+    /// The 0003 rebuild against a REAL pre-0003 database: run only the first
+    /// two migrations, populate the old schema, then let `open_pool` apply
+    /// the rest — every class must get its deterministic default scene and
+    /// every widget row must be adopted into it.
+    #[tokio::test]
+    async fn migration_0003_adopts_existing_layouts_into_default_scenes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("pre0003.sqlite");
+
+        {
+            let opts = sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(&path)
+                .create_if_missing(true)
+                .foreign_keys(true);
+            let pool = SqlitePool::connect_with(opts).await.expect("raw pool");
+
+            let full = sqlx::migrate!();
+            let pre = sqlx::migrate::Migrator {
+                migrations: full
+                    .migrations
+                    .iter()
+                    .filter(|m| m.version <= 2)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .into(),
+                ..full
+            };
+            pre.run(&pool).await.expect("pre-0003 migrations");
+
+            sqlx::query(
+                "INSERT INTO class (id, name, sort_index, created_at) VALUES ('c1','7B',0,1.0)",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO widget_instance
+                   (id, class_id, kind, x, y, w, h, z, config, created_at)
+                 VALUES ('w1','c1','text',0.1,0.1,0.3,0.2,0,'{\"kind\":\"text\"}',1.0)",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            pool.close().await;
+        }
+
+        // The normal boot path applies 0003+.
+        let pool = open_pool(&path).await.expect("migrated pool");
+        let scene = get_scene(&pool, "default-c1")
+            .await
+            .unwrap()
+            .expect("backfilled default scene");
+        assert_eq!(scene.class_id.as_deref(), Some("c1"));
+        assert_eq!(scene.name, "7B");
+
+        let rows = load_widget_rows(&pool, "default-c1").await.unwrap();
+        assert_eq!(rows.len(), 1, "the old layout was adopted");
+        assert_eq!(rows[0].id, "w1");
+    }
+
     #[tokio::test]
     async fn migrations_create_every_table() {
         let (pool, _d) = temp_pool().await;
@@ -436,6 +638,7 @@ mod tests {
             "app_setting",
             "class",
             "class_member",
+            "scene",
             "widget_instance",
             "draw_state",
         ] {
@@ -497,8 +700,15 @@ mod tests {
         .await
         .unwrap();
         sqlx::query(
-            "INSERT INTO widget_instance (id, class_id, kind, x, y, w, h, z, config, created_at)
-             VALUES ('w1','c1','text',0.1,0.1,0.3,0.2,0,'{}',1.0)",
+            "INSERT INTO scene (id, class_id, name, sort_index, created_at)
+             VALUES ('default-c1','c1','7B',0,1.0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO widget_instance (id, scene_id, kind, x, y, w, h, z, config, created_at)
+             VALUES ('w1','default-c1','text',0.1,0.1,0.3,0.2,0,'{}',1.0)",
         )
         .execute(&pool)
         .await
@@ -515,7 +725,7 @@ mod tests {
             .await
             .unwrap();
 
-        for table in ["class_member", "widget_instance", "draw_state"] {
+        for table in ["class_member", "scene", "widget_instance", "draw_state"] {
             let q = sqlx::AssertSqlSafe(format!("SELECT COUNT(*) AS n FROM {table}"));
             let row = sqlx::query(q).fetch_one(&pool).await.unwrap();
             assert_eq!(row.get::<i64, _>("n"), 0, "{table} should cascade-empty");
@@ -621,57 +831,56 @@ mod tests {
     async fn replace_widgets_round_trips_and_replaces_everything() {
         let (pool, _d) = temp_pool().await;
         let class = insert_class(&pool, "7B").await.unwrap();
+        let scene = default_scene_id(&class.id);
 
-        replace_widgets(
-            &pool,
-            &class.id,
-            &[widget_row("w1", 0), widget_row("w2", 1)],
-        )
-        .await
-        .unwrap();
-        let loaded = load_widget_rows(&pool, &class.id).await.unwrap();
+        replace_widgets(&pool, &scene, &[widget_row("w1", 0), widget_row("w2", 1)])
+            .await
+            .unwrap();
+        let loaded = load_widget_rows(&pool, &scene).await.unwrap();
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded[0].id, "w1");
         assert_eq!(loaded[0].config, r#"{"kind":"text","content":"hei"}"#);
 
         // A second save REPLACES — w1/w2 are gone, only w3 remains.
-        replace_widgets(&pool, &class.id, &[widget_row("w3", 0)])
+        replace_widgets(&pool, &scene, &[widget_row("w3", 0)])
             .await
             .unwrap();
-        let after = load_widget_rows(&pool, &class.id).await.unwrap();
+        let after = load_widget_rows(&pool, &scene).await.unwrap();
         assert_eq!(after.len(), 1);
         assert_eq!(after[0].id, "w3");
     }
 
     #[tokio::test]
-    async fn replace_widgets_only_touches_the_named_class() {
+    async fn replace_widgets_only_touches_the_named_scene() {
         let (pool, _d) = temp_pool().await;
         let a = insert_class(&pool, "7B").await.unwrap();
         let b = insert_class(&pool, "8A").await.unwrap();
-        replace_widgets(&pool, &a.id, &[widget_row("wa", 0)])
+        let (sa, sb) = (default_scene_id(&a.id), default_scene_id(&b.id));
+        replace_widgets(&pool, &sa, &[widget_row("wa", 0)])
             .await
             .unwrap();
-        replace_widgets(&pool, &b.id, &[widget_row("wb", 0)])
+        replace_widgets(&pool, &sb, &[widget_row("wb", 0)])
             .await
             .unwrap();
 
-        replace_widgets(&pool, &a.id, &[]).await.unwrap();
-        assert!(load_widget_rows(&pool, &a.id).await.unwrap().is_empty());
-        assert_eq!(load_widget_rows(&pool, &b.id).await.unwrap().len(), 1);
+        replace_widgets(&pool, &sa, &[]).await.unwrap();
+        assert!(load_widget_rows(&pool, &sa).await.unwrap().is_empty());
+        assert_eq!(load_widget_rows(&pool, &sb).await.unwrap().len(), 1);
     }
 
     #[tokio::test]
-    async fn replace_widgets_for_a_missing_class_fails_and_rolls_back() {
+    async fn replace_widgets_for_a_missing_scene_fails_and_rolls_back() {
         let (pool, _d) = temp_pool().await;
         let class = insert_class(&pool, "7B").await.unwrap();
-        replace_widgets(&pool, &class.id, &[widget_row("keep", 0)])
+        let scene = default_scene_id(&class.id);
+        replace_widgets(&pool, &scene, &[widget_row("keep", 0)])
             .await
             .unwrap();
 
         // FK failure on insert must not have deleted anything anywhere.
-        let res = replace_widgets(&pool, "no-such-class", &[widget_row("wx", 0)]).await;
-        assert!(res.is_err(), "saving to a missing class must fail");
-        assert_eq!(load_widget_rows(&pool, &class.id).await.unwrap().len(), 1);
+        let res = replace_widgets(&pool, "no-such-scene", &[widget_row("wx", 0)]).await;
+        assert!(res.is_err(), "saving to a missing scene must fail");
+        assert_eq!(load_widget_rows(&pool, &scene).await.unwrap().len(), 1);
     }
 
     #[tokio::test]

@@ -139,5 +139,12 @@
   },
   "toast": {
     "dismiss": "Lukk"
+  },
+  "scene": {
+    "switch": "Bytt skjerm",
+    "default": "Standard",
+    "saveAs": "Lagre som ny skjerm …",
+    "namePlaceholder": "Navn på skjermen …",
+    "deleteConfirm": "Slett skjermen"
   }
 }

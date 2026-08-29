@@ -14,8 +14,10 @@ import {
 } from "../state/chrome";
 import { t } from "../i18n";
 import { Icon } from "../ui/Icon";
+import { sceneMenuOpen } from "../state/scenes";
 import { AddMenu } from "./AddMenu";
 import { ClassSwitcher } from "./ClassSwitcher";
+import { SceneSwitcher } from "./SceneSwitcher";
 import styles from "./Toolbar.module.css";
 
 export function Toolbar() {
@@ -23,6 +25,7 @@ export function Toolbar() {
     chromeVisible.value ||
     managePanelOpen.value ||
     classMenuOpen.value ||
+    sceneMenuOpen.value ||
     addMenuOpen.value;
   const fsLabel = fullscreen.value
     ? t("chrome.fullscreenOff")
@@ -38,6 +41,7 @@ export function Toolbar() {
       <span class={styles.brand}>{t("app.name")}</span>
       <AddMenu />
       <span class={styles.meta}>
+        <SceneSwitcher />
         <ClassSwitcher />
         <button
           class={styles.iconBtn}

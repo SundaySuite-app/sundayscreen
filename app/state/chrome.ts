@@ -10,6 +10,7 @@ import { inRevealZone, shouldHide } from "../screen/chrome-core";
 import type { WindowState } from "../bindings/WindowState";
 import { settings } from "./settings";
 import { classMenuOpen, managePanelOpen } from "./classes";
+import { sceneMenuOpen } from "./scenes";
 
 export const chromeVisible = signal(true);
 export const fullscreen = signal(false);
@@ -35,7 +36,10 @@ export function initChrome(): () => void {
 
   const ticker = setInterval(() => {
     const pinned =
-      managePanelOpen.peek() || classMenuOpen.peek() || addMenuOpen.peek();
+      managePanelOpen.peek() ||
+      classMenuOpen.peek() ||
+      sceneMenuOpen.peek() ||
+      addMenuOpen.peek();
     if (
       chromeVisible.peek() &&
       shouldHide(lastActivityMs, Date.now(), pinned)

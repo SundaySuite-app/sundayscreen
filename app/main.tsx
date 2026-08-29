@@ -24,6 +24,7 @@ import { initWindowState } from "./screen/window-state";
 import { Shell } from "./Shell";
 import { loadAppInfo } from "./state/app-info";
 import { loadClasses, loadMembers } from "./state/classes";
+import { loadScenes } from "./state/scenes";
 import { initChrome } from "./state/chrome";
 import { activeClass, initLayout } from "./state/layout";
 import { hydrateSettings, settings } from "./state/settings";
@@ -71,6 +72,7 @@ async function boot(): Promise<void> {
   const cls = activeClass.peek();
   if (cls) void loadMembers(cls.id);
   void loadClasses();
+  void loadScenes();
   // A one-shot read the footer shows. No await — a line that can render "—"
   // until the number lands should not delay boot.
   void loadAppInfo();

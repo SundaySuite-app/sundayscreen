@@ -10,10 +10,10 @@ use crate::db::store::{self, WidgetRow};
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 
-/// A class's renderable layout. Rows whose `kind` this build does not know
+/// A scene's renderable layout. Rows whose `kind` this build does not know
 /// are SKIPPED, never deleted.
-pub async fn load_for(pool: &SqlitePool, class_id: &str) -> AppResult<Vec<WidgetInstance>> {
-    let rows = store::load_widget_rows(pool, class_id).await?;
+pub async fn load_for(pool: &SqlitePool, scene_id: &str) -> AppResult<Vec<WidgetInstance>> {
+    let rows = store::load_widget_rows(pool, scene_id).await?;
     let mut widgets: Vec<WidgetInstance> = rows
         .iter()
         .filter_map(|r| row_to_instance(&r.id, &r.kind, r.x, r.y, r.w, r.h, r.z, &r.config))
@@ -22,19 +22,19 @@ pub async fn load_for(pool: &SqlitePool, class_id: &str) -> AppResult<Vec<Widget
     Ok(widgets)
 }
 
-/// Replace the class's layout with `widgets` — plus every stored row whose
+/// Replace the SCENE's layout with `widgets` — plus every stored row whose
 /// kind this build does not know, preserved byte-for-byte at the top of the
 /// z order (a newer version's widgets survive a downgraded save; promise #3
 /// in CLAUDE.md). A write that fails REJECTS.
 pub async fn save_for(
     pool: &SqlitePool,
-    class_id: &str,
+    scene_id: &str,
     mut widgets: Vec<WidgetInstance>,
 ) -> AppResult<()> {
-    if store::get_class(pool, class_id).await?.is_none() {
+    if store::get_scene(pool, scene_id).await?.is_none() {
         return Err(AppError::NotFound {
-            entity: "class",
-            id: class_id.to_string(),
+            entity: "scene",
+            id: scene_id.to_string(),
         });
     }
 
@@ -42,7 +42,7 @@ pub async fn save_for(
 
     // `row_to_instance` returning None is exactly the "unknown to this
     // build" test.
-    let stored = store::load_widget_rows(pool, class_id).await?;
+    let stored = store::load_widget_rows(pool, scene_id).await?;
     let unknown: Vec<WidgetRow> = stored
         .into_iter()
         .filter(|r| row_to_instance(&r.id, &r.kind, r.x, r.y, r.w, r.h, r.z, &r.config).is_none())
@@ -67,21 +67,21 @@ pub async fn save_for(
         rows.push(row);
     }
 
-    store::replace_widgets(pool, class_id, &rows).await
+    store::replace_widgets(pool, scene_id, &rows).await
 }
 
 #[tauri::command]
-pub async fn layout_load(db: State<'_, Db>, class_id: String) -> AppResult<Vec<WidgetInstance>> {
-    load_for(db.pool(), &class_id).await
+pub async fn layout_load(db: State<'_, Db>, scene_id: String) -> AppResult<Vec<WidgetInstance>> {
+    load_for(db.pool(), &scene_id).await
 }
 
 #[tauri::command]
 pub async fn layout_save(
     db: State<'_, Db>,
-    class_id: String,
+    scene_id: String,
     widgets: Vec<WidgetInstance>,
 ) -> AppResult<()> {
-    save_for(db.pool(), &class_id, widgets).await
+    save_for(db.pool(), &scene_id, widgets).await
 }
 
 #[cfg(test)]
@@ -120,11 +120,12 @@ mod tests {
     async fn save_then_load_round_trips() {
         let (pool, _d) = temp_pool().await;
         let class = store::insert_class(&pool, "7B").await.unwrap();
+        let scene = store::default_scene_id(&class.id);
 
-        save_for(&pool, &class.id, vec![text_widget("w1", "Husk gymtøy!")])
+        save_for(&pool, &scene, vec![text_widget("w1", "Husk gymtøy!")])
             .await
             .unwrap();
-        let loaded = load_for(&pool, &class.id).await.unwrap();
+        let loaded = load_for(&pool, &scene).await.unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].id, "w1");
         let WidgetConfig::Text { content, .. } = &loaded[0].config else {
@@ -144,11 +145,12 @@ mod tests {
     async fn unknown_kind_rows_survive_a_save_and_are_skipped_by_load() {
         let (pool, _d) = temp_pool().await;
         let class = store::insert_class(&pool, "7B").await.unwrap();
+        let scene = store::default_scene_id(&class.id);
 
         // A "newer version" wrote a widget kind this build does not know.
         store::replace_widgets(
             &pool,
-            &class.id,
+            &scene,
             &[store::WidgetRow {
                 id: "future".to_string(),
                 kind: "dayplan".to_string(),
@@ -164,13 +166,13 @@ mod tests {
         .unwrap();
 
         // Load renders nothing (the kind is unknown) …
-        assert!(load_for(&pool, &class.id).await.unwrap().is_empty());
+        assert!(load_for(&pool, &scene).await.unwrap().is_empty());
 
         // … and a save of the visible layout must NOT destroy the row.
-        save_for(&pool, &class.id, vec![text_widget("w1", "hei")])
+        save_for(&pool, &scene, vec![text_widget("w1", "hei")])
             .await
             .unwrap();
-        let rows = store::load_widget_rows(&pool, &class.id).await.unwrap();
+        let rows = store::load_widget_rows(&pool, &scene).await.unwrap();
         assert_eq!(rows.len(), 2);
         let future = rows.iter().find(|r| r.id == "future").expect("preserved");
         assert_eq!(future.kind, "dayplan");
@@ -186,10 +188,11 @@ mod tests {
     async fn unknown_config_fields_survive_a_load_save_cycle() {
         let (pool, _d) = temp_pool().await;
         let class = store::insert_class(&pool, "7B").await.unwrap();
+        let scene = store::default_scene_id(&class.id);
 
         store::replace_widgets(
             &pool,
-            &class.id,
+            &scene,
             &[store::WidgetRow {
                 id: "w1".to_string(),
                 kind: "dice".to_string(),
@@ -206,11 +209,11 @@ mod tests {
 
         // Load the visible layout and save it straight back — the exact
         // motion a teacher's first click triggers on a downgraded build.
-        let widgets = load_for(&pool, &class.id).await.unwrap();
+        let widgets = load_for(&pool, &scene).await.unwrap();
         assert_eq!(widgets.len(), 1);
-        save_for(&pool, &class.id, widgets).await.unwrap();
+        save_for(&pool, &scene, widgets).await.unwrap();
 
-        let rows = store::load_widget_rows(&pool, &class.id).await.unwrap();
+        let rows = store::load_widget_rows(&pool, &scene).await.unwrap();
         let cfg: serde_json::Value = serde_json::from_str(&rows[0].config).unwrap();
         assert_eq!(cfg["futureSides"], serde_json::json!(20));
         assert_eq!(cfg["count"], serde_json::json!(2));
@@ -220,9 +223,10 @@ mod tests {
     async fn load_clamps_a_hand_edited_offscreen_row() {
         let (pool, _d) = temp_pool().await;
         let class = store::insert_class(&pool, "7B").await.unwrap();
+        let scene = store::default_scene_id(&class.id);
         store::replace_widgets(
             &pool,
-            &class.id,
+            &scene,
             &[store::WidgetRow {
                 id: "w1".to_string(),
                 kind: "text".to_string(),
@@ -237,7 +241,7 @@ mod tests {
         .await
         .unwrap();
 
-        let loaded = load_for(&pool, &class.id).await.unwrap();
+        let loaded = load_for(&pool, &scene).await.unwrap();
         assert_eq!(loaded.len(), 1);
         let r = loaded[0].rect;
         assert!(r.x >= 0.0 && r.x + r.w <= 1.0);

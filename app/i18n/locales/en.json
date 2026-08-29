@@ -139,5 +139,12 @@
   },
   "toast": {
     "dismiss": "Dismiss"
+  },
+  "scene": {
+    "switch": "Switch screen",
+    "default": "Default",
+    "saveAs": "Save as a new screen …",
+    "namePlaceholder": "Screen name …",
+    "deleteConfirm": "Delete the screen"
   }
 }

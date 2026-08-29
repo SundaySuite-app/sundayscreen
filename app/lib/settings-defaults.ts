@@ -8,6 +8,7 @@ import type { Settings } from "../bindings/Settings";
 export const SETTINGS_DEFAULTS: Settings = {
   language: "no",
   activeClassId: null,
+  activeSceneId: null,
   snapEnabled: true,
   window: null,
   updateChannel: "stable",

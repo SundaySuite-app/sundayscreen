@@ -6,6 +6,7 @@
 import { batch, signal } from "@preact/signals";
 
 import type { Class } from "../bindings/Class";
+import type { ClassSnapshot } from "../bindings/ClassSnapshot";
 import type { Member } from "../bindings/Member";
 import { activeClass, adoptSnapshot, flushPending, initLayout } from "./layout";
 import { settings } from "./settings";
@@ -28,12 +29,21 @@ export async function switchClass(id: string): Promise<void> {
   if (activeClass.peek()?.id === id) return;
   await flushPending();
   const snap = await window.api.classSwitch(id);
+  adoptSwitch(snap);
+}
+
+/** Shared tail of every switch: swap everything inside one batch so no
+ *  frame renders a torn combination, and keep the settings signal's
+ *  pointers in step (F9-funn S#1). */
+export function adoptSwitch(snap: ClassSnapshot): void {
   batch(() => {
-    adoptSnapshot(snap.class, snap.widgets);
+    adoptSnapshot(snap);
     members.value = snap.members;
-    // Keep the settings signal's activeClassId in step (F9-funn S#1) — a
-    // later whole-object save must not repoint the backend at the old class.
-    settings.value = { ...settings.peek(), activeClassId: snap.class.id };
+    settings.value = {
+      ...settings.peek(),
+      activeClassId: snap.class.id,
+      activeSceneId: snap.scene.id,
+    };
   });
 }
 

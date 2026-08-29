@@ -22,6 +22,17 @@
   color: var(--ink);
 }
 
+/* The screen name is free text and the toolbar is ONE row on a 1024×768
+ * projector, so the name gets a ceiling instead of the row getting a second
+ * line. Ellipsis needs a block box — the trigger itself is a flex container,
+ * where `text-overflow` does nothing. */
+.triggerLabel {
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sceneIcon,
 .chevron {
   color: var(--ink-3);
@@ -139,7 +150,20 @@
   color: var(--ink);
 }
 
+/* Not a `role="menuitem"`: an explanation must not answer to the arrow keys
+ * as if it were a choice. */
+.emptyHint {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+/* Shares the row with its tick button, so it takes the slack. */
 .inlineInput {
+  flex: 1;
+  min-width: 0;
   min-height: 36px;
   margin: var(--sp-1) 0;
   padding: var(--sp-1) var(--sp-3);

@@ -1,20 +1,46 @@
-.toolbar {
+/* The DOCK does the centring, and it is a separate box for one reason: an
+ * element whose `transform` is not `none` becomes the containing block for
+ * every `position: fixed` DESCENDANT, not just the absolute ones. The
+ * toolbar used to centre itself with `left: 50%; transform: translateX(-50%)`,
+ * so the switchers' `position: fixed; inset: 0` dismiss backdrops sized
+ * themselves to the TOOLBAR — measured at 785×52 px at (248, 651) in a
+ * 1280×720 window instead of 1280×720 at the origin. A click anywhere else
+ * on the screen hit nothing and the menu stayed open. Flex centring needs no
+ * transform, so `fixed` inside the toolbar means the VIEWPORT again.
+ *
+ * The `z-index` lives here too. That makes the dock a stacking context — a
+ * stacking context is NOT a containing block, so it changes what paints on
+ * top of what and nothing about what `fixed` measures against. */
+.dock {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
   bottom: var(--sp-4);
   z-index: var(--z-chrome);
-  /* An absolutely positioned box at left:50% only has the RIGHT half of the
-   * screen as available width, so shrink-to-fit wrapped the single row onto
-   * two at any viewport. Ask for the content's width explicitly. */
+  display: flex;
+  justify-content: center;
+  /* The dock spans the full width, so it must not swallow clicks meant for
+   * the board on either side of the toolbar. */
+  pointer-events: none;
+}
+
+.toolbar {
+  pointer-events: auto;
+  /* Shrink-to-fit used to be measured against half the screen (`left: 50%`)
+   * and wrapped the single row onto two at any viewport. The dock removed
+   * that trap, but max-content is still the right ask: the content's own
+   * width, clamped by the ceiling below. */
   width: max-content;
+  max-width: calc(100% - 2 * var(--sp-5));
+  /* Explicit, and load-bearing: see the dock's note. Chromium interpolates
+   * `none` → a transform, so the slide-away below still animates. */
+  transform: none;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--sp-3) var(--sp-5);
   padding: var(--sp-2) var(--sp-5);
-  max-width: calc(100% - 2 * var(--sp-5));
   background: var(--raised);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -28,7 +54,7 @@
 /* Hidden means UNHITTABLE (F9-funn U#9): visibility joins opacity and
  * pointer-events so a tab-focus or stray hit can never land on the ghost. */
 .toolbar[data-hidden] {
-  transform: translate(-50%, calc(100% + var(--sp-6)));
+  transform: translateY(calc(100% + var(--sp-6)));
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -54,6 +80,36 @@
 .iconBtn:hover {
   border-color: var(--gold-line);
   color: var(--ink);
+}
+
+/* A NAMED control, for the teacher who is not looking for it. Deliberately a
+ * copy of SceneSwitcher's `.trigger` in neutral dress: gold owns «Legg til
+ * verktøy», and a second gold pill would make the toolbar shout twice. Not
+ * `.iconBtn` either — its fixed 36×36 cannot hold a word, so the height is a
+ * MINIMUM and the width follows the text (which grows in translation). */
+.labelBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  min-height: 36px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.labelBtn:hover {
+  border-color: var(--gold-line);
+  color: var(--ink);
+}
+
+.labelIcon {
+  color: var(--ink-3);
 }
 
 .brand {

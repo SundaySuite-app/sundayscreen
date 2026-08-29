@@ -134,23 +134,42 @@ export function ManagePanel() {
               {classes.value.map((cls) => (
                 <li key={cls.id} class={styles.classRow}>
                   {renamingId === cls.id ? (
-                    <input
-                      class={styles.renameInput}
-                      aria-label={t("manage.rename")}
-                      value={renameDraft}
-                      autofocus
-                      onInput={(e) =>
-                        setRenameDraft((e.target as HTMLInputElement).value)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
+                    /* No `onBlur` that discards: the teacher typed a name,
+                       clicked somewhere, and it vanished without a word. The
+                       ways out are Enter or the tick to save, Escape to
+                       cancel. Committing on blur is the other trap — the
+                       tick's mousedown fires blur BEFORE click, the field
+                       unmounts, and the click lands nowhere. */
+                    <>
+                      <input
+                        class={styles.renameInput}
+                        aria-label={t("manage.rename")}
+                        placeholder={t("manage.renamePlaceholder")}
+                        value={renameDraft}
+                        autofocus
+                        onInput={(e) =>
+                          setRenameDraft((e.target as HTMLInputElement).value)
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            run(renameClass(cls.id, renameDraft));
+                            setRenamingId(null);
+                          }
+                          if (e.key === "Escape") setRenamingId(null);
+                        }}
+                      />
+                      <button
+                        class={styles.rowAction}
+                        aria-label={t("manage.confirmName")}
+                        title={t("manage.confirmName")}
+                        onClick={() => {
                           run(renameClass(cls.id, renameDraft));
                           setRenamingId(null);
-                        }
-                        if (e.key === "Escape") setRenamingId(null);
-                      }}
-                      onBlur={() => setRenamingId(null)}
-                    />
+                        }}
+                      >
+                        <Icon name="check" size="sm" />
+                      </button>
+                    </>
                   ) : (
                     <button
                       class={styles.classSelect}

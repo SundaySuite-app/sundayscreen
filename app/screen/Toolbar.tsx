@@ -4,6 +4,7 @@
 // while one of its own menus is open.
 
 import { appVersion } from "../state/app-info";
+import { attendancePanelOpen } from "../state/attendance";
 import { classMenuOpen, managePanelOpen } from "../state/classes";
 import {
   addMenuOpen,
@@ -14,8 +15,8 @@ import {
 } from "../state/chrome";
 import { t } from "../i18n";
 import { Icon } from "../ui/Icon";
-import { loadScenes, sceneMenuOpen } from "../state/scenes";
-import { plannerPanelOpen, refreshPlanner } from "../state/planner";
+import { sceneMenuOpen } from "../state/scenes";
+import { openPlanner, plannerPanelOpen } from "../state/planner";
 import { AddMenu } from "./AddMenu";
 import { ClassSwitcher } from "./ClassSwitcher";
 import { SceneSwitcher } from "./SceneSwitcher";
@@ -26,6 +27,7 @@ export function Toolbar() {
     chromeVisible.value ||
     plannerPanelOpen.value ||
     managePanelOpen.value ||
+    attendancePanelOpen.value ||
     classMenuOpen.value ||
     sceneMenuOpen.value ||
     addMenuOpen.value;
@@ -34,43 +36,49 @@ export function Toolbar() {
     : t("chrome.fullscreenOn");
 
   return (
-    <footer
-      class={styles.toolbar}
-      data-hidden={!shown || undefined}
-      onPointerMove={chromeActivity}
-      onPointerDown={chromeActivity}
-    >
-      <span class={styles.brand}>{t("app.name")}</span>
-      <AddMenu />
-      <span class={styles.meta}>
-        <button
-          class={styles.iconBtn}
-          aria-label={t("planner.title")}
-          title={t("planner.title")}
-          onClick={() => {
-            plannerPanelOpen.value = true;
-            void refreshPlanner();
-            void loadScenes();
-          }}
-        >
-          <Icon name="planner" size="md" />
-        </button>
-        <SceneSwitcher />
-        <ClassSwitcher />
-        <button
-          class={styles.iconBtn}
-          aria-label={fsLabel}
-          title={fsLabel}
-          aria-pressed={fullscreen.value}
-          onClick={() => void toggleFullscreen()}
-        >
-          <Icon
-            name={fullscreen.value ? "fullscreen-exit" : "fullscreen"}
-            size="md"
-          />
-        </button>
-        <span class={styles.version}>{appVersion.value}</span>
-      </span>
-    </footer>
+    // The dock is the centring wrapper, and it is NOT decoration: it keeps
+    // the toolbar free of a `transform`, which would otherwise make it the
+    // containing block for the switchers' full-screen backdrops. See
+    // Toolbar.module.css.
+    <div class={styles.dock}>
+      <footer
+        class={styles.toolbar}
+        data-hidden={!shown || undefined}
+        onPointerMove={chromeActivity}
+        onPointerDown={chromeActivity}
+      >
+        <span class={styles.brand}>{t("app.name")}</span>
+        <AddMenu />
+        <span class={styles.meta}>
+          {/* The app's biggest feature used to live behind a nameless icon.
+           * No `aria-label` now that the word is on screen: it would OVERRIDE
+           * the visible text for a screen reader and the two could drift
+           * apart at the next translation. `title` (the tooltip) stays. */}
+          <button
+            class={styles.labelBtn}
+            title={t("planner.title")}
+            onClick={openPlanner}
+          >
+            <Icon name="planner" size="sm" class={styles.labelIcon} />
+            {t("planner.title")}
+          </button>
+          <SceneSwitcher />
+          <ClassSwitcher />
+          <button
+            class={styles.iconBtn}
+            aria-label={fsLabel}
+            title={fsLabel}
+            aria-pressed={fullscreen.value}
+            onClick={() => void toggleFullscreen()}
+          >
+            <Icon
+              name={fullscreen.value ? "fullscreen-exit" : "fullscreen"}
+              size="md"
+            />
+          </button>
+          <span>{appVersion.value}</span>
+        </span>
+      </footer>
+    </div>
   );
 }

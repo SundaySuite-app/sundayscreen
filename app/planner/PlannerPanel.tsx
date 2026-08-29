@@ -139,6 +139,39 @@ function PeriodsTab() {
     setReceipt(false);
   };
 
+  /**
+   * Append a row of `kind`. Both buttons run through here, and both rely on
+   * behaviour that was ALREADY break-safe and is only verified here:
+   *   - the chain takes the previous row's END whatever kind it was, so a
+   *     break slots in between two lessons without a gap;
+   *   - the lesson number counts LESSON rows only, so inserting a break
+   *     never bumps «Time 3» to «Time 4».
+   * No «suggest a normal school day» button: invented bell times that look
+   * authoritative are worse than empty rows.
+   */
+  const addRow = (kind: PeriodKind) => {
+    const last = rows[rows.length - 1];
+    const start = last ? last.end : "08:30";
+    const startMin = parseTime(start) ?? 510;
+    const minutes = kind === "lesson" ? 45 : 15;
+    setDrafts([
+      ...rows,
+      {
+        id: null,
+        label:
+          kind === "lesson"
+            ? tf("planner.defaultPeriodLabel", {
+                n: String(rows.filter((r) => r.kind === "lesson").length + 1),
+              })
+            : t("planner.defaultBreakLabel"),
+        start,
+        end: formatMin(Math.min(startMin + minutes, 1439)),
+        kind,
+      },
+    ]);
+    setReceipt(false);
+  };
+
   const save = async () => {
     setError(null);
     const specs = [];
@@ -227,29 +260,13 @@ function PeriodsTab() {
         </div>
       ))}
       <div class={styles.actions}>
-        <button
-          class={styles.secondary}
-          onClick={() => {
-            const last = rows[rows.length - 1];
-            const start = last ? last.end : "08:30";
-            const startMin = parseTime(start) ?? 510;
-            setDrafts([
-              ...rows,
-              {
-                id: null,
-                label: tf("planner.defaultPeriodLabel", {
-                  n: String(rows.filter((r) => r.kind === "lesson").length + 1),
-                }),
-                start,
-                end: formatMin(Math.min(startMin + 45, 1439)),
-                kind: "lesson",
-              },
-            ]);
-            setReceipt(false);
-          }}
-        >
+        <button class={styles.secondary} onClick={() => addRow("lesson")}>
           <Icon name="plus" size="sm" />
           {t("planner.addPeriod")}
+        </button>
+        <button class={styles.secondary} onClick={() => addRow("break")}>
+          <Icon name="plus" size="sm" />
+          {t("planner.addBreak")}
         </button>
         <button class={styles.primary} onClick={() => void save()}>
           {t("planner.savePeriods")}
@@ -299,7 +316,23 @@ function WeekTab() {
   return (
     <div class={styles.tabBody}>
       {lessons.length === 0 ? (
-        <p class={styles.hint}>{t("planner.noPeriodsYet")}</p>
+        <>
+          <p class={styles.hint}>{t("planner.noPeriodsYet")}</p>
+          {/* The way out, in the ONE place it is always true. The key is
+           * shared with DayTab, which shows it on weekends too — a shared
+           * button component would offer «Start i Timeoppsett» on a
+           * Saturday, where the day simply has no lessons. */}
+          <div class={styles.actions}>
+            <button
+              class={styles.secondary}
+              onClick={() => {
+                plannerTab.value = "periods";
+              }}
+            >
+              {t("planner.goToPeriods")}
+            </button>
+          </div>
+        </>
       ) : (
         <div
           class={styles.weekGrid}

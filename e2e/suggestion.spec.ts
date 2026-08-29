@@ -7,7 +7,7 @@ import { installFixtures } from "./harness";
 
 async function planMondayLesson(page: import("@playwright/test").Page) {
   await page.goto("/?goto=planner:periods");
-  await page.getByRole("button", { name: "Legg til økt" }).click();
+  await page.getByRole("button", { name: "Legg til time" }).click();
   await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
   await page.getByRole("button", { name: "Ukeplan" }).click();
   await page.locator("button:has-text('—')").first().click();
@@ -127,7 +127,7 @@ test("auto-switch leaves a manual mid-lesson switch alone (F-funn B3)", async ({
   await page.goto("/");
   // Plan 7B's own lesson, so the board is ALREADY on target at start.
   await page.goto("/?goto=planner:periods");
-  await page.getByRole("button", { name: "Legg til økt" }).click();
+  await page.getByRole("button", { name: "Legg til time" }).click();
   await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
   await page.getByRole("button", { name: "Ukeplan" }).click();
   await page.locator("button:has-text('—')").first().click();

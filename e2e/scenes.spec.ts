@@ -91,7 +91,10 @@ test("deleting the active scene lands on the class default", async ({
   );
 
   await openSceneMenu(page);
-  await page.getByRole("button", { name: "Slett" }).click();
+  await page.getByRole("button", { name: "Slett", exact: true }).click();
+  // The confirmation is inert for CONFIRM_ARM_MS (400 ms) so a double-click
+  // cannot walk through it — a deliberate second click waits.
+  await page.waitForTimeout(500);
   await page.getByRole("button", { name: "Slett skjermen" }).click();
 
   await expect(page.getByRole("button", { name: "Bytt skjerm" })).toContainText(
@@ -120,4 +123,98 @@ test("a renamed scene keeps its layout", async ({ page }) => {
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator('[data-widget-kind="dice"]')).toHaveCount(1);
+});
+
+// ── The library explains itself, and does not discard or delete by accident ──
+
+test("an empty library says what a saved screen is FOR", async ({ page }) => {
+  await installFixtures(page);
+  await page.goto("/");
+
+  // The trigger names what it is a default OF.
+  await expect(page.getByRole("button", { name: "Bytt skjerm" })).toContainText(
+    "Standard skjerm",
+  );
+
+  await openSceneMenu(page);
+  await expect(
+    page.getByText("Lagre tavla slik den står nå", { exact: false }),
+  ).toBeVisible();
+  // …as prose, NOT as a menu choice that does nothing.
+  await expect(
+    page.getByRole("menuitem", { name: "Lagre tavla", exact: false }),
+  ).toHaveCount(0);
+});
+
+test("the name field survives a blur and commits from the tick", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+
+  await addWidget(page, "Terning");
+  await openSceneMenu(page);
+  await page.getByRole("menuitem", { name: "Lagre som ny skjerm …" }).click();
+  const field = page.getByPlaceholder("Navn på skjermen …");
+  await field.fill("Mattestart");
+
+  // Blur used to throw the name away without a word. Tab moves focus to the
+  // tick button — the draft must still be there.
+  await page.keyboard.press("Tab");
+  await expect(field).toHaveValue("Mattestart");
+
+  await page.getByRole("button", { name: "Lagre navnet" }).click();
+  await expect(page.getByRole("button", { name: "Bytt skjerm" })).toContainText(
+    "Mattestart",
+  );
+  await expect(page.locator('[data-widget-kind="dice"]')).toHaveCount(1);
+});
+
+test("a rename survives a blur too", async ({ page }) => {
+  await installFixtures(page);
+  await page.goto("/");
+
+  await openSceneMenu(page);
+  await page.getByRole("menuitem", { name: "Lagre som ny skjerm …" }).click();
+  await page.getByPlaceholder("Navn på skjermen …").fill("Førsteutkast");
+  await page.getByPlaceholder("Navn på skjermen …").press("Enter");
+
+  await openSceneMenu(page);
+  await page.getByRole("button", { name: "Gi nytt navn" }).click();
+  const input = page.getByRole("textbox", { name: "Gi nytt navn" });
+  await input.fill("Andreutkast");
+  await page.keyboard.press("Tab");
+  await expect(input).toHaveValue("Andreutkast");
+  await page.getByRole("button", { name: "Lagre navnet" }).click();
+
+  await expect(
+    page.getByRole("menuitem", { name: "Andreutkast" }),
+  ).toBeVisible();
+});
+
+test("a double-click on Slett does NOT delete the screen", async ({ page }) => {
+  await installFixtures(page);
+  await page.goto("/");
+
+  await openSceneMenu(page);
+  await page.getByRole("menuitem", { name: "Lagre som ny skjerm …" }).click();
+  await page.getByPlaceholder("Navn på skjermen …").fill("Dyrebar");
+  await page.getByPlaceholder("Navn på skjermen …").press("Enter");
+
+  await openSceneMenu(page);
+  // «Slett skjermen» renders exactly where the trash (and pencil) stood, so
+  // the second half of a double-click lands on the confirmation itself.
+  const trash = page.getByRole("button", { name: "Slett", exact: true });
+  const box = (await trash.boundingBox())!;
+  await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+
+  // Armed, but nothing was deleted — and the confirm is still there to be
+  // clicked deliberately (no disabled→enabled flicker on a projector).
+  const confirm = page.getByRole("button", { name: "Slett skjermen" });
+  await expect(confirm).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Dyrebar" })).toBeVisible();
+
+  await page.waitForTimeout(500);
+  await confirm.click();
+  await expect(page.getByRole("menuitem", { name: "Dyrebar" })).toHaveCount(0);
 });

@@ -8,7 +8,7 @@ import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { localeTag } from "@lib/i18n";
 import { t } from "../../i18n";
 import { formatMin } from "../../planner/date-core";
-import { plannerNowMs, todayPlan } from "../../state/planner";
+import { plannerNowMs, todayPlan, todayReadFailed } from "../../state/planner";
 import { updateWidgetConfig } from "../../state/layout";
 import styles from "./today.module.css";
 
@@ -47,7 +47,11 @@ export function TodayWidget({ widget }: { widget: WidgetInstance }) {
       {cfg.showLessons && (
         <ul class={styles.lessons} data-no-drag>
           {lessons.length === 0 ? (
-            <li class={styles.emptyRow}>{t("today.noLessons")}</li>
+            <li class={styles.emptyRow}>
+              {todayReadFailed.value
+                ? t("planner.readFailed")
+                : t("today.noLessons")}
+            </li>
           ) : (
             lessons.map((e) => (
               <li key={e.period.id} class={styles.lesson}>

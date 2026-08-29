@@ -267,6 +267,14 @@ export async function installFixtures(
         db.scenes = db.scenes.filter((s) => s.classId !== id);
         delete db.members[id];
         delete db.layouts[defaultSceneId(id)];
+        // Migration 0004 cascades class_id on week_slot/date_override; the
+        // fake used to keep them and diverge from the real backend.
+        for (const [key, slot] of Object.entries(db.slots ?? {})) {
+          if (slot.classId === id) delete db.slots![key];
+        }
+        for (const [key, ovr] of Object.entries(db.overrides ?? {})) {
+          if (ovr.classId === id) delete db.overrides![key];
+        }
         if (db.activeClassId === id)
           db.activeClassId = db.classes[0]?.id ?? null;
         if (db.activeSceneId === defaultSceneId(id)) db.activeSceneId = null;
@@ -285,10 +293,12 @@ export async function installFixtures(
       scene_list: () => load().scenes.filter((s) => s.classId == null),
       scene_create: (args?: Record<string, unknown>) => {
         const db = load();
+        const name = String(arg(args, "name")).trim().slice(0, 80);
+        if (name === "") throw new Error("validation");
         const scene: E2eScene = {
           id: mint(db),
           classId: null,
-          name: String(arg(args, "name")),
+          name,
           sortIndex: db.scenes.length,
           createdAt: db.scenes.length,
         };
@@ -314,6 +324,14 @@ export async function installFixtures(
         if (scene.classId != null) throw new Error("validation");
         db.scenes = db.scenes.filter((s) => s.id !== id);
         delete db.layouts[id];
+        // ON DELETE SET NULL in 0004: pointers to a dead scene fall back to
+        // the class default rather than dangling.
+        for (const slot of Object.values(db.slots ?? {})) {
+          if (slot.sceneId === id) slot.sceneId = null;
+        }
+        for (const ovr of Object.values(db.overrides ?? {})) {
+          if (ovr.sceneId === id) ovr.sceneId = null;
+        }
         if (db.activeSceneId === id) db.activeSceneId = null;
         if (db.settings && db.settings.activeSceneId === id)
           db.settings.activeSceneId = null;
@@ -472,6 +490,8 @@ export async function installFixtures(
         db.agenda ??= {};
         const date = String(arg(args, "date"));
         const periodId = String(arg(args, "periodId"));
+        // Mirror the core's normalize_agenda clamps (30 items, 500 chars,
+        // 1..600 min) so the fake cannot hide a real truncation.
         const items = (
           (arg(args, "items") as {
             id: string | null;
@@ -479,7 +499,17 @@ export async function installFixtures(
             durationMin: number | null;
             done: boolean;
           }[]) ?? []
-        ).map((i) => ({ ...i, id: i.id ?? mint(db) }));
+        )
+          .slice(0, 30)
+          .map((i) => ({
+            ...i,
+            id: i.id ?? mint(db),
+            text: i.text.slice(0, 500),
+            durationMin:
+              i.durationMin == null
+                ? null
+                : Math.min(Math.max(i.durationMin, 1), 600),
+          }));
         db.agenda[`${date}:${periodId}`] = items;
         save(db);
         return items.map((a, i) => ({ ...a, date, periodId, sortIndex: i }));
@@ -503,7 +533,13 @@ export async function installFixtures(
         const date = String(arg(args, "date"));
         const notes = (
           (arg(args, "notes") as { id: string | null; body: string }[]) ?? []
-        ).map((n) => ({ ...n, id: n.id ?? mint(db) }));
+        )
+          .slice(0, 20)
+          .map((n) => ({
+            ...n,
+            id: n.id ?? mint(db),
+            body: n.body.slice(0, 500),
+          }));
         db.notes[date] = notes;
         save(db);
         return notes.map((n, i) => ({ ...n, date, sortIndex: i }));

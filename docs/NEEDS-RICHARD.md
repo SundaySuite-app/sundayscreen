@@ -22,6 +22,9 @@ beta-ringen (renummerert fra v0.9.0-beta.1 — ADR-008). Nedlasting:
 ⚠️ Installerte du 0.9.0-beta.1 i mellomtiden: avinstallér og installér
 0.1.0-beta.1 manuelt — updateren tilbyr aldri et lavere versjonsnummer.
 
+- [ ] **Riggtest Runde 2:** planleggerflyten en ekte skoledag — seks punkter
+      i docs/GRANSKING-R2.md §Riggtest-punkter (start med å åpne
+      planleggeren på en LØRDAG; det var rundens verste funn).
 - [ ] **Riggtest i klasserom:** installer beta på klasseroms-maskinen, koble
       projektor (helst også en 4:3), bruk appen én hel undervisningstime
       (timer + navnetrekker + trafikklys). Noter alt som skurrer.

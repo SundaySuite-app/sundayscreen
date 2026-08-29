@@ -11,10 +11,14 @@ visningsflaten: verktøylinja nederst legger til widgets som flyttes, skaleres
 og lukkes. Klasseprofiler bytter navneliste + layout atomisk med to klikk.
 Helt offline i drift; updater er eneste nettfunksjon og feiler stille.
 
-**v1-widgets:** klokke · timer/nedtelling/stoppeklokke · tekst · trafikklys ·
-arbeidssymboler · navnetrekker · gruppegenerator · terning.
-**Veikart (ikke i v1, arkitekturen stenger ikke):** dagsplan (v1.1), lydmåler,
-tegning/whiteboard, toskjermsmodus, egne bakgrunnsbilder.
+**Widgets (Runde 2):** klokke · timer/stoppeklokke · tekst · trafikklys ·
+arbeidssymboler · navnetrekker · gruppegenerator · terning · dagens time ·
+dagen i dag · frist · sjekkliste. **Skjermbibliotek:** navngitte, globale
+oppsett per time; klassens standardskjerm består. **Planlegger:**
+timeoppsett → ukeplan → datoavvik → agenda/beskjeder; forslag-banner +
+valgfritt auto-bytte ved timestart.
+**Veikart (arkitekturen stenger ikke):** klassekart/plassering, poengteller,
+lydmåler, friminutt-skjerm, A/B-uker, touch, tegning, toskjermsmodus.
 
 ## Lagene
 
@@ -66,17 +70,25 @@ rect: NormRect, z, config }` og `WidgetConfig` som `#[serde(tag =
 
 ## SQLite-skjema
 
-Se `src-tauri/migrations/0001_init.sql`: `app_setting` (Settings-JSON),
-`class`, `class_member` (duplikatnavn OK — identitet er id), `widget_instance`
-(én layout per klasse i v1; normaliserte koordinater), `draw_state`
-(navnetrekkerens «ingen gjentak»-pool). Konvensjoner: TEXT UUID v7, REAL
-epoch-ms, FK håndhevet.
+`0001`: `app_setting` (Settings-JSON), `class`, `class_member` (duplikatnavn
+OK — identitet er id), `widget_instance`, `draw_state`. `0003`: `scene`
+(class_id NULL = global; klassens standard = `default-<klasseid>`) og
+widget_instance GJENOPPBYGD scene-nøklet. `0004`: `period`, `week_slot`,
+`date_override`, `agenda_item`, `day_note` (tid = minutter siden midnatt,
+dato = frontend-myntet `YYYY-MM-DD`). Konvensjoner: TEXT UUID v7, REAL
+epoch-ms, FK håndhevet. Migrasjonsfiler er APPLIED-FOREVER — aldri rediger
+en anvendt fil (checksum-avvik leses som korrupsjon).
 
-## IPC-flate (mål for v1)
+## IPC-flate
 
-`settings_get/save` · `class_list/create/rename/delete/switch` ·
-`members_set` · `layout_load/save` · `picker_draw/reset` · `groups_split` ·
-`update_check_silent/manual`, `update_install`. Alle med typed shim-fallback.
+`settings_get/save` · `class_ensure_active → ActiveContext` ·
+`class_list/create/rename/delete/switch` · `members_get/set` ·
+`layout_load/save` (scene-nøklet) · `scene_list/create/rename/delete/
+duplicate` · `lesson_switch → ClassSnapshot` · `picker_draw/reset` ·
+`groups_split` · `planner_periods_get/set` · `planner_week_get` ·
+`planner_slot_set` · `planner_override_set` · `planner_day_get → DayPlan` ·
+`planner_agenda_set/check` · `planner_notes_set` · `update_check/install` ·
+`window_set_fullscreen`. Alle gjennom api-shimmen; skriv REJECTer.
 
 ## Faseplan
 
@@ -98,3 +110,20 @@ epoch-ms, FK håndhevet.
   produktside EN+NO, kort i «Tilgjengelig i dag», grønn juveltile-logo,
   `/download/sundayscreen/{mac,windows,version}` (leser suite-feeden,
   stable-ring først, så beta — flipper selv ved v1.0.0). Live-verifisert.
+
+### Runde 2 «Lærerens dag» (2026-08-29)
+
+- **R0** ADR-007: flatten-extra på hele config-vokabularet + Settings ✅
+- **R1** Ikonsystem (app/ui/icon-paths + Icon, WidgetDef.icon) ✅
+- **R2** Verktøylinje: «Legg til»-meny, ikon-chrome, U#9-fiks ✅
+- **R3** Ikonsveip: rader, ManagePanel, tegnede arbeidssymboler ✅
+- **R4/R5** Skjermbibliotek: migrasjon 0003 (scene-nøklet widget_instance),
+  lesson_switch, SceneSwitcher, harness re-nøklet ✅
+- **R6/R7** Planlegger: migrasjon 0004, schedule.rs (skyggeregelen),
+  panel m/ Timeoppsett/Ukeplan/I dag, ?goto=planner ✅
+- **R8** «Dagens time» + «Dagen i dag» (planner-bundet, state/planner.ts:
+  hendelsesdrevet henting + 30s derive-tick) ✅
+- **R9** «Frist» + «Sjekkliste» (blur committer med umiddelbar lagring) ✅
+- **R10** Forslag-banner + auto_switch_scenes (suggest-core) ✅
+- **R11** Gransking: 3 granskere, 55 funn, 23 fikset (docs/GRANSKING-R2.md)
+  → v0.2.0-beta.1 ✅

@@ -86,6 +86,9 @@ export function DeadlineWidget({ widget }: { widget: WidgetInstance }) {
       {set ? (
         b.overdue ? (
           <span class={styles.overdue}>{t("deadline.overdue")}</span>
+        ) : b.days === 0 && b.hours === 0 ? (
+          // The last hour: «0 timer igjen» is a lie while 59 minutes remain.
+          <span class={styles.overdue}>{t("deadline.soon")}</span>
         ) : (
           <div class={styles.count}>
             <span class={styles.big}>
@@ -96,7 +99,7 @@ export function DeadlineWidget({ widget }: { widget: WidgetInstance }) {
                 ? tn("deadline.days", b.days)
                 : tn("deadline.hours", b.hours)}
             </span>
-            {showHours && b.days > 0 && (
+            {showHours && b.days > 0 && b.hours > 0 && (
               <span class={styles.small}>
                 {tn("deadline.hoursShort", b.hours)}
               </span>

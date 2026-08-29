@@ -40,14 +40,20 @@ export async function saveCurrentAsScene(
   currentSceneId: string,
   name: string,
 ): Promise<void> {
+  // The copy is taken from STORED rows — a debounced edit still in flight
+  // would be missing from it (F-funn B7).
+  await flushPending();
   const copy = await window.api.sceneDuplicate(currentSceneId, name);
   await loadScenes();
   await switchScene(copy.id);
 }
 
 export async function renameScene(id: string, name: string): Promise<void> {
-  await window.api.sceneRename(id, name);
+  const renamed = await window.api.sceneRename(id, name);
   await loadScenes();
+  // The toolbar trigger shows the ACTIVE scene's name — refresh it too
+  // (F-funn F14), or it keeps the old one until the next switch.
+  if (activeScene.peek()?.id === id) activeScene.value = renamed;
 }
 
 /** Delete a library scene. If it was on screen, land on the class default —

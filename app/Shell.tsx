@@ -46,11 +46,14 @@ export function Shell() {
   return (
     <main class={styles.shell}>
       <Surface />
-      {chipText() !== null && (
-        <p class={styles.errorChip} data-status="error">
-          {chipText()}
-        </p>
-      )}
+      <div class={styles.topStack}>
+        {chipText() !== null && (
+          <p class={styles.errorChip} data-status="error">
+            {chipText()}
+          </p>
+        )}
+        <SuggestionBanner />
+      </div>
       {undoSlot.value && (
         <div class={styles.snackbar}>
           <span>{t("undo.removed")}</span>
@@ -70,7 +73,6 @@ export function Shell() {
             onClick={chromeActivity}
           />
         )}
-      <SuggestionBanner />
       {managePanelOpen.value && <ManagePanel />}
       <PlannerPanel />
     </main>

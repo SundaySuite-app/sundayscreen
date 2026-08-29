@@ -52,3 +52,22 @@ rakk å installere 0.9.0-beta.1 ser ALDRI 0.1.x-utgivelser i updateren
 (semver-sammenligning klient-side) og må reinstallere manuelt én gang.
 Stable-ringen tas i bruk først når eier eksplisitt ber om en stabil utgivelse.
 (ADR-007, config-felttoleranse, står i docs/GRANSKING-v1.md.)
+
+## ADR-009 — Runde 2-modellvalg (2026-08-29)
+
+- **Globale skjermer er klasse-agnostiske og live-redigerte.** En skjerm er
+  et oppsett; klassen er dataene (trekker/grupper leser alltid aktiv
+  klasse). Redigering av en global skjerm gjelder biblioteket direkte —
+  copy-on-write ville forgrenet stille; «Dupliser»/«Lagre som ny skjerm»
+  er fluktveien. Klassens standardskjerm (deterministisk id
+  `default-<klasseid>`) er ikke bibliotekvare og dør med klassen.
+- **Agenda hektes på dato-instansen (dato, økt)** — neste tirsdag er ikke
+  denne tirsdagen, og samme nøkkel virker uansett om timen kom fra
+  ukeplanen eller et datoavvik. Skyggeregelen bor ETT sted:
+  `core/schedule.rs::resolve_day`.
+- **Tid uten chrono:** økter er minutter siden lokal midnatt, datoer er
+  frontend-myntede `YYYY-MM-DD`-nøkler (JS eier veggklokka), ukedag
+  ISO 1..5. Kjernen leser aldri klokke.
+- **Banneret rendrer bare.** Pekere flyttes av lærerens klikk eller den
+  eksplisitt påslåtte automatikken — aldri av rendering. Én nøkkel per
+  time-instans gjør «Ikke nå» og fyr-én-gang strukturelle.

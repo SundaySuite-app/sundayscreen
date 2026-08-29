@@ -206,7 +206,9 @@
     "addNote": "Legg til beskjed",
     "notePlaceholder": "Beskjed til klassen …",
     "saveNotes": "Lagre beskjeder",
-    "autoSwitch": "Bytt skjerm automatisk når timen starter"
+    "autoSwitch": "Bytt skjerm automatisk når timen starter",
+    "emptyLabel": "Alle økter må ha et navn.",
+    "readFailed": "Fikk ikke lest planen"
   },
   "agenda": {
     "empty": "Ingen time nå",
@@ -241,7 +243,8 @@
     "hoursShort": {
       "one": "+ {n} time",
       "other": "+ {n} timer"
-    }
+    },
+    "soon": "Under én time igjen"
   },
   "checklist": {
     "addPlaceholder": "Nytt punkt …",
@@ -252,7 +255,7 @@
   "suggest": {
     "next": "Neste:",
     "now": "Nå:",
-    "switch": "Bytt skjerm",
+    "switch": "Bytt til timen",
     "dismiss": "Ikke nå"
   }
 }

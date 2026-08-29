@@ -38,6 +38,7 @@
 }
 
 .shell:hover .delete,
+.shell:focus-within .delete,
 .shell[data-selected] .delete {
   opacity: 1;
   visibility: visible;
@@ -87,6 +88,7 @@
 }
 
 .shell:hover .resize,
+.shell:focus-within .resize,
 .shell[data-selected] .resize {
   opacity: 1;
   visibility: visible;
@@ -119,6 +121,7 @@
 }
 
 .shell:hover [data-settings-row],
+.shell:focus-within [data-settings-row],
 .shell[data-selected] [data-settings-row] {
   opacity: 1;
   visibility: visible;

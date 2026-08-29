@@ -360,16 +360,15 @@
   text-align: center;
 }
 
-.rotateLeft {
-  transform: rotate(90deg);
+/* chevron-up rotated a quarter turn LEFT points left (previous day);
+ * chevron-down rotated the same way points right (next day). The earlier
+ * pair of rules set the same angle on both — they pointed the same way
+ * (F-funn C2). */
+.prevIcon {
+  transform: rotate(-90deg);
 }
 
-.dateNav button:first-child .rotateLeft,
-.dateNav .rowAction:first-of-type svg {
-  transform: rotate(90deg);
-}
-
-.dateNav .rowAction:nth-of-type(2) svg {
+.nextIcon {
   transform: rotate(-90deg);
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DayPlan } from "../bindings/DayPlan";
-import { suggest } from "./suggest-core";
+import { lessonKeyInWindow, suggest } from "./suggest-core";
 
 const plan: DayPlan = {
   date: "2026-08-31",
@@ -82,6 +82,20 @@ describe("suggest", () => {
   it("a dismissal silences exactly that lesson-instance", () => {
     expect(suggest(plan, null, null, 530, "2026-08-31:p1")).toBeNull();
     expect(suggest(plan, null, null, 570, "2026-08-31:p1")).not.toBeNull();
+  });
+
+  // F-funn B3: the auto-switch consumes a lesson's key even when the board
+  // already shows it — otherwise a later manual switch inside that lesson
+  // gets yanked back on the next tick.
+  it("lessonKeyInWindow answers regardless of what is on screen", () => {
+    expect(lessonKeyInWindow(plan, 504)).toBeNull();
+    expect(lessonKeyInWindow(plan, 530)).toBe("2026-08-31:p1");
+    // Same key while the pointers already match (suggest() stays silent).
+    expect(suggest(plan, "c1", "default-c1", 530, null)).toBeNull();
+    expect(lessonKeyInWindow(plan, 530)).toBe("2026-08-31:p1");
+    // And while dismissed.
+    expect(lessonKeyInWindow(plan, 530)).toBe("2026-08-31:p1");
+    expect(lessonKeyInWindow(plan, 700)).toBeNull();
   });
 
   it("no plan, breaks, free periods: nothing", () => {

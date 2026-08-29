@@ -11,6 +11,9 @@ import { escapeTarget } from "./chrome-core";
 
 export function installKeyboard(): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
+    // Keyboard use counts as presence (F-funn C10): the chrome must not
+    // slide away under someone tabbing through it.
+    chromeActivity();
     if (e.key === "F11") {
       e.preventDefault();
       chromeActivity();
@@ -21,11 +24,15 @@ export function installKeyboard(): () => void {
 
     // A focused text field owns its own Escape: leave editing first.
     const active = document.activeElement;
-    if (
+    // A checkbox/radio has nothing to "leave" — Escape there should close a
+    // layer, not be swallowed (F-funn C17).
+    const isTextField =
       active instanceof HTMLElement &&
-      (active.tagName === "TEXTAREA" || active.tagName === "INPUT")
-    ) {
-      active.blur();
+      (active.tagName === "TEXTAREA" ||
+        (active instanceof HTMLInputElement &&
+          !["checkbox", "radio", "button", "submit"].includes(active.type)));
+    if (isTextField) {
+      (active as HTMLElement).blur();
       return;
     }
 

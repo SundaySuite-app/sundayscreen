@@ -1,13 +1,10 @@
+/* Positioned by Shell's .topStack — never absolutely, or it lands on top of
+ * the error chip (F-funn F7). */
 .banner {
-  position: absolute;
-  top: var(--sp-4);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: var(--z-chrome);
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  max-width: calc(100% - 2 * var(--sp-5));
+  max-width: 100%;
   padding: var(--sp-2) var(--sp-4);
   background: var(--raised);
   border: 1px solid var(--gold-line);

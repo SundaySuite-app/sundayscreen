@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.2.0-beta.1] — 2026-08-29
+
+Runde 2 «Lærerens dag» — ikonspråk, planlegger, skjermbibliotek og fire
+nye verktøy:
+
+- **Ikonspråk:** eget tegnet strekikon-sett (33 ikoner). Verktøylinja er
+  bygd om: «Legg til»-meny med ikoner erstatter tekstknappene, og alle
+  innstillingsrader taler ikoner der det er trangt. Arbeidssymbolene er
+  tegnede glyfer, ikke emoji.
+- **Skjermbibliotek:** lagre skjermen som en navngitt «skjerm» og bruk den
+  i alle klasser (navnetrekker m.m. følger alltid aktiv klasse). Bytt fra
+  ny skjermvelger på verktøylinja; klassens standardskjerm består.
+- **Planlegger:** definer skolens timeoppsett én gang, fyll den faste
+  ukeplanen (klasse + fag + skjerm per økt), overstyr enkeltdatoer
+  (prøve, tur, utgått time), og planlegg agenda og beskjeder per time —
+  i forkant.
+- **Ved timestart:** et diskret banner foreslår neste time — ett klikk
+  bytter klasse og skjerm. Valgfri helautomatikk (av som standard).
+- **Nye verktøy:** «Dagens time» (agendaen på tavla, klokkestyrt
+  nå-markør med manuell pinning, avhaking rett i planen — også manuell
+  modus uten planlegger), «Dagen i dag» (dato, timeplan og beskjeder),
+  «Frist» (nedtelling i dager til en dato, med varselfarger) og
+  «Sjekkliste» (store avkryssingsrader).
+- **Fundament:** ukjente felter i kjente widget-configs og innstillinger
+  overlever nå eldre versjoners lagringer (ADR-007) — trygg grunn for
+  alle fremtidige utvidelser.
+
+Alt virker som før helt uten nett; planleggerdata bor kun i den lokale
+databasen.
+
 ## [0.1.0-beta.1] — 2026-08-27
 
 Første beta — hele verktøysettet, gransket. (Utgitt tidligere samme dag som

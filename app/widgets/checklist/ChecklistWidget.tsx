@@ -12,6 +12,11 @@ import { Icon } from "../../ui/Icon";
 import { addItem, removeItem, renameItem, toggleItem } from "./checklist-core";
 import styles from "./checklist.module.css";
 
+/** Mirrors CHECKLIST_MAX_ITEMS / CHECKLIST_TEXT_MAX_CHARS in the core crate
+ *  (F-funn F10): the board must not show rows a restart would drop. */
+const CHECKLIST_MAX = 30;
+const CHECKLIST_TEXT_MAX = 200;
+
 export function ChecklistWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
   const [addDraft, setAddDraft] = useState("");
@@ -50,6 +55,7 @@ export function ChecklistWidget({ widget }: { widget: WidgetInstance }) {
               <input
                 class={styles.editInput}
                 aria-label={t("checklist.addPlaceholder")}
+                maxLength={CHECKLIST_TEXT_MAX}
                 value={item.text}
                 autofocus
                 onInput={(e) =>
@@ -103,7 +109,7 @@ export function ChecklistWidget({ widget }: { widget: WidgetInstance }) {
         onSubmit={(e) => {
           e.preventDefault();
           const text = addDraft.trim();
-          if (!text) return;
+          if (!text || cfg.items.length >= CHECKLIST_MAX) return;
           patch((items) => addItem(items, text, crypto.randomUUID()));
           setAddDraft("");
         }}
@@ -112,6 +118,8 @@ export function ChecklistWidget({ widget }: { widget: WidgetInstance }) {
           class={styles.addInput}
           placeholder={t("checklist.addPlaceholder")}
           aria-label={t("checklist.addPlaceholder")}
+          maxLength={CHECKLIST_TEXT_MAX}
+          disabled={cfg.items.length >= CHECKLIST_MAX}
           value={addDraft}
           onInput={(e) => setAddDraft((e.target as HTMLInputElement).value)}
         />

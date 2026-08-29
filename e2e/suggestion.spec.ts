@@ -47,7 +47,9 @@ test("the banner suggests, one click switches class and scene", async ({
   await expect(banner).toContainText("8A");
   await expect(banner).toContainText("Norsk");
 
-  await banner.getByRole("button", { name: "Bytt skjerm" }).click();
+  await banner.getByRole("button", { name: "Bytt til timen" }).click();
+  const size = page.viewportSize()!;
+  await page.mouse.move(size.width / 2, size.height - 8);
   await expect(page.getByRole("button", { name: "Bytt klasse" })).toContainText(
     "8A",
   );
@@ -103,12 +105,64 @@ test("auto-switch flips the board when the lesson starts", async ({ page }) => {
   await page.getByRole("button", { name: "Lukk" }).click();
 
   // Before start: nothing moves by itself.
+  const size = page.viewportSize()!;
   await expect(page.getByRole("button", { name: "Bytt klasse" })).toContainText(
     "7B",
   );
-  // Cross the start (08:30) and let the tick land.
+  // Cross the start (08:30) and let the tick land. The chrome auto-hides
+  // during the fast-forward (U#9: hidden is also out of the a11y tree), so
+  // reach for it before reading the toolbar.
   await page.clock.fastForward(11 * 60_000);
+  await page.mouse.move(size.width / 2, size.height - 8);
   await expect(page.getByRole("button", { name: "Bytt klasse" })).toContainText(
     "8A",
+  );
+});
+
+test("auto-switch leaves a manual mid-lesson switch alone (F-funn B3)", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:20:00") });
+  await page.goto("/");
+  // Plan 7B's own lesson, so the board is ALREADY on target at start.
+  await page.goto("/?goto=planner:periods");
+  await page.getByRole("button", { name: "Legg til økt" }).click();
+  await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await page.getByRole("button", { name: "Ukeplan" }).click();
+  await page.locator("button:has-text('—')").first().click();
+  await page
+    .getByLabel("Klasse", { exact: true })
+    .selectOption({ label: "7B" });
+  await page.getByLabel("Fag").fill("Norsk");
+  await page.getByRole("button", { name: "Lagre", exact: true }).click();
+  await page.getByRole("button", { name: "Timeoppsett" }).click();
+  await page
+    .getByRole("checkbox", {
+      name: "Bytt skjerm automatisk når timen starter",
+    })
+    .check();
+  await page.getByRole("button", { name: "Lukk" }).click();
+
+  // The lesson starts while we are already on 7B's default screen.
+  await page.clock.fastForward(11 * 60_000);
+
+  // Mid-lesson the teacher deliberately shows a library scene. The chrome
+  // auto-hid during the fast-forward — reach for it, like a teacher would.
+  const size = page.viewportSize()!;
+  await page.mouse.move(size.width / 2, size.height - 8);
+  await page.getByRole("button", { name: "Bytt skjerm" }).click();
+  await page.getByRole("menuitem", { name: "Lagre som ny skjerm …" }).click();
+  await page.getByPlaceholder("Navn på skjermen …").fill("Video");
+  await page.getByPlaceholder("Navn på skjermen …").press("Enter");
+  await expect(page.getByRole("button", { name: "Bytt skjerm" })).toContainText(
+    "Video",
+  );
+
+  // Several ticks later the automation must NOT have yanked the board back.
+  await page.clock.fastForward(3 * 60_000);
+  await page.mouse.move(size.width / 2, size.height - 8);
+  await expect(page.getByRole("button", { name: "Bytt skjerm" })).toContainText(
+    "Video",
   );
 });

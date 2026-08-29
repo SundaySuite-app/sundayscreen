@@ -4,9 +4,11 @@
 // and notes). All decisions live in cores/backed commands; this file is
 // forms.
 
+import { Fragment } from "preact";
 import { useState } from "preact/hooks";
 
 import type { DayEntry } from "../bindings/DayEntry";
+import type { LessonInfo } from "../bindings/LessonInfo";
 import type { Period } from "../bindings/Period";
 import type { PeriodKind } from "../bindings/PeriodKind";
 import { t, tDyn, tf } from "../i18n";
@@ -27,10 +29,27 @@ import { scenes } from "../state/scenes";
 import { settings } from "../state/settings";
 import { toast } from "../ui/toast";
 import { Icon } from "../ui/Icon";
-import { addDays, formatMin, localDateStr, parseTime } from "./date-core";
+import { localeTag } from "@lib/i18n";
+import {
+  addDays,
+  dateAtNoon,
+  formatMin,
+  localDateStr,
+  parseTime,
+} from "./date-core";
 import styles from "./PlannerPanel.module.css";
 
 const LESSON_WEEKDAYS = [1, 2, 3, 4, 5] as const;
+
+/** «mandag 31. august» — the key stays in a data attribute for tests
+ *  (F-funn C4: the raw ISO key was shown to teachers). */
+function humanDate(date: string): string {
+  return new Intl.DateTimeFormat(localeTag(), {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(dateAtNoon(date));
+}
 
 export function PlannerPanel() {
   if (!plannerPanelOpen.value) return null;
@@ -126,7 +145,12 @@ function PeriodsTab() {
     for (const r of rows) {
       const start = parseTime(r.start);
       const end = parseTime(r.end);
-      if (r.label.trim() === "") continue;
+      // An empty label used to SKIP the row — and replace-all then deleted
+      // the period with its whole week (F-funn F3). Refuse instead.
+      if (r.label.trim() === "") {
+        setError(t("planner.emptyLabel"));
+        return;
+      }
       if (start == null || end == null || end <= start) {
         setError(t("planner.badTime"));
         return;
@@ -288,8 +312,8 @@ function WeekTab() {
             </span>
           ))}
           {lessons.map((p) => (
-            <>
-              <span key={`${p.id}-h`} class={styles.periodHead}>
+            <Fragment key={p.id}>
+              <span class={styles.periodHead}>
                 <b>{p.label}</b>
                 <small>{formatMin(p.startMin)}</small>
               </span>
@@ -317,12 +341,13 @@ function WeekTab() {
                   </button>
                 );
               })}
-            </>
+            </Fragment>
           ))}
         </div>
       )}
       {cell && (
         <CellEditor
+          key={`${cell.weekday}:${cell.periodId}`}
           weekday={cell.weekday}
           periodId={cell.periodId}
           onDone={() => setCell(null)}
@@ -451,16 +476,18 @@ function DayTab() {
           title={t("planner.prevDay")}
           onClick={() => void selectDate(addDays(date, -1))}
         >
-          <Icon name="chevron-up" size="sm" class={styles.rotateLeft} />
+          <Icon name="chevron-up" size="sm" class={styles.prevIcon} />
         </button>
-        <b class={styles.dateLabel}>{date}</b>
+        <b class={styles.dateLabel} data-date={date}>
+          {humanDate(date)}
+        </b>
         <button
           class={styles.rowAction}
           aria-label={t("planner.nextDay")}
           title={t("planner.nextDay")}
           onClick={() => void selectDate(addDays(date, 1))}
         >
-          <Icon name="chevron-down" size="sm" class={styles.rotateLeft} />
+          <Icon name="chevron-down" size="sm" class={styles.nextIcon} />
         </button>
         <button
           class={styles.secondary}
@@ -476,11 +503,15 @@ function DayTab() {
         plan.entries
           .filter((e) => e.period.kind === "lesson")
           .map((entry) => (
-            <DayLesson key={entry.period.id} date={date} entry={entry} />
+            <DayLesson
+              key={`${date}:${entry.period.id}`}
+              date={date}
+              entry={entry}
+            />
           ))
       )}
 
-      {plan && <NotesEditor date={date} notes={plan.notes} />}
+      {plan && <NotesEditor key={date} date={date} notes={plan.notes} />}
     </div>
   );
 }
@@ -519,6 +550,7 @@ function DayLesson(props: { date: string; entry: DayEntry }) {
         <OverrideEditor
           date={props.date}
           periodId={period.id}
+          existing={lesson?.overridden ? lesson : null}
           onDone={() => setEditing(false)}
         />
       )}
@@ -532,13 +564,16 @@ function DayLesson(props: { date: string; entry: DayEntry }) {
 function OverrideEditor(props: {
   date: string;
   periodId: string;
+  /** The override already on this lesson, so editing REFINES it instead of
+   *  silently replacing it with blanks (F-funn F12). */
+  existing: LessonInfo | null;
   onDone: () => void;
 }) {
   const [cancelled, setCancelled] = useState(false);
-  const [classId, setClassId] = useState("");
-  const [subject, setSubject] = useState("");
-  const [sceneId, setSceneId] = useState("");
-  const [title, setTitle] = useState("");
+  const [classId, setClassId] = useState(props.existing?.classId ?? "");
+  const [subject, setSubject] = useState(props.existing?.subject ?? "");
+  const [sceneId, setSceneId] = useState(props.existing?.sceneId ?? "");
+  const [title, setTitle] = useState(props.existing?.title ?? "");
   const [error, setError] = useState(false);
 
   const write = async (clear: boolean) => {

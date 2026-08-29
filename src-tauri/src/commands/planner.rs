@@ -77,9 +77,21 @@ pub struct NoteSpec {
     pub body: String,
 }
 
-fn valid_weekday(weekday: u8) -> AppResult<()> {
+/// Writing to the WEEKLY timetable is Mon–Fri: the grid has no weekend
+/// columns, so a slot there could never be shown.
+fn valid_lesson_weekday(weekday: u8) -> AppResult<()> {
     if !(1..=5).contains(&weekday) {
         return Err(AppError::Validation("weekday must be 1..=5".into()));
+    }
+    Ok(())
+}
+
+/// READING a day accepts the whole week (F-funn B1): a teacher plans on
+/// Sunday evening, and a Saturday simply resolves to a day with no weekly
+/// slots — refusing it locked the entire planner panel every weekend.
+fn valid_any_weekday(weekday: u8) -> AppResult<()> {
+    if !(1..=7).contains(&weekday) {
+        return Err(AppError::Validation("weekday must be 1..=7".into()));
     }
     Ok(())
 }
@@ -97,6 +109,22 @@ fn valid_date(date: &str) -> AppResult<()> {
             .all(|(i, c)| (i == 4 || i == 7) || c.is_ascii_digit());
     if !ok {
         return Err(AppError::Validation("date must be YYYY-MM-DD".into()));
+    }
+    // Shape alone let `2026-99-99` into the keyspace (F-funn B8), where its
+    // rows would be unreachable from any real calendar day.
+    let month: u32 = date[5..7].parse().unwrap_or(0);
+    let day: u32 = date[8..10].parse().unwrap_or(0);
+    let year: i32 = date[0..4].parse().unwrap_or(0);
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => 0,
+    };
+    if day == 0 || day > days_in_month {
+        return Err(AppError::Validation("date is not a real day".into()));
     }
     Ok(())
 }
@@ -122,7 +150,7 @@ pub async fn periods_set_for(pool: &SqlitePool, specs: Vec<PeriodSpec>) -> AppRe
 
 pub async fn day_get_for(pool: &SqlitePool, date: &str, weekday: u8) -> AppResult<DayPlan> {
     valid_date(date)?;
-    valid_weekday(weekday)?;
+    valid_any_weekday(weekday)?;
     let periods = pstore::list_periods(pool).await?;
     let slots = pstore::slots_for_weekday(pool, weekday).await?;
     let overrides = pstore::overrides_for_date(pool, date).await?;
@@ -188,7 +216,7 @@ pub async fn planner_slot_set(
     period_id: String,
     slot: Option<SlotSpec>,
 ) -> AppResult<()> {
-    valid_weekday(weekday)?;
+    valid_lesson_weekday(weekday)?;
     pstore::set_slot(
         db.pool(),
         weekday,
@@ -476,11 +504,76 @@ mod tests {
             "validation"
         );
         assert_eq!(
-            day_get_for(&pool, "2026-08-31", 6)
+            day_get_for(&pool, "2026-08-31", 8)
                 .await
                 .unwrap_err()
                 .code(),
             "validation"
         );
+        // Shape-only validation let impossible days into the keyspace.
+        for bad in ["2026-99-99", "2026-13-01", "2026-02-30", "2026-04-31"] {
+            assert_eq!(
+                day_get_for(&pool, bad, 1).await.unwrap_err().code(),
+                "validation",
+                "{bad} must be refused"
+            );
+        }
+        // A leap day IS a real day.
+        assert!(day_get_for(&pool, "2028-02-29", 2).await.is_ok());
+    }
+
+    /// F-funn B1: reading a WEEKEND must work — a teacher plans on Sunday
+    /// evening, and the panel blocks all editing when this read fails.
+    #[tokio::test]
+    async fn weekends_are_readable_but_hold_no_weekly_slots() {
+        let (pool, _d) = temp_pool().await;
+        let class = store::insert_class(&pool, "7B").await.unwrap();
+        let saved = periods_set_for(&pool, vec![spec("Time 1", 510, 555)])
+            .await
+            .unwrap();
+        let p1 = saved[0].id.clone();
+        pstore::set_slot(
+            &pool,
+            1,
+            &p1,
+            Some((&Some(class.id.clone()), "Norsk", &None)),
+        )
+        .await
+        .unwrap();
+
+        // Saturday 2026-09-05 (ISO 6): the day resolves, with no lesson.
+        let sat = day_get_for(&pool, "2026-09-05", 6).await.unwrap();
+        assert_eq!(sat.entries.len(), 1, "the template still applies");
+        assert!(
+            sat.entries[0].lesson.is_none(),
+            "no weekly slot on a Saturday"
+        );
+
+        // Weekend day-notes and agendas are perfectly legal.
+        agenda_set_for(
+            &pool,
+            "2026-09-05",
+            &p1,
+            vec![AgendaItemSpec {
+                id: None,
+                text: "Rette prøver".into(),
+                duration_min: None,
+                done: false,
+            }],
+        )
+        .await
+        .unwrap();
+        let again = day_get_for(&pool, "2026-09-05", 6).await.unwrap();
+        assert_eq!(again.entries[0].agenda.len(), 1);
+    }
+
+    /// Writing to the weekly grid stays Mon–Fri (it has no weekend column).
+    #[tokio::test]
+    async fn weekly_slots_refuse_weekend_columns() {
+        assert_eq!(
+            super::valid_lesson_weekday(6).unwrap_err().code(),
+            "validation"
+        );
+        assert!(super::valid_lesson_weekday(5).is_ok());
     }
 }

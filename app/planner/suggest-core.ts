@@ -5,6 +5,7 @@
 // structural.
 
 import type { DayPlan } from "../bindings/DayPlan";
+import { defaultSceneId } from "../lib/scene-ids";
 
 /** Minutes before a lesson's start the suggestion window opens. */
 export const SUGGEST_LEAD_MIN = 5;
@@ -37,6 +38,34 @@ export function suggest(
   nowMin: number,
   dismissedKey: string | null,
 ): Suggestion | null {
+  const found = lessonInWindow(plan, nowMin);
+  if (!found || found.key === dismissedKey) return null;
+  return found.onTarget(activeClassId, activeSceneId) ? null : found.suggestion;
+}
+
+/**
+ * The lesson-instance key whose window covers `nowMin`, whatever the board
+ * currently shows — the auto-switch needs this to CONSUME a lesson's key
+ * even when the pointers already match, or a later manual switch inside the
+ * same lesson gets yanked back (F-funn B3).
+ */
+export function lessonKeyInWindow(
+  plan: DayPlan | null,
+  nowMin: number,
+): string | null {
+  return lessonInWindow(plan, nowMin)?.key ?? null;
+}
+
+interface WindowHit {
+  key: string;
+  suggestion: Suggestion;
+  onTarget: (classId: string | null, sceneId: string | null) => boolean;
+}
+
+function lessonInWindow(
+  plan: DayPlan | null,
+  nowMin: number,
+): WindowHit | null {
   if (!plan) return null;
   const candidates = plan.entries.filter(
     (e) =>
@@ -51,23 +80,23 @@ export function suggest(
   );
   const lesson = entry.lesson!;
   const key = `${plan.date}:${entry.period.id}`;
-  if (dismissedKey === key) return null;
-
   const targetScene = lesson.sceneId ?? null;
-  const onTargetClass = activeClassId === lesson.classId;
-  const onTargetScene =
-    targetScene == null
-      ? activeSceneId === `default-${lesson.classId}`
-      : activeSceneId === targetScene;
-  if (onTargetClass && onTargetScene) return null;
 
   return {
     key,
-    classId: lesson.classId!,
-    sceneId: targetScene,
-    className: lesson.className ?? "",
-    label: lesson.title || lesson.subject || entry.period.label,
-    startMin: entry.period.startMin,
-    running: nowMin >= entry.period.startMin,
+    suggestion: {
+      key,
+      classId: lesson.classId!,
+      sceneId: targetScene,
+      className: lesson.className ?? "",
+      label: lesson.title || lesson.subject || entry.period.label,
+      startMin: entry.period.startMin,
+      running: nowMin >= entry.period.startMin,
+    },
+    onTarget: (classId, sceneId) =>
+      classId === lesson.classId &&
+      (targetScene == null
+        ? sceneId === defaultSceneId(lesson.classId!)
+        : sceneId === targetScene),
   };
 }

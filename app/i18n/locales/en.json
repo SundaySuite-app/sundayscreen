@@ -206,7 +206,9 @@
     "addNote": "Add a message",
     "notePlaceholder": "A message for the class …",
     "saveNotes": "Save the messages",
-    "autoSwitch": "Switch the screen automatically when the lesson starts"
+    "autoSwitch": "Switch the screen automatically when the lesson starts",
+    "emptyLabel": "Every period needs a name.",
+    "readFailed": "Could not read the plan"
   },
   "agenda": {
     "empty": "No lesson right now",
@@ -241,7 +243,8 @@
     "hoursShort": {
       "one": "+ {n} hour",
       "other": "+ {n} hours"
-    }
+    },
+    "soon": "Less than an hour left"
   },
   "checklist": {
     "addPlaceholder": "New item …",
@@ -252,7 +255,7 @@
   "suggest": {
     "next": "Next:",
     "now": "Now:",
-    "switch": "Switch screen",
+    "switch": "Switch to the lesson",
     "dismiss": "Not now"
   }
 }

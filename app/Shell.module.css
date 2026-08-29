@@ -45,12 +45,27 @@
   background: var(--surface);
 }
 
-.errorChip {
+/* The top-centre stack: the honesty chip and the lesson banner share one
+ * column so they can never cover each other (F-funn F7). */
+.topStack {
   position: absolute;
   top: var(--sp-4);
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: calc(100% - 2 * var(--sp-5));
+  pointer-events: none;
+}
+
+.topStack > * {
+  pointer-events: auto;
+}
+
+.errorChip {
   margin: 0;
   font-size: var(--fs-sm);
   color: var(--bad);

@@ -17,7 +17,7 @@ import type { DayPlan } from "../bindings/DayPlan";
 import type { Period } from "../bindings/Period";
 import type { WeekSlot } from "../bindings/WeekSlot";
 import { localDateStr, minutesOfDay, weekdayOf } from "../planner/date-core";
-import { suggest } from "../planner/suggest-core";
+import { lessonKeyInWindow, suggest } from "../planner/suggest-core";
 import { switchLesson } from "./scenes";
 import { settings } from "./settings";
 import { t } from "../i18n";
@@ -70,6 +70,10 @@ export async function selectDate(date: string): Promise<void> {
 // ── Today (widgets + banner) ────────────────────────────────────────────────
 
 export const todayPlan = signal<DayPlan | null>(null);
+
+/** Did the last today-read FAIL? The widgets say so instead of rendering a
+ *  free day that nobody planned (F-funn F13). */
+export const todayReadFailed = signal(false);
 /** Ticks every 30 s so clock-derived UI re-renders; the VALUE is the epoch
  *  ms of the tick. Widgets needing 1 s resolution tick locally. */
 export const plannerNowMs = signal(Date.now());
@@ -78,16 +82,18 @@ export async function refreshToday(): Promise<void> {
   const date = localDateStr(new Date());
   try {
     todayPlan.value = await window.api.plannerDayGet(date, weekdayOf(date));
+    todayReadFailed.value = false;
   } catch (e) {
-    // The widgets degrade to their empty states; the panel is the surface
-    // that reports read failures loudly.
+    // A silent null read as "no lessons today" is a LIE on the board
+    // (F-funn F13): keep the last good plan and say the read failed.
     console.warn("[planner] today read failed", e);
-    todayPlan.value = null;
+    todayReadFailed.value = true;
   }
 }
 
-/** After ANY planner write: the panel's day and the widgets' today both
- *  reflect the store again. */
+/** After ANY planner write — from the panel OR a widget's check-off: the
+ *  panel's day and the widgets' today both reflect the store again, so
+ *  neither can save a stale copy over the other (F-funn F11). */
 export async function plannerChanged(): Promise<void> {
   await Promise.all([
     refreshSelectedDay().catch(() => undefined),
@@ -115,16 +121,40 @@ export const currentSuggestion = computed(() => {
   );
 });
 
-/** Auto-switch fires at most once per lesson-instance. */
-const autoFiredKeys = new Set<string>();
+/** Lesson-instances the automation has already had its one say about. */
+const autoSettledKeys = new Set<string>();
 
-/** Opt-in automation: when the setting is on and a suggested lesson is
- *  RUNNING, perform the switch the banner would have offered. */
+/** Was a lesson already running when this process booted? Auto-switching
+ *  such a lesson would override the exactly-restored board (promise #2), so
+ *  the automation only acts on lessons that START while we are up. */
+let bootMinutesOfDay = -1;
+
+/**
+ * Opt-in automation. Two guards, both learned the hard way (F-funn B3/B4):
+ *   - a lesson whose window we are inside is SETTLED even when the board
+ *     already shows it, so a later manual switch is not yanked back;
+ *   - a lesson that was already running at boot is left alone.
+ */
 export function maybeAutoSwitch(): void {
   if (!settings.peek().autoSwitchScenes) return;
+  const nowMin = minutesOfDay(new Date());
+  const key = lessonKeyInWindow(todayPlan.peek(), nowMin);
+  if (key == null || autoSettledKeys.has(key)) return;
+
   const s = currentSuggestion.peek();
-  if (!s || !s.running || autoFiredKeys.has(s.key)) return;
-  autoFiredKeys.add(s.key);
+  // On target already (or dismissed): nothing to do — but the lesson has
+  // had its turn, so a manual switch later in it stands.
+  if (!s || s.key !== key || !s.running) {
+    if (s == null || s.running) autoSettledKeys.add(key);
+    return;
+  }
+  // A lesson that was already under way when we booted keeps the restored
+  // screen; the banner still offers the switch.
+  if (bootMinutesOfDay >= 0 && s.startMin < bootMinutesOfDay) {
+    autoSettledKeys.add(key);
+    return;
+  }
+  autoSettledKeys.add(key);
   void switchLesson(s.classId, s.sceneId).catch((e) => {
     console.warn("[planner] auto-switch failed", e);
     toast("error", t("manage.actionFailed"));
@@ -135,6 +165,7 @@ let ticker: ReturnType<typeof setInterval> | undefined;
 
 /** Boot: one fetch + the 30 s derive-tick (with date-rollover refetch). */
 export async function initPlanner(): Promise<void> {
+  bootMinutesOfDay = minutesOfDay(new Date());
   await refreshToday();
   if (ticker !== undefined) clearInterval(ticker);
   ticker = setInterval(() => {

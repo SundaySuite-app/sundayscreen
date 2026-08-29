@@ -12,12 +12,22 @@ import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
 import { markedIndex, startOffsets } from "../../planner/agenda-core";
 import { formatMin, minutesOfDay } from "../../planner/date-core";
-import { plannerNowMs, refreshToday, todayPlan } from "../../state/planner";
+import {
+  plannerChanged,
+  plannerNowMs,
+  todayPlan,
+  todayReadFailed,
+} from "../../state/planner";
 import { updateWidgetConfig, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import { toast } from "../../ui/toast";
 import { shownLesson } from "./agenda-widget-core";
 import styles from "./agenda.module.css";
+
+/** Mirrors the backend clamps in crates/sundayscreen-core/src/layout.rs —
+ *  the board must never show what a restart would drop. */
+const MANUAL_AGENDA_MAX = 30;
+const AGENDA_TEXT_MAX = 500;
 
 export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
@@ -79,7 +89,7 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
             onToggleDone={(item) => {
               void window.api
                 .plannerAgendaCheck(item.id, !item.done)
-                .then(refreshToday)
+                .then(plannerChanged)
                 .catch((e) => {
                   console.warn("[agenda] check failed", e);
                   toast("error", t("manage.actionFailed"));
@@ -97,7 +107,9 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
           )}
         </>
       ) : (
-        <p class={styles.empty}>{t("agenda.empty")}</p>
+        <p class={styles.empty}>
+          {todayReadFailed.value ? t("planner.readFailed") : t("agenda.empty")}
+        </p>
       )}
 
       <SettingsRow widget={widget} />
@@ -163,7 +175,9 @@ function ManualAgenda(props: {
         onSubmit={(e) => {
           e.preventDefault();
           const text = props.addDraft.trim();
-          if (!text) return;
+          // The backend clamps at MANUAL_AGENDA_MAX_ITEMS; letting the board
+          // show a 31st line it would drop on restart is a lie (F-funn F10).
+          if (!text || props.items.length >= MANUAL_AGENDA_MAX) return;
           patch((list) => [
             ...list,
             { id: crypto.randomUUID(), text, durationMin: null, done: false },
@@ -175,6 +189,8 @@ function ManualAgenda(props: {
           class={styles.addInput}
           placeholder={t("agenda.addPlaceholder")}
           aria-label={t("agenda.addPlaceholder")}
+          maxLength={AGENDA_TEXT_MAX}
+          disabled={props.items.length >= MANUAL_AGENDA_MAX}
           value={props.addDraft}
           onInput={(e) =>
             props.setAddDraft((e.target as HTMLInputElement).value)
@@ -224,7 +240,6 @@ function ItemList(props: {
           </button>
           <button
             class={styles.textBtn}
-            aria-label={t("agenda.pin")}
             title={t("agenda.pin")}
             onClick={() => props.onPin(item)}
           >

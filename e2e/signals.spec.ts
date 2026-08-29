@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The two signal widgets: a click IS the state change, and the state is
 // config — the board says the same thing after a restart.
@@ -11,7 +11,7 @@ test("the traffic light switches lamps and survives a reload", async ({
   await installFixtures(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Trafikklys" }).click();
+  await addWidget(page, "Trafikklys");
   const light = page.locator('[data-widget-kind="trafficlight"]');
   // Red is the honest classroom default.
   await expect(light.locator("[data-active]")).toHaveAttribute(
@@ -35,7 +35,7 @@ test("the work symbol changes mode and survives a reload", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Arbeidssymbol" }).click();
+  await addWidget(page, "Arbeidssymbol");
   const symbol = page.locator('[data-widget-kind="worksymbol"]');
   await expect(symbol.getByText("Stille arbeid")).toBeVisible();
 

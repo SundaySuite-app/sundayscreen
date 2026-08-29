@@ -16,25 +16,34 @@
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-chrome);
   transition:
-    transform 220ms ease,
-    opacity 220ms ease;
+    transform var(--t-slow) ease,
+    opacity var(--t-slow) ease,
+    visibility 0s;
 }
 
+/* Hidden means UNHITTABLE (F9-funn U#9): visibility joins opacity and
+ * pointer-events so a tab-focus or stray hit can never land on the ghost. */
 .toolbar[data-hidden] {
   transform: translate(-50%, calc(100% + var(--sp-6)));
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
+  transition:
+    transform var(--t-slow) ease,
+    opacity var(--t-slow) ease,
+    visibility 0s var(--t-slow);
 }
 
 .iconBtn {
-  width: 34px;
-  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink-2);
-  font-size: var(--fs-md);
-  line-height: 1;
   cursor: pointer;
 }
 
@@ -50,46 +59,10 @@
   font-size: var(--fs-sm);
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--sp-2);
-}
-
-.add {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-2) var(--sp-4);
-  border-radius: var(--r-pill);
-  border: 1px solid var(--gold-line);
-  background: var(--gold-soft);
-  color: var(--ink);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.add:hover {
-  background: var(--gold);
-  color: var(--on-gold);
-}
-
-.plus {
-  font-size: var(--fs-lg);
-  line-height: 1;
-}
-
 .meta {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   color: var(--ink-3);
   font-size: var(--fs-sm);
-}
-
-.className {
-  color: var(--ink-2);
-  font-weight: 600;
 }

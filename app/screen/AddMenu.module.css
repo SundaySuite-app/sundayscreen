@@ -6,27 +6,21 @@
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-3);
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-4);
   border-radius: var(--r-pill);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink-2);
-  font-size: var(--fs-sm);
+  border: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+  color: var(--ink);
+  font-size: var(--fs-base);
   font-weight: 600;
   cursor: pointer;
 }
 
-.trigger:hover {
-  border-color: var(--gold-line);
-  color: var(--ink);
-}
-
-.classIcon {
-  color: var(--ink-3);
-}
-
-.chevron {
-  color: var(--ink-3);
+.trigger:hover,
+.trigger[aria-expanded="true"] {
+  background: var(--gold);
+  color: var(--on-gold);
 }
 
 .backdrop {
@@ -41,11 +35,13 @@
 .menu {
   position: absolute;
   bottom: calc(100% + var(--sp-2));
-  right: 0;
-  min-width: 200px;
-  display: flex;
-  flex-direction: column;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 2px;
   padding: var(--sp-2);
+  max-height: 60vh;
+  overflow-y: auto;
   background: var(--raised);
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -54,6 +50,10 @@
 }
 
 .item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 36px;
   text-align: left;
   padding: var(--sp-2) var(--sp-3);
   border: none;
@@ -68,29 +68,10 @@
   background: var(--gold-soft);
 }
 
-.item[data-current] {
-  font-weight: 700;
-  background: var(--gold-soft);
-}
-
-.divider {
-  height: 1px;
-  background: var(--line);
-  margin: var(--sp-2) 0;
-}
-
-.manage {
-  text-align: left;
-  padding: var(--sp-2) var(--sp-3);
-  border: none;
-  border-radius: var(--r-sm);
-  background: none;
+.itemIcon {
   color: var(--ink-2);
-  font-size: var(--fs-sm);
-  cursor: pointer;
 }
 
-.manage:hover {
-  background: var(--gold-soft);
+.item:hover .itemIcon {
   color: var(--ink);
 }

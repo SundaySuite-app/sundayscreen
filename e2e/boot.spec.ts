@@ -9,8 +9,10 @@ import { installFixtures } from "./harness";
 test("boots with fixtures into the working shell", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
-  // The toolbar is up, with the registry's add button and the active class.
-  await expect(page.getByRole("button", { name: "Tekst" })).toBeVisible();
+  // The toolbar is up, with the add menu and the active class.
+  await expect(
+    page.getByRole("button", { name: "Legg til verktøy" }),
+  ).toBeVisible();
   await expect(page.getByText("7B")).toBeVisible();
   await expect(page.getByText("0.0.0-e2e")).toBeVisible();
   // No hydrate-error chip — the settings read succeeded.
@@ -25,6 +27,8 @@ test("boots without fixtures into the honest degraded state", async ({
   page,
 }) => {
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Tekst" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Legg til verktøy" }),
+  ).toBeVisible();
   await expect(page.locator('[data-status="error"]')).toBeVisible();
 });

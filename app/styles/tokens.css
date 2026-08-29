@@ -91,6 +91,9 @@
   --sp-7: 32px;
   --sp-8: 48px;
 
+  /* Clearance bottom-anchored chrome leaves for the toolbar (snackbar). */
+  --chrome-clearance: 84px;
+
   /* ── Typography ──────────────────────────────────────────────────────── */
   /* Inter Variable is bundled (base.css @font-face) — tabular digits for the
      timer, one voice for the whole board. The system stack is the honest

@@ -93,3 +93,40 @@ test("Escape in a text field only leaves the field", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Lukk" })).toBeVisible();
   await expect(area).not.toBeFocused();
 });
+
+test("an open add menu pins the chrome and Escape closes it first", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+
+  const toolbar = page.locator("footer");
+  await page.getByRole("button", { name: "Legg til verktøy" }).click();
+  await expect(page.getByRole("menuitem", { name: "Klokke" })).toBeVisible();
+
+  // Idle does NOT hide the toolbar while its own menu is open.
+  await page.clock.fastForward(6_000);
+  await expect(toolbar).not.toHaveAttribute("data-hidden", "true");
+
+  // Escape peels the add menu (innermost) — the toolbar is still up.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem", { name: "Klokke" })).toHaveCount(0);
+  await expect(toolbar).not.toHaveAttribute("data-hidden", "true");
+});
+
+test("adding from the menu closes it and lands the widget", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Legg til verktøy" }).click();
+  await page.getByRole("menuitem", { name: "Trafikklys" }).click();
+  await expect(page.getByRole("menuitem", { name: "Trafikklys" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Rødt lys — stille" }),
+  ).toBeVisible();
+});

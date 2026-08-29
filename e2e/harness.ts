@@ -249,3 +249,13 @@ export async function installFixtures(
     };
   }, opts.memberNames ?? []);
 }
+
+/**
+ * Add a widget through the toolbar's add menu (R2 replaced the eight flat
+ * buttons with one popover). `label` is the visible catalogue label, e.g.
+ * "Tekst" or "Klokke".
+ */
+export async function addWidget(page: Page, label: string): Promise<void> {
+  await page.getByRole("button", { name: "Legg til verktøy" }).click();
+  await page.getByRole("menuitem", { name: label }).click();
+}

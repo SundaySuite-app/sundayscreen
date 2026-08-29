@@ -62,7 +62,7 @@
 
 .snackbar {
   position: absolute;
-  bottom: 84px;
+  bottom: var(--chrome-clearance);
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--z-toast);

@@ -14,6 +14,9 @@ import { classMenuOpen, managePanelOpen } from "./classes";
 export const chromeVisible = signal(true);
 export const fullscreen = signal(false);
 
+/** The add-widget popover on the toolbar (AddMenu.tsx). */
+export const addMenuOpen = signal(false);
+
 let lastActivityMs = Date.now();
 
 /** Anything that counts as "the teacher is here": wake the chrome and
@@ -31,7 +34,8 @@ export function initChrome(): () => void {
   window.addEventListener("pointermove", onPointerMove);
 
   const ticker = setInterval(() => {
-    const pinned = managePanelOpen.peek() || classMenuOpen.peek();
+    const pinned =
+      managePanelOpen.peek() || classMenuOpen.peek() || addMenuOpen.peek();
     if (
       chromeVisible.peek() &&
       shouldHide(lastActivityMs, Date.now(), pinned)

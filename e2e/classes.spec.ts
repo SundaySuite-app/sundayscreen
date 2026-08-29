@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // F3's promise: each class has its own name list AND its own layout, and the
 // switch is two clicks.
@@ -10,14 +10,14 @@ test("each class keeps its own layout across switches", async ({ page }) => {
   await page.goto("/");
 
   // Lay out a widget in 7B.
-  await page.getByRole("button", { name: "Tekst" }).click();
+  await addWidget(page, "Tekst");
   await expect(page.locator('[data-widget-kind="text"]')).toHaveCount(1);
 
   // Create 8A through the manage panel (auto-switches to it).
   await page.getByRole("button", { name: "Bytt klasse" }).click();
   await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
   await page.getByPlaceholder("Ny klasse …").fill("8A");
-  await page.getByRole("button", { name: "Legg til" }).click();
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
   await page.getByRole("button", { name: "Lukk" }).click();
 
   // 8A's surface is empty; the switcher shows 8A.
@@ -62,7 +62,7 @@ test("deleting a class requires typing its name", async ({ page }) => {
   await page.getByRole("button", { name: "Bytt klasse" }).click();
   await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
   await page.getByPlaceholder("Ny klasse …").fill("8A");
-  await page.getByRole("button", { name: "Legg til" }).click();
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
 
   // Ask to delete 8A: the confirm button stays disabled until the name is
   // typed exactly.
@@ -96,7 +96,7 @@ test("a settings write after a class switch does not revert the active class", a
   await page.getByRole("button", { name: "Bytt klasse" }).click();
   await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
   await page.getByPlaceholder("Ny klasse …").fill("8A");
-  await page.getByRole("button", { name: "Legg til" }).click();
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
 
   // Any settings write — the update channel is the cheapest.
   await page.getByRole("button", { name: "Beta", exact: true }).click();

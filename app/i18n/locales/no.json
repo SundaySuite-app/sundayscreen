@@ -117,7 +117,9 @@
   "chrome": {
     "fullscreenOn": "Fullskjerm",
     "fullscreenOff": "Avslutt fullskjerm",
-    "show": "Vis verktøylinja"
+    "show": "Vis verktøylinja",
+    "add": "Legg til",
+    "addWidget": "Legg til verktøy"
   },
   "update": {
     "version": "Versjon {v}",

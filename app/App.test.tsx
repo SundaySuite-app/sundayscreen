@@ -21,8 +21,8 @@ it("renders the boot splash with the wordmark until settings land", () => {
 it("renders the surface and toolbar once hydrated", () => {
   hydrated.value = true;
   const html = render(<Shell />);
-  // The toolbar's add button carries the widget label from the catalogue.
-  expect(html).toContain("Tekst");
+  // The toolbar's add-menu trigger carries its label from the catalogue.
+  expect(html).toContain("Legg til");
   expect(html).toContain("SundayScreen");
   expect(html).not.toContain('data-status="loading"');
 });

@@ -117,7 +117,9 @@
   "chrome": {
     "fullscreenOn": "Fullscreen",
     "fullscreenOff": "Exit fullscreen",
-    "show": "Show the toolbar"
+    "show": "Show the toolbar",
+    "add": "Add",
+    "addWidget": "Add a tool"
   },
   "update": {
     "version": "Version {v}",

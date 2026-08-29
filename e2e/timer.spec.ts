@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The timer under a MOCKED clock (Playwright's page.clock fakes Date and
 // every timer), so the journeys are deterministic and instant.
@@ -10,7 +10,7 @@ test("a countdown runs, warns near zero, and finishes", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Tidtaker" }).click();
+  await addWidget(page, "Tidtaker");
   const timer = page.locator('[data-widget-kind="timer"]');
   await expect(timer.getByText("05:00")).toBeVisible();
 
@@ -36,7 +36,7 @@ test("pause freezes the derived remainder; resume continues", async ({
   await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Tidtaker" }).click();
+  await addWidget(page, "Tidtaker");
   const timer = page.locator('[data-widget-kind="timer"]');
   await timer.getByRole("button", { name: "Start" }).click();
   await page.clock.fastForward(90_000);
@@ -57,7 +57,7 @@ test("the stopwatch counts up and banks across pauses", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Tidtaker" }).click();
+  await addWidget(page, "Tidtaker");
   const timer = page.locator('[data-widget-kind="timer"]');
   await timer.hover();
   await timer.getByRole("button", { name: "Stoppeklokke" }).click();
@@ -80,7 +80,7 @@ test("duration buttons adjust the config and it persists", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Tidtaker" }).click();
+  await addWidget(page, "Tidtaker");
   const timer = page.locator('[data-widget-kind="timer"]');
   await timer.getByRole("button", { name: "Ett minutt til" }).click();
   await timer.getByRole("button", { name: "Ett minutt til" }).click();
@@ -99,7 +99,7 @@ test("the clock shows the mocked time, digital and analog", async ({
   await page.clock.install({ time: new Date("2026-08-27T10:37:00") });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Klokke" }).click();
+  await addWidget(page, "Klokke");
   const clock = page.locator('[data-widget-kind="clock"]');
   await expect(clock.getByText("10:37")).toBeVisible();
 

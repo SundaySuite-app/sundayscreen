@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The randomness widgets. The harness draw is deterministic (first undrawn
 // wins), so the round semantics are assertable; the REAL randomness is the
@@ -14,7 +14,7 @@ test("no-repeat draws everyone before starting a new round", async ({
   await installFixtures(page, { memberNames: NAMES });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Navnetrekker" }).click();
+  await addWidget(page, "Navnetrekker");
   const picker = page.locator('[data-widget-kind="namepicker"]');
   const drawBtn = picker.getByRole("button", { name: "Trekk navn" });
   const display = picker.locator("[data-display]");
@@ -41,7 +41,7 @@ test("the round counter counts down and the drawn name persists", async ({
   await installFixtures(page, { memberNames: NAMES });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Navnetrekker" }).click();
+  await addWidget(page, "Navnetrekker");
   const picker = page.locator('[data-widget-kind="namepicker"]');
   await picker.getByRole("button", { name: "Trekk navn" }).click();
   await expect(picker.getByText("3 igjen i runden")).toBeVisible();
@@ -58,7 +58,7 @@ test("without names the picker is disabled and says why", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Navnetrekker" }).click();
+  await addWidget(page, "Navnetrekker");
   const picker = page.locator('[data-widget-kind="namepicker"]');
   await expect(
     picker.getByRole("button", { name: "Trekk navn" }),
@@ -72,7 +72,7 @@ test("groups split evenly and the result survives a reload", async ({
   await installFixtures(page, { memberNames: ["A", "B", "C", "D", "E"] });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Grupper" }).click();
+  await addWidget(page, "Grupper");
   const groups = page.locator('[data-widget-kind="groups"]');
   await groups.getByRole("button", { name: "Del inn" }).click();
 
@@ -90,7 +90,7 @@ test("three groups of five members differ by at most one", async ({ page }) => {
   await installFixtures(page, { memberNames: ["A", "B", "C", "D", "E"] });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Grupper" }).click();
+  await addWidget(page, "Grupper");
   const groups = page.locator('[data-widget-kind="groups"]');
   await groups.getByRole("button", { name: "Øk tallet" }).click();
   await groups.getByRole("button", { name: "Del inn" }).click();
@@ -107,7 +107,7 @@ test("the dice roll, sum, and survive a reload", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Terning" }).click();
+  await addWidget(page, "Terning");
   const dice = page.locator('[data-widget-kind="dice"]');
   const rollBtn = dice.getByRole("button", { name: "Kast" });
 

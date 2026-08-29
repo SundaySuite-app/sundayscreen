@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The first canvas journey: add a widget, see it, RELOAD, still see it. The
 // fixture layout store is localStorage-backed (see harness.ts), so the
@@ -10,7 +10,7 @@ test("an added text widget survives a reload", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Tekst" }).click();
+  await addWidget(page, "Tekst");
   await expect(page.getByText("Skriv en beskjed …")).toBeVisible();
 
   await page.reload();
@@ -23,7 +23,7 @@ test("typing into the text widget persists across a reload", async ({
   await installFixtures(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Tekst" }).click();
+  await addWidget(page, "Tekst");
   await page.getByText("Skriv en beskjed …").click();
   await page.locator("textarea").fill("Husk gymtøy i morgen!");
   // Blur commits with the immediate save.
@@ -38,7 +38,7 @@ test("a removed widget stays removed after a reload", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Tekst" }).click();
+  await addWidget(page, "Tekst");
   const widget = page.locator('[data-widget-kind="text"]');
   await expect(widget).toBeVisible();
 

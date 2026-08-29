@@ -32,18 +32,34 @@ describe("shouldHide", () => {
 });
 
 describe("escapeTarget", () => {
+  const all = {
+    addMenuOpen: true,
+    menuOpen: true,
+    overlayOpen: true,
+    fullscreen: true,
+  };
+
   it("closes one layer per press, innermost first", () => {
+    expect(escapeTarget(all)).toBe("addmenu");
+    expect(escapeTarget({ ...all, addMenuOpen: false })).toBe("menu");
+    expect(escapeTarget({ ...all, addMenuOpen: false, menuOpen: false })).toBe(
+      "overlay",
+    );
     expect(
-      escapeTarget({ menuOpen: true, overlayOpen: true, fullscreen: true }),
-    ).toBe("menu");
-    expect(
-      escapeTarget({ menuOpen: false, overlayOpen: true, fullscreen: true }),
-    ).toBe("overlay");
-    expect(
-      escapeTarget({ menuOpen: false, overlayOpen: false, fullscreen: true }),
+      escapeTarget({
+        ...all,
+        addMenuOpen: false,
+        menuOpen: false,
+        overlayOpen: false,
+      }),
     ).toBe("fullscreen");
     expect(
-      escapeTarget({ menuOpen: false, overlayOpen: false, fullscreen: false }),
+      escapeTarget({
+        addMenuOpen: false,
+        menuOpen: false,
+        overlayOpen: false,
+        fullscreen: false,
+      }),
     ).toBeNull();
   });
 });

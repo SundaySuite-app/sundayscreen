@@ -9,6 +9,7 @@ import {
   switchClass,
 } from "../state/classes";
 import { activeClass } from "../state/layout";
+import { Icon } from "../ui/Icon";
 import { toast } from "../ui/toast";
 import styles from "./ClassSwitcher.module.css";
 
@@ -26,10 +27,9 @@ export function ClassSwitcher() {
           classMenuOpen.value = !open;
         }}
       >
+        <Icon name="class" size="sm" class={styles.classIcon} />
         {current?.name ?? "…"}
-        <span aria-hidden="true" class={styles.chevron}>
-          ▾
-        </span>
+        <Icon name="chevron-down" size="sm" class={styles.chevron} />
       </button>
       {open && (
         <>

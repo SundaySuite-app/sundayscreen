@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The F9 robustness journeys: the failure shapes a classroom actually
 // produces — a projector swap mid-lesson, a whole school year pasted into
@@ -13,7 +13,7 @@ test("a resolution change mid-session reflows the layout proportionally", async 
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Tekst" }).click();
+  await addWidget(page, "Tekst");
   const widget = page.locator('[data-widget-kind="text"]');
   const before = (await widget.boundingBox())!;
 
@@ -53,7 +53,7 @@ test("a 500-name paste counts, saves, and still draws", async ({ page }) => {
   await expect(page.getByText("Lagret", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Lukk" }).click();
 
-  await page.getByRole("button", { name: "Navnetrekker" }).click();
+  await addWidget(page, "Navnetrekker");
   const picker = page.locator('[data-widget-kind="namepicker"]');
   await picker.getByRole("button", { name: "Trekk navn" }).click();
   await expect(picker.getByText("499 igjen i runden")).toBeVisible();
@@ -63,7 +63,7 @@ test("hammering the draw button cannot double-draw", async ({ page }) => {
   await installFixtures(page, { memberNames: ["Kari", "Ola", "Per", "Mona"] });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Navnetrekker" }).click();
+  await addWidget(page, "Navnetrekker");
   const picker = page.locator('[data-widget-kind="namepicker"]');
   const drawBtn = picker.getByRole("button", { name: "Trekk navn" });
 

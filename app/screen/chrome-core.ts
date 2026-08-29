@@ -29,15 +29,18 @@ export function shouldHide(
   return nowMs - lastActivityMs >= CHROME_HIDE_MS;
 }
 
-/** What one Escape press closes, in order: the class menu, then the manage
- *  panel, then fullscreen — one layer per press, innermost first. */
-export type EscapeLayer = "menu" | "overlay" | "fullscreen" | null;
+/** What one Escape press closes, in order: the add menu, then the class
+ *  menu, then the manage panel, then fullscreen — one layer per press,
+ *  innermost first. */
+export type EscapeLayer = "addmenu" | "menu" | "overlay" | "fullscreen" | null;
 
 export function escapeTarget(state: {
+  addMenuOpen: boolean;
   menuOpen: boolean;
   overlayOpen: boolean;
   fullscreen: boolean;
 }): EscapeLayer {
+  if (state.addMenuOpen) return "addmenu";
   if (state.menuOpen) return "menu";
   if (state.overlayOpen) return "overlay";
   if (state.fullscreen) return "fullscreen";

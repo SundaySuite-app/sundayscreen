@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The interaction layer's journeys: drag, resize, undo — driven the way a
 // teacher would, with the mouse.
@@ -10,7 +10,7 @@ test("dragging a widget moves it, and the move survives a reload", async ({
 }) => {
   await installFixtures(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Tekst" }).click();
+  await addWidget(page, "Tekst");
 
   const widget = page.locator('[data-widget-kind="text"]');
   const before = (await widget.boundingBox())!;
@@ -39,7 +39,7 @@ test("dragging a widget moves it, and the move survives a reload", async ({
 test("a finished drag does not open the text editor", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Tekst" }).click();
+  await addWidget(page, "Tekst");
 
   const widget = page.locator('[data-widget-kind="text"]');
   const box = (await widget.boundingBox())!;
@@ -59,7 +59,7 @@ test("a finished drag does not open the text editor", async ({ page }) => {
 test("resizing respects the widget's minimum size", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Tekst" }).click();
+  await addWidget(page, "Tekst");
 
   const widget = page.locator('[data-widget-kind="text"]');
   await widget.hover();
@@ -83,7 +83,7 @@ test("undo restores a removed widget, and the restore persists", async ({
 }) => {
   await installFixtures(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Tekst" }).click();
+  await addWidget(page, "Tekst");
 
   const widget = page.locator('[data-widget-kind="text"]');
   await widget.hover();

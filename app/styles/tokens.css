@@ -72,6 +72,15 @@
   --r-lg: 22px;
   --r-pill: 999px;
 
+  /* ── Icons — the three legal render sizes (crisp stroke alignment) ───── */
+  --icon-sm: 16px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+
+  /* ── Motion ──────────────────────────────────────────────────────────── */
+  --t-fast: 120ms;
+  --t-slow: 220ms;
+
   /* ── Spacing — the suite scale, unchanged ────────────────────────────── */
   --sp-1: 4px;
   --sp-2: 8px;

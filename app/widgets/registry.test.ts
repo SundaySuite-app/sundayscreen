@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import en from "../i18n/locales/en.json";
 import no from "../i18n/locales/no.json";
+import { ICON_PATHS } from "../ui/icon-paths";
 import { WIDGET_KINDS, WIDGET_REGISTRY } from "./registry";
 
 const lookup = (tree: unknown, key: string): unknown =>
@@ -48,6 +49,10 @@ describe("WIDGET_REGISTRY", () => {
 
     it(`${kind}: has a component`, () => {
       expect(typeof def.Component).toBe("function");
+    });
+
+    it(`${kind}: declares an icon that exists in the icon vocabulary`, () => {
+      expect(ICON_PATHS[def.icon]).toBeTruthy();
     });
   }
 });

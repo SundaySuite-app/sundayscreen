@@ -4,6 +4,7 @@ import { TimerWidget } from "./TimerWidget";
 export const timerWidgetDef: WidgetDef = {
   kind: "timer",
   labelKey: "widget.label.timer",
+  icon: "timer",
   defaultSizePx: { w: 440, h: 280 },
   minSizePx: { w: 260, h: 180 },
   aspect: "free",

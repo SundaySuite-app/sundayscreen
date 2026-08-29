@@ -4,6 +4,7 @@ import { WorkSymbolWidget } from "./WorkSymbolWidget";
 export const workSymbolWidgetDef: WidgetDef = {
   kind: "worksymbol",
   labelKey: "widget.label.worksymbol",
+  icon: "worksymbol",
   defaultSizePx: { w: 320, h: 300 },
   minSizePx: { w: 180, h: 170 },
   aspect: "free",

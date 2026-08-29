@@ -4,6 +4,7 @@ import { GroupsWidget } from "./GroupsWidget";
 export const groupsWidgetDef: WidgetDef = {
   kind: "groups",
   labelKey: "widget.label.groups",
+  icon: "groups",
   defaultSizePx: { w: 560, h: 380 },
   minSizePx: { w: 320, h: 240 },
   aspect: "free",

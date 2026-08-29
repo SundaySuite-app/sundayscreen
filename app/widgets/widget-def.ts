@@ -1,5 +1,6 @@
 import type { ComponentType } from "preact";
 
+import type { IconName } from "../ui/icon-paths";
 import type { WidgetConfig } from "../bindings/WidgetConfig";
 import type { WidgetInstance } from "../bindings/WidgetInstance";
 
@@ -14,6 +15,8 @@ export interface WidgetDef {
   kind: WidgetKind;
   /** i18n key under `widget.label.*` — read via `tDyn("widget.label", kind)`. */
   labelKey: string;
+  /** The kind's mark in the add menu and other chrome. */
+  icon: IconName;
   /** Wanted size when added, in px against the current surface. */
   defaultSizePx: { w: number; h: number };
   /** Smallest useful size, in px — enforced by the interaction layer (F2). */

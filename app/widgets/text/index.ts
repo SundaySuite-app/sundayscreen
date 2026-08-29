@@ -4,6 +4,7 @@ import { TextWidget } from "./TextWidget";
 export const textWidgetDef: WidgetDef = {
   kind: "text",
   labelKey: "widget.label.text",
+  icon: "text",
   defaultSizePx: { w: 520, h: 240 },
   minSizePx: { w: 200, h: 120 },
   aspect: "free",

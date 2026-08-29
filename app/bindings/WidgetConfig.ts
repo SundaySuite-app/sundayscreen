@@ -12,6 +12,12 @@ import type { WorkMode } from "./WorkMode";
  *
  * Adding a widget kind = one variant here (+ default + clamp arm) + one
  * frontend folder + one registry line. Nothing else.
+ *
+ * Every variant carries a flattened `extra` map (ADR-007): fields a NEWER
+ * version wrote into a KNOWN kind survive this build's load→save cycle
+ * instead of being silently dropped. `#[ts(skip)]` keeps the TS types
+ * unchanged — the webview receives the unknown keys inline and its
+ * `{ ...cfg }` spreads carry them back untouched.
  */
 export type WidgetConfig = { "kind": "text", content: string, fontScale: number, align: TextAlign, } | { "kind": "clock", face: ClockFace, showSeconds: boolean, showDate: boolean, } | { "kind": "timer", durationMs: number, warnAtMs: number, soundOn: boolean, mode: TimerMode, } | { "kind": "namepicker", noRepeat: boolean, lastDrawn: string | null, } | { "kind": "groups", mode: GroupMode, n: number, 
 /**

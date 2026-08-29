@@ -142,6 +142,12 @@ pub const TIMER_MAX_MS: f64 = 86_400_000.0; // 24 h
 ///
 /// Adding a widget kind = one variant here (+ default + clamp arm) + one
 /// frontend folder + one registry line. Nothing else.
+///
+/// Every variant carries a flattened `extra` map (ADR-007): fields a NEWER
+/// version wrote into a KNOWN kind survive this build's load→save cycle
+/// instead of being silently dropped. `#[ts(skip)]` keeps the TS types
+/// unchanged — the webview receives the unknown keys inline and its
+/// `{ ...cfg }` spreads carry them back untouched.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "WidgetConfig.ts")]
 #[serde(
@@ -157,6 +163,9 @@ pub enum WidgetConfig {
         font_scale: f64,
         #[serde(default)]
         align: TextAlign,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
     Clock {
         #[serde(default)]
@@ -165,6 +174,9 @@ pub enum WidgetConfig {
         show_seconds: bool,
         #[serde(default)]
         show_date: bool,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
     Timer {
         #[serde(default = "default_timer_duration_ms")]
@@ -175,6 +187,9 @@ pub enum WidgetConfig {
         sound_on: bool,
         #[serde(default)]
         mode: TimerMode,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
     /// The picker persists the last drawn NAME (a display string, not a
     /// member id — the pupil may be edited away later, the screen memory
@@ -184,6 +199,9 @@ pub enum WidgetConfig {
         no_repeat: bool,
         #[serde(default)]
         last_drawn: Option<String>,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
     Groups {
         #[serde(default)]
@@ -194,20 +212,32 @@ pub enum WidgetConfig {
         /// to the same groups the projector showed yesterday.
         #[serde(default)]
         last_result: Vec<Vec<String>>,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
     Dice {
         #[serde(default = "default_dice_count")]
         count: u32,
         #[serde(default)]
         last_roll: Vec<u8>,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
     TrafficLight {
         #[serde(default)]
         active: TrafficColor,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
     WorkSymbol {
         #[serde(default)]
         mode: WorkMode,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
 }
 
@@ -234,43 +264,69 @@ impl WidgetConfig {
                 content: String::new(),
                 font_scale: default_font_scale(),
                 align: TextAlign::default(),
+                extra: Default::default(),
             }),
             "clock" => Some(WidgetConfig::Clock {
                 face: ClockFace::default(),
                 show_seconds: false,
                 show_date: false,
+                extra: Default::default(),
             }),
             "timer" => Some(WidgetConfig::Timer {
                 duration_ms: default_timer_duration_ms(),
                 warn_at_ms: default_warn_at_ms(),
                 sound_on: default_sound_on(),
                 mode: TimerMode::default(),
+                extra: Default::default(),
             }),
             "namepicker" => Some(WidgetConfig::NamePicker {
                 no_repeat: default_no_repeat(),
                 last_drawn: None,
+                extra: Default::default(),
             }),
             "groups" => Some(WidgetConfig::Groups {
                 mode: GroupMode::default(),
                 n: default_group_n(),
                 last_result: Vec::new(),
+                extra: Default::default(),
             }),
             "dice" => Some(WidgetConfig::Dice {
                 count: default_dice_count(),
                 last_roll: Vec::new(),
+                extra: Default::default(),
             }),
             "trafficlight" => Some(WidgetConfig::TrafficLight {
                 active: TrafficColor::default(),
+                extra: Default::default(),
             }),
             "worksymbol" => Some(WidgetConfig::WorkSymbol {
                 mode: WorkMode::default(),
+                extra: Default::default(),
             }),
             _ => None,
         }
     }
 
+    /// The ADR-007 flatten map: fields this build does not know.
+    fn extra_mut(&mut self) -> &mut serde_json::Map<String, serde_json::Value> {
+        match self {
+            WidgetConfig::Text { extra, .. }
+            | WidgetConfig::Clock { extra, .. }
+            | WidgetConfig::Timer { extra, .. }
+            | WidgetConfig::NamePicker { extra, .. }
+            | WidgetConfig::Groups { extra, .. }
+            | WidgetConfig::Dice { extra, .. }
+            | WidgetConfig::TrafficLight { extra, .. }
+            | WidgetConfig::WorkSymbol { extra, .. } => extra,
+        }
+    }
+
     /// Clamp every field into its legal range, in place. Idempotent.
     pub fn clamp(&mut self) {
+        // The internally-tagged deserializer leaves the tag key itself in the
+        // flatten map — scrub it so `extra` holds only truly-unknown fields
+        // (and serialisation never emits a duplicate "kind").
+        self.extra_mut().remove("kind");
         match self {
             WidgetConfig::Text {
                 content,
@@ -319,7 +375,9 @@ impl WidgetConfig {
                     }
                 }
             }
-            WidgetConfig::Dice { count, last_roll } => {
+            WidgetConfig::Dice {
+                count, last_roll, ..
+            } => {
                 *count = (*count).clamp(DICE_MIN, DICE_MAX);
                 last_roll.truncate(DICE_MAX as usize);
                 for v in last_roll.iter_mut() {
@@ -423,6 +481,7 @@ mod tests {
             content: content.to_string(),
             font_scale: 1.0,
             align: TextAlign::Center,
+            extra: Default::default(),
         }
     }
 
@@ -544,6 +603,7 @@ mod tests {
             content: "æ".repeat(TEXT_CONTENT_MAX_CHARS + 100),
             font_scale: f64::INFINITY,
             align: TextAlign::Left,
+            extra: Default::default(),
         };
         c.clamp();
         let WidgetConfig::Text {
@@ -561,6 +621,7 @@ mod tests {
             content: String::new(),
             font_scale: 99.0,
             align: TextAlign::Left,
+            extra: Default::default(),
         };
         big.clamp();
         let WidgetConfig::Text { font_scale, .. } = big else {
@@ -576,6 +637,7 @@ mod tests {
             warn_at_ms: 999_999_999.0,
             sound_on: true,
             mode: TimerMode::Countdown,
+            extra: Default::default(),
         };
         t.clamp();
         let WidgetConfig::Timer {
@@ -594,6 +656,7 @@ mod tests {
             warn_at_ms: 0.0,
             sound_on: false,
             mode: TimerMode::Stopwatch,
+            extra: Default::default(),
         };
         tiny.clamp();
         let WidgetConfig::Timer { duration_ms, .. } = tiny else {
@@ -624,6 +687,7 @@ mod tests {
             content,
             font_scale,
             align,
+            ..
         } = inst.config
         else {
             panic!("kind column said text");
@@ -631,5 +695,60 @@ mod tests {
         assert_eq!(content, "");
         assert_eq!(font_scale, 1.0);
         assert_eq!(align, TextAlign::Center);
+    }
+
+    /// ADR-007: fields a NEWER version added to a KNOWN kind must survive
+    /// this build's parse→clamp→serialise cycle — not be silently dropped.
+    #[test]
+    fn unknown_fields_in_a_known_kind_survive_a_round_trip() {
+        let json = r#"{"kind":"text","content":"hei","futureField":{"nested":[1,2]},"otherNew":7}"#;
+        let mut cfg: WidgetConfig = serde_json::from_str(json).expect("known kind parses");
+        cfg.clamp();
+        let out = serde_json::to_value(&cfg).expect("serialises");
+        assert_eq!(out["futureField"], serde_json::json!({ "nested": [1, 2] }));
+        assert_eq!(out["otherNew"], serde_json::json!(7));
+        assert_eq!(out["content"], serde_json::json!("hei"));
+        assert_eq!(out["kind"], serde_json::json!("text"));
+    }
+
+    /// The internally-tagged deserializer leaves the tag in the flatten map;
+    /// clamp scrubs it so `extra` is only truly-unknown fields and the
+    /// serialised JSON never carries a duplicate "kind".
+    #[test]
+    fn clamp_scrubs_the_tag_from_extra() {
+        let mut cfg: WidgetConfig =
+            serde_json::from_str(r#"{"kind":"trafficlight","active":"red"}"#).unwrap();
+        cfg.clamp();
+        assert_eq!(
+            cfg,
+            WidgetConfig::TrafficLight {
+                active: TrafficColor::Red,
+                extra: Default::default(),
+            }
+        );
+        let text = serde_json::to_string(&cfg).unwrap();
+        assert_eq!(text.matches("\"kind\"").count(), 1);
+    }
+
+    /// The same tolerance end-to-end through the row seam: a stored config
+    /// with a newer field parses, clamps and re-serialises with the field.
+    #[test]
+    fn row_with_unknown_field_keeps_it_through_the_instance() {
+        let inst = row_to_instance(
+            "w1",
+            "dice",
+            0.1,
+            0.1,
+            0.3,
+            0.2,
+            0,
+            r#"{"kind":"dice","count":2,"futureSides":20}"#,
+        )
+        .expect("known kind parses");
+        let mut cfg = inst.config;
+        cfg.clamp();
+        let out = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(out["futureSides"], serde_json::json!(20));
+        assert_eq!(out["count"], serde_json::json!(2));
     }
 }

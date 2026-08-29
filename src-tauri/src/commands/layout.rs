@@ -111,6 +111,7 @@ mod tests {
                 content: content.to_string(),
                 font_scale: 1.0,
                 align: TextAlign::Center,
+                extra: Default::default(),
             },
         }
     }
@@ -176,6 +177,43 @@ mod tests {
         assert_eq!(future.config, r#"{"kind":"dayplan","entries":[]}"#);
         // Byte-for-byte except z, which is re-stacked above the known ones.
         assert_eq!(future.z, 1);
+    }
+
+    /// ADR-007, field level: a KNOWN kind whose stored config carries a
+    /// NEWER version's extra field keeps that field through a full
+    /// load→save cycle — the flatten map rides along in the typed value.
+    #[tokio::test]
+    async fn unknown_config_fields_survive_a_load_save_cycle() {
+        let (pool, _d) = temp_pool().await;
+        let class = store::insert_class(&pool, "7B").await.unwrap();
+
+        store::replace_widgets(
+            &pool,
+            &class.id,
+            &[store::WidgetRow {
+                id: "w1".to_string(),
+                kind: "dice".to_string(),
+                x: 0.1,
+                y: 0.1,
+                w: 0.3,
+                h: 0.3,
+                z: 0,
+                config: r#"{"kind":"dice","count":2,"futureSides":20}"#.to_string(),
+            }],
+        )
+        .await
+        .unwrap();
+
+        // Load the visible layout and save it straight back — the exact
+        // motion a teacher's first click triggers on a downgraded build.
+        let widgets = load_for(&pool, &class.id).await.unwrap();
+        assert_eq!(widgets.len(), 1);
+        save_for(&pool, &class.id, widgets).await.unwrap();
+
+        let rows = store::load_widget_rows(&pool, &class.id).await.unwrap();
+        let cfg: serde_json::Value = serde_json::from_str(&rows[0].config).unwrap();
+        assert_eq!(cfg["futureSides"], serde_json::json!(20));
+        assert_eq!(cfg["count"], serde_json::json!(2));
     }
 
     #[tokio::test]

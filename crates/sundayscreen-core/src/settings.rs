@@ -159,6 +159,13 @@ pub struct Settings {
     /// Which release feed this install follows.
     #[serde(default, deserialize_with = "lenient_channel")]
     pub update_channel: UpdateChannel,
+    /// ADR-007: settings keys a NEWER version wrote survive this build's
+    /// load→save cycle instead of being dropped by the whole-blob write.
+    /// `#[ts(skip)]` — the webview receives the keys inline and its
+    /// whole-object spreads carry them back untouched.
+    #[serde(flatten)]
+    #[ts(skip)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 fn default_language() -> Option<String> {
@@ -176,6 +183,7 @@ impl Default for Settings {
             snap_enabled: true,
             window: None,
             update_channel: UpdateChannel::Stable,
+            extra: Default::default(),
         }
     }
 }
@@ -391,8 +399,21 @@ mod tests {
                 fullscreen: true,
             }),
             update_channel: UpdateChannel::Beta,
+            extra: Default::default(),
         };
         let json = serde_json::to_string(&s).unwrap();
         assert_eq!(Settings::from_json_merged(&json), s);
+    }
+
+    /// ADR-007: settings keys a NEWER version wrote must survive this
+    /// build's load→save cycle (the write is whole-blob).
+    #[test]
+    fn unknown_settings_keys_survive_a_round_trip() {
+        let s =
+            Settings::from_json_merged(r#"{"language":"no","futureFlag":true,"nested":{"a":1}}"#);
+        assert_eq!(s.language.as_deref(), Some("no"));
+        let out = serde_json::to_value(&s).unwrap();
+        assert_eq!(out["futureFlag"], serde_json::json!(true));
+        assert_eq!(out["nested"], serde_json::json!({ "a": 1 }));
     }
 }

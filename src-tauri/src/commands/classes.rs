@@ -220,6 +220,7 @@ mod tests {
                 content: "hei".into(),
                 font_scale: 1.0,
                 align: TextAlign::Center,
+                extra: Default::default(),
             },
         }
     }

@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.3.0-beta.1] — 2026-08-30
+
+Runde 3 «Bakerste pult» — kvalitetsrunde. Ingen ny modell, én ny kolonne:
+dette er runden der appen begynner å holde det den allerede lovet. Full
+gjennomgang i `docs/REVISJON-R3.md`.
+
+- **Tavla leses fra bakerste pult.** Tallene var tunet på en 27-tommer i et
+  mørkt kontor. Tekstwidgeten gikk fra 19 til 47 px på standardkortet (og
+  vokser nå når du drar den bredere). Klokka med sekunder fikk aldri plass i
+  noen størrelse og ble klippet i begge ender. Terningen tegnet seg 22 px.
+  Dempet tekst og statusfarger består nå kontrastkravet — med en test som
+  regner etterpå.
+- **Trafikklyset var invertert:** den SLUKKEDE lampen var husets lyseste
+  flate. Slukket er nå mørkt, tent rødt er det som lyser.
+- **Fravær.** Marker hvem som er borte; navnetrekker og gruppedeler hopper
+  over dem. Tavla sier «24 av 27 til stede» — men bare når noen faktisk er
+  markert borte. Ingen fraværshistorikk lagres.
+- **Klassen er dataene.** Bytter du fra 8A til 9B, blir ikke lenger 8As
+  trukne navn og gruppeinndeling stående på tavla foran den nye klassen.
+- **Tekstwidgeten har fått justering og skriftstørrelse** (feltene fantes,
+  knappene manglet), og **tidtakeren faste lengder + «ett minutt til»** midt
+  i en nedtelling. «Dere får 20 minutter» er ett klikk, ikke femten.
+- **Tom tavle forklarer seg** i stedet for å la den eneste veien videre gli
+  ut av bildet etter fire sekunder, og **planleggeren har fått navnet sitt**
+  på verktøylinja.
+- **Ting som ikke lenger forsvinner:** navnefelt forkastet stille det du
+  skrev når du klikket utenfor; et dobbeltklikk kunne slette en hel skjerm;
+  et klikk utenfor en meny lukket den aldri.
+- **Vinduet åpner aldri større enn skjermen** (på en 1024×768-rigg stakk
+  ~100 px under kanten, med verktøylinja i det usynlige), og en widget kan
+  ikke lenger sprette ut over kanten og teleportere ved neste oppstart.
+- **Dupliser widget**, snapping når du skalerer, angre som rekker 15 sekunder
+  og svarer på ⌘Z, og en fokusring for den som bruker tastatur.
+
 ## [0.2.0-beta.1] — 2026-08-29
 
 Runde 2 «Lærerens dag» — ikonspråk, planlegger, skjermbibliotek og fire

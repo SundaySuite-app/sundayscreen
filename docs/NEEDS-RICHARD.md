@@ -22,6 +22,15 @@ beta-ringen (renummerert fra v0.9.0-beta.1 — ADR-008). Nedlasting:
 ⚠️ Installerte du 0.9.0-beta.1 i mellomtiden: avinstallér og installér
 0.1.0-beta.1 manuelt — updateren tilbyr aldri et lavere versjonsnummer.
 
+- [ ] **Riggtest Runde 3 (nyest):** seks punkter i docs/REVISJON-R3.md
+      §Riggtest-punkter. Viktigst: **se trafikklyset fra åtte meter og mys** —
+      slukkede lamper er nå mørke og rødt er det som lyser, motsatt av før.
+      Deretter: åpne appen på en 1024×768-projektor (hele vinduet skal være
+      innenfor skjermen), og bruk fravær en ekte morgen.
+- [ ] **Seks smaksvalg venter på deg** — docs/REVISJON-R3.md §Eierspørsmål.
+      Kortversjonen: er projektor-typografien for stor, skal tavlas
+      bakgrunn bli mørkere, og er det greit at tidtakeren nå settes fra fem
+      faste lengder i stedet for ±-knapper?
 - [ ] **Riggtest Runde 2:** planleggerflyten en ekte skoledag — seks punkter
       i docs/GRANSKING-R2.md §Riggtest-punkter (start med å åpne
       planleggeren på en LØRDAG; det var rundens verste funn).

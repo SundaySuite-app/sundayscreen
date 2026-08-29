@@ -40,6 +40,29 @@
 .hint {
   font-size: max(var(--fs-sm), 5cqmin);
   color: var(--ink-2);
+  text-align: center;
+}
+
+/* «Legg inn navn i klassen først» is a BUTTON now, not a sentence — but it
+   keeps the hint's expression EXACTLY: muted, cqmin-scaled, no gold CTA.
+   This stands on a projector in front of a class, and the one person it is
+   addressed to is the one holding the mouse. `button`'s own `font: inherit`
+   in base.css is a weaker selector than `.hint`, so the size floor survives.
+   The focus ring is base.css's one ring; the radius only shapes it. */
+.door {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+}
+
+/* «24 av 27 til stede» — rendered only while somebody IS marked away. */
+.presence {
+  font-size: max(var(--fs-sm), 4.5cqmin);
+  color: var(--ink-2);
+  font-weight: 600;
 }
 
 .draw {
@@ -62,5 +85,3 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
-
-/* The no-repeat/reset toggles use the shell's standard settings row. */

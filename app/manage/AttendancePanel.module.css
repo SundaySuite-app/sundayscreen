@@ -1,0 +1,127 @@
+/* Scrim + panel, the ManagePanel/PlannerPanel shape. It briefly hung off the
+   class switcher as a popover — the only home available while the toolbar
+   carried a `transform` and any `position: fixed` scrim mounted inside it
+   would have sized itself to the toolbar. The dock fixed that; this is a
+   dialog again. */
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-overlay);
+}
+
+/* Narrower than ManagePanel on purpose: this is one wrapping row of chips,
+   and a name list that runs the full width of a projector is harder to aim
+   at, not easier. */
+.panel {
+  width: min(620px, calc(100% - 2 * var(--sp-7)));
+  max-height: calc(100% - 2 * var(--sp-7));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-6);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-dialog);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--ink);
+  border-color: var(--gold-line);
+}
+
+.error {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--bad-line);
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: var(--fs-sm);
+}
+
+.hint,
+.empty {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+}
+
+/* The one part that can outgrow the panel — a class of 30 names — so it is
+   the part that scrolls, not the dialog around it: the count line and the
+   «Lukk» button stay put. */
+.chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.chip {
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--fs-base);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--gold-line);
+}
+
+/* Away is DIMMED and struck through, never removed: the teacher has to be
+   able to find the name again to undo the tap, and a list that reorders
+   itself under the finger is how the wrong pupil gets marked. */
+.chip[data-away] {
+  color: var(--ink-3);
+  background: none;
+  border-style: dashed;
+  text-decoration: line-through;
+}
+
+.count {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}

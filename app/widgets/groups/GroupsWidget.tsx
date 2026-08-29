@@ -6,9 +6,10 @@
 import { useState } from "preact/hooks";
 
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
-import { t, tf } from "../../i18n";
+import { t, tf, tn } from "../../i18n";
 import { localDateStr } from "../../planner/date-core";
-import { members } from "../../state/classes";
+import { openAttendance, presentOn } from "../../state/attendance";
+import { managePanelOpen, members } from "../../state/classes";
 import {
   activeClass,
   updateWidgetConfig,
@@ -22,11 +23,25 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
   if (cfg.kind !== "groups") return null;
 
   const [busy, setBusy] = useState(false);
-  const empty = members.value.length === 0;
+  const pool = members.value;
+  const today = localDateStr(new Date());
+  const present = presentOn(pool, today);
+  const noNames = pool.length === 0;
+  const allAway = !noNames && present.length === 0;
+  const showPresence = present.length > 0 && present.length < pool.length;
+
+  // A split that belongs to another class must not stand in front of this
+  // one. EVERY name has to be a member here — `some` on a single match would
+  // let a shared first name ("Emma" exists in both 8A and 9B) keep 8A's
+  // whole board up in front of 9B. Non-destructive: switch back and the
+  // groups are there again.
+  const names = new Set(pool.map((m) => m.name));
+  const stale = cfg.lastResult.some((g) => g.some((n) => !names.has(n)));
+  const result = stale ? [] : cfg.lastResult;
 
   const doSplit = async () => {
     const cls = activeClass.peek();
-    if (!cls || busy || empty) return;
+    if (!cls || busy || present.length === 0) return;
     setBusy(true);
     try {
       // Minted per click, not per module load — see NamePickerWidget.
@@ -58,14 +73,30 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
     <div class={styles.groups}>
       <div
         class={styles.result}
-        style={gridStyle(cfg.lastResult.length, longestGroup(cfg.lastResult))}
+        style={gridStyle(result.length, longestGroup(result))}
       >
-        {cfg.lastResult.length === 0 ? (
+        {result.length === 0 ? (
           <div class={styles.empty}>
-            {empty ? t("widget.noNames") : t("groups.empty")}
+            {noNames ? (
+              // A door, not a message — see NamePickerWidget. `.result` is
+              // part of the drag surface, so `data-no-drag` is mandatory.
+              <button
+                class={styles.door}
+                data-no-drag
+                onClick={() => {
+                  managePanelOpen.value = true;
+                }}
+              >
+                {t("widget.noNames")}
+              </button>
+            ) : allAway ? (
+              t("groups.allAway")
+            ) : (
+              t("groups.empty")
+            )}
           </div>
         ) : (
-          cfg.lastResult.map((group, i) => (
+          result.map((group, i) => (
             <section key={i} class={styles.group}>
               <h3 class={styles.groupTitle}>
                 {tf("groups.header", { n: i + 1 })}
@@ -82,9 +113,33 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
         )}
       </div>
 
+      {showPresence && (
+        <div class={styles.presence}>
+          {tn("attendance.presentCount", present.length, {
+            total: pool.length,
+          })}
+        </div>
+      )}
+
+      {/* «Del inn» STAYS on the board — it is the widget's primary action.
+          Everything else moved into the hover row below. */}
       <div class={styles.controls} data-no-drag>
         <button
-          class={styles.modeBtn}
+          class={styles.split}
+          disabled={busy || present.length === 0}
+          onClick={() => void doSplit()}
+        >
+          {t("groups.split")}
+        </button>
+      </div>
+
+      {/* Five permanent controls became one hover row. The class used to
+          look at two mode buttons and a stepper for the whole lesson; the
+          shell's contract has always been that a widget's settings appear
+          when the teacher reaches for them. */}
+      <div data-settings-row data-no-drag>
+        <button
+          data-settings-btn
           data-current={cfg.mode === "count" || undefined}
           onClick={() =>
             updateWidgetConfig(widget.id, { ...cfg, mode: "count" })
@@ -93,7 +148,7 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
           {t("groups.modeCount")}
         </button>
         <button
-          class={styles.modeBtn}
+          data-settings-btn
           data-current={cfg.mode === "size" || undefined}
           onClick={() =>
             updateWidgetConfig(widget.id, { ...cfg, mode: "size" })
@@ -101,29 +156,25 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
         >
           {t("groups.modeSize")}
         </button>
-        <span class={styles.stepper}>
-          <button
-            class={styles.step}
-            aria-label={t("groups.decrease")}
-            onClick={() => setN(-1)}
-          >
-            <Icon name="minus" size="sm" />
-          </button>
-          <span class={styles.n}>{cfg.n}</span>
-          <button
-            class={styles.step}
-            aria-label={t("groups.increase")}
-            onClick={() => setN(1)}
-          >
-            <Icon name="plus" size="sm" />
-          </button>
-        </span>
         <button
-          class={styles.split}
-          disabled={busy || empty}
-          onClick={() => void doSplit()}
+          data-settings-btn
+          aria-label={t("groups.decrease")}
+          title={t("groups.decrease")}
+          onClick={() => setN(-1)}
         >
-          {t("groups.split")}
+          <Icon name="minus" size="sm" />
+        </button>
+        <span class={styles.n}>{cfg.n}</span>
+        <button
+          data-settings-btn
+          aria-label={t("groups.increase")}
+          title={t("groups.increase")}
+          onClick={() => setN(1)}
+        >
+          <Icon name="plus" size="sm" />
+        </button>
+        <button data-settings-btn onClick={openAttendance}>
+          {t("attendance.open")}
         </button>
       </div>
     </div>

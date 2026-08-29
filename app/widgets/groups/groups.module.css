@@ -1,11 +1,28 @@
+/* The hover row is `position: absolute; bottom: var(--sp-2)` on the shell,
+   so the card has to RESERVE that strip — otherwise the settings the teacher
+   just reached for land on top of «Del inn», which is the one control that
+   stays on the board. The reserve is one row (36px min-height + 2×--sp-1 =
+   44px), its offset from the bottom, AND the row's own `box-shadow` plate,
+   which paints --sp-2 of card colour beyond its box and would otherwise
+   erase the button's lower edge. The six chips measure ~365px, so the row
+   wraps onto two lines below ~380px; the threshold is set high of that on
+   purpose — over-reserving costs a few pixels of result area, under-
+   reserving puts the plate back on the button. The query resolves against
+   the shell's `container-type: size`. */
 .groups {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
   padding: var(--sp-4);
-  padding-bottom: var(--sp-2);
+  padding-bottom: calc(44px + var(--sp-2) + var(--sp-3));
   gap: var(--sp-3);
+}
+
+@container (max-width: 420px) {
+  .groups {
+    padding-bottom: calc(88px + var(--sp-2) + var(--sp-3));
+  }
 }
 
 /* The result FILLS the card: pupils read their group from their seat, so
@@ -72,55 +89,50 @@
   overflow-wrap: anywhere;
 }
 
+/* Only «Del inn» lives here now, and it is CENTRED: the mode buttons and the
+   stepper moved into the shell's hover row, and the old `margin-left: auto`
+   parked the button in the corner the row now occupies. */
 .controls {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--sp-2);
   flex-wrap: wrap;
 }
 
-.modeBtn {
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: var(--r-pill);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink-3);
-  font-size: var(--fs-sm);
-  cursor: pointer;
+/* «24 av 27 til stede» — rendered only while somebody IS marked away. */
+.presence {
+  text-align: center;
+  color: var(--ink-2);
+  font-size: max(var(--fs-sm), 3.4cqmin);
+  font-weight: 600;
 }
 
-.modeBtn[data-current] {
-  color: var(--ink);
-  border-color: var(--gold-line);
-  background: var(--gold-soft);
-}
-
-.stepper {
+/* The count between − and + inside the hover row. Kept when `.modeBtn`,
+   `.stepper` and `.step` were deleted: the number is content, not a
+   control, so it never had the chip styling to inherit. */
+.n {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
-}
-
-.step {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-  line-height: 1;
-}
-
-.n {
+  justify-content: center;
   min-width: 24px;
-  text-align: center;
   font-weight: 700;
   color: var(--ink);
 }
 
+/* «Legg inn navn i klassen først» as a door — see name-picker's `.door`. */
+.door {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
 .split {
-  margin-left: auto;
   padding: var(--sp-1) var(--sp-4);
   border-radius: var(--r-pill);
   border: 1px solid var(--gold-line);

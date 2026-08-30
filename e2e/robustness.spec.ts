@@ -155,3 +155,118 @@ test("hammering the draw button cannot double-draw", async ({ page }) => {
   // Exactly ONE draw happened: three of four remain in the round.
   await expect(picker.getByText("3 igjen i runden")).toBeVisible();
 });
+
+// ── The board itself would not save ─────────────────────────────────────────
+//
+// The two sentences that make promise 4 VISIBLE on the board («en skriving
+// som feiler REJECTER, aldri fabrikkert suksess») had never been rendered by
+// a test — the guard and the flag were unit-tested in `state/layout.test.ts`,
+// but nothing proved the shell actually says either one out loud.
+//
+// EXACT text on both, deliberately: `chipText()` in Shell.tsx is
+// priority-ordered (boot fault → hydrate error → load failed → save failed),
+// so a `data-status="error"` assertion — or a substring — would pass just as
+// happily on the wrong sentence. Which is also why only ONE fixture key is
+// overwritten below: break `settings_get` too and `boot.hydrateError` wins
+// the chip, and the journey would assert a sentence it never caused.
+
+const LOAD_FAILED =
+  "Fikk ikke lest tavla fra lagringen — endringer lagres ikke før appen har startet på nytt.";
+const SAVE_FAILED = "Klarte ikke å lagre tavla — siste endringer kan gå tapt.";
+
+/** Wake the auto-hiding toolbar: `visibility: hidden` takes it out of the
+ *  a11y tree entirely, and a non-empty board no longer holds it open. */
+async function wakeChrome(page: Page): Promise<void> {
+  const vp = page.viewportSize();
+  if (vp) await page.mouse.move(vp.width / 2, vp.height - 8);
+}
+
+test("a board that could not be READ says so, and is never written back", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    const fixtures = w.__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    w.__layoutSaves = 0;
+    fixtures.layout_load = () => {
+      throw new Error("database is locked");
+    };
+    const real = fixtures.layout_save as (
+      args?: Record<string, unknown>,
+    ) => unknown;
+    fixtures.layout_save = (args?: Record<string, unknown>) => {
+      w.__layoutSaves = (w.__layoutSaves as number) + 1;
+      return real(args);
+    };
+  });
+  await page.goto("/");
+
+  const chip = page.locator('[data-status="error"]');
+  await expect(chip).toHaveText(LOAD_FAILED);
+
+  // What is actually true of the degraded board: it still WORKS. The card
+  // appears, the teacher can use it for this lesson — the store simply
+  // refuses to mirror a board it never read (F9-funn S#4: a replace-all
+  // against an unread layout is a one-edit wipe of the stored one).
+  await addWidget(page, "Tekst");
+  await expect(page.locator('[data-widget-kind="text"]')).toBeVisible();
+
+  // The edit called `saveNow()`. Nothing reached the store.
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __layoutSaves: number }).__layoutSaves,
+    ),
+  ).toBe(0);
+
+  // And the chip still names the CAUSE. A refusal that surfaced as
+  // «Klarte ikke å lagre tavla» would send the teacher looking for a full
+  // disk instead of restarting the app, which is the actual way out.
+  await expect(chip).toHaveText(LOAD_FAILED);
+});
+
+test("a board that could not be SAVED says so, until one save lands", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    const fixtures = w.__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    const real = fixtures.layout_save as (
+      args?: Record<string, unknown>,
+    ) => unknown;
+    // The switch lives in the same init script: the load must SUCCEED first
+    // (otherwise the guard refuses the write and this chip never appears),
+    // and the journey has to be able to mend the disk mid-lesson.
+    w.__saveBroken = true;
+    w.__mendSave = () => {
+      w.__saveBroken = false;
+    };
+    fixtures.layout_save = (args?: Record<string, unknown>) => {
+      if (w.__saveBroken) throw new Error("disk full");
+      return real(args);
+    };
+  });
+  await page.goto("/");
+
+  const chip = page.locator('[data-status="error"]');
+  // The read landed, so nothing is wrong yet.
+  await expect(
+    page.getByRole("button", { name: "Legg til verktøy" }),
+  ).toBeVisible();
+  await expect(chip).toHaveCount(0);
+
+  await addWidget(page, "Tekst");
+  await expect(chip).toHaveText(SAVE_FAILED);
+
+  // The disk comes back. The chip is STICKY — it stays until a write
+  // actually lands, and then it must go, or the teacher learns to ignore it.
+  await page.evaluate(() =>
+    (window as unknown as { __mendSave: () => void }).__mendSave(),
+  );
+  await expect(chip).toHaveText(SAVE_FAILED);
+
+  await wakeChrome(page);
+  await addWidget(page, "Klokke");
+  await expect(chip).toHaveCount(0);
+});

@@ -37,6 +37,16 @@ pub const LABEL_MAX_CHARS: usize = 80;
 pub const TEXT_MAX_CHARS: usize = 500;
 /// Most agenda items one lesson will hold.
 pub const AGENDA_MAX_ITEMS: usize = 30;
+/// Shortest and longest duration one agenda line may carry, in minutes.
+///
+/// The ONE source for both agendas: the planner-backed one clamped by
+/// [`normalize_agenda`] below, and the widget-config one clamped by
+/// `layout::WidgetConfig::clamp`. The item CAPS are deliberately separate
+/// per side (`AGENDA_MAX_ITEMS` vs `MANUAL_AGENDA_MAX_ITEMS` — different
+/// storage, free to drift); the minute vocabulary a teacher types into a line
+/// is not.
+pub const AGENDA_DURATION_MIN: u32 = 1;
+pub const AGENDA_DURATION_MAX: u32 = 600;
 /// Most notes one day will hold.
 pub const NOTES_MAX: usize = 20;
 
@@ -328,13 +338,16 @@ pub fn periods_overlap(periods: &[Period]) -> bool {
     sorted.windows(2).any(|w| w[1].start_min < w[0].end_min)
 }
 
-/// Clamp one agenda list: texts truncated, durations clamped 1..=600 min,
-/// at most [`AGENDA_MAX_ITEMS`], sort_index re-stamped densely.
+/// Clamp one agenda list: texts truncated, durations clamped into
+/// [`AGENDA_DURATION_MIN`]..=[`AGENDA_DURATION_MAX`], at most
+/// [`AGENDA_MAX_ITEMS`], sort_index re-stamped densely.
 pub fn normalize_agenda(mut items: Vec<AgendaItem>) -> Vec<AgendaItem> {
     items.truncate(AGENDA_MAX_ITEMS);
     for (i, a) in items.iter_mut().enumerate() {
         a.text = truncate(&a.text, TEXT_MAX_CHARS);
-        a.duration_min = a.duration_min.map(|d| d.clamp(1, 600));
+        a.duration_min = a
+            .duration_min
+            .map(|d| d.clamp(AGENDA_DURATION_MIN, AGENDA_DURATION_MAX));
         a.sort_index = i as i64;
     }
     items
@@ -548,7 +561,7 @@ mod tests {
         let out = normalize_agenda(items);
         assert_eq!(out.len(), AGENDA_MAX_ITEMS);
         assert_eq!(out[0].text.chars().count(), TEXT_MAX_CHARS);
-        assert_eq!(out[0].duration_min, Some(600));
+        assert_eq!(out[0].duration_min, Some(AGENDA_DURATION_MAX));
         assert_eq!(out[5].sort_index, 5);
     }
 }

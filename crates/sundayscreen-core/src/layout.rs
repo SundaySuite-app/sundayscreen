@@ -19,6 +19,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::serde_util::lenient;
+
 /// Smallest normalised width/height a persisted widget may have.
 pub const MIN_NORM_SIZE: f64 = 0.03;
 
@@ -49,6 +51,11 @@ pub enum TextAlign {
 fn default_font_scale() -> f64 {
     1.0
 }
+
+/// How far the text widget's own size knob may travel. Mirrored by hand in
+/// `app/widgets/text/text-core.ts` — this is the authority.
+pub const FONT_SCALE_MIN: f64 = 0.25;
+pub const FONT_SCALE_MAX: f64 = 6.0;
 
 /// Which way the timer counts. Serialised lowercase — part of the persisted
 /// config vocabulary.
@@ -150,6 +157,17 @@ pub enum AgendaSource {
 }
 
 /// One line of a manual agenda (planner-free mode).
+///
+/// ADR-007 applies one level DOWN as well: keys a NEWER version wrote on an
+/// individual LINE survive this build's load→save cycle. Keep the whole item
+/// when you edit one (`{ ...item, done: true }`), never rebuild it field by
+/// field — a rebuilt line drops what this build cannot see.
+// ⚠️ Rust-side consequence, deliberately not in the exported TSDoc: `extra`
+// is part of the derived `PartialEq`, so two items differing only in a newer
+// version's field are NOT equal. That is the point — "equal" would license
+// overwriting a field this build cannot see. And unlike `WidgetConfig`, a
+// list element is not internally tagged, so `extra` never receives a "kind"
+// key and `clamp` has no tag to scrub down here.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "ManualAgendaItem.ts")]
 #[serde(rename_all = "camelCase")]
@@ -162,13 +180,21 @@ pub struct ManualAgendaItem {
     pub duration_min: Option<u32>,
     #[serde(default)]
     pub done: bool,
+    /// Keys a NEWER version wrote on this item. `#[ts(skip)]` — the webview
+    /// receives them inline and its `{ ...item }` spreads carry them back.
+    #[serde(flatten)]
+    #[ts(skip)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Caps for the manual agenda (the planner-backed one is capped backend-side).
 pub const MANUAL_AGENDA_MAX_ITEMS: usize = 30;
 pub const MANUAL_AGENDA_TEXT_MAX_CHARS: usize = 500;
 
-/// One line of the checklist widget.
+/// One line of the checklist widget. Like [`ManualAgendaItem`], a line keeps
+/// the keys a NEWER version wrote on it — edit with `{ ...item, done }`,
+/// never by rebuilding the object.
+// Same Rust-side `PartialEq` consequence as `ManualAgendaItem`; see there.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "ChecklistItem.ts")]
 #[serde(rename_all = "camelCase")]
@@ -178,6 +204,11 @@ pub struct ChecklistItem {
     pub text: String,
     #[serde(default)]
     pub done: bool,
+    /// Keys a NEWER version wrote on this item. `#[ts(skip)]` — the webview
+    /// receives them inline and its `{ ...item }` spreads carry them back.
+    #[serde(flatten)]
+    #[ts(skip)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Caps for the deadline and checklist widgets.
@@ -196,6 +227,25 @@ pub const CHECKLIST_TEXT_MAX_CHARS: usize = 200;
 /// instead of being silently dropped. `#[ts(skip)]` keeps the TS types
 /// unchanged — the webview receives the unknown keys inline and its
 /// `{ ...cfg }` spreads carry them back untouched.
+///
+/// ADR-007 covered unknown FIELDS; unknown VALUES fell straight through it.
+/// An enum-valued field this build cannot spell now costs THAT FIELD ONLY —
+/// it reads as the field's default, and everything beside it survives.
+// The mechanism, and its honest limit. Every enum-typed field carries
+// `#[serde(default, deserialize_with = "lenient")]`. Be clear about what that
+// buys: it does NOT preserve the value. A `"mode":"focus"` written by some
+// later version deserialises to this build's default, and a later save writes
+// the DEFAULT back — the spelling is gone either way. What it saves is
+// everything AROUND it. Without the guard, one unreadable enum spelling fails
+// the whole `WidgetConfig`, `row_to_instance`'s `from_str(..).ok()` answers
+// with `default_for(kind)`, and `content` / `last_drawn` / `last_result` /
+// `items` / the `extra` buffer are all reset on screen — then written to disk
+// by the first edit the teacher makes. Damage control, not preservation.
+//
+// The two attributes cover different roads and BOTH are load-bearing:
+// `default` answers an absent key (serde never calls `lenient` then),
+// `lenient` answers a present-but-unreadable one. Both end at the field's
+// default, which is the invariant the tests pin.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "WidgetConfig.ts")]
 #[serde(
@@ -209,14 +259,14 @@ pub enum WidgetConfig {
         content: String,
         #[serde(default = "default_font_scale")]
         font_scale: f64,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "lenient")]
         align: TextAlign,
         #[serde(flatten)]
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
     },
     Clock {
-        #[serde(default)]
+        #[serde(default, deserialize_with = "lenient")]
         face: ClockFace,
         #[serde(default)]
         show_seconds: bool,
@@ -233,7 +283,7 @@ pub enum WidgetConfig {
         warn_at_ms: f64,
         #[serde(default = "default_sound_on")]
         sound_on: bool,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "lenient")]
         mode: TimerMode,
         #[serde(flatten)]
         #[ts(skip)]
@@ -252,7 +302,7 @@ pub enum WidgetConfig {
         extra: serde_json::Map<String, serde_json::Value>,
     },
     Groups {
-        #[serde(default)]
+        #[serde(default, deserialize_with = "lenient")]
         mode: GroupMode,
         #[serde(default = "default_group_n")]
         n: u32,
@@ -274,14 +324,14 @@ pub enum WidgetConfig {
         extra: serde_json::Map<String, serde_json::Value>,
     },
     TrafficLight {
-        #[serde(default)]
+        #[serde(default, deserialize_with = "lenient")]
         active: TrafficColor,
         #[serde(flatten)]
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
     },
     WorkSymbol {
-        #[serde(default)]
+        #[serde(default, deserialize_with = "lenient")]
         mode: WorkMode,
         #[serde(flatten)]
         #[ts(skip)]
@@ -291,7 +341,7 @@ pub enum WidgetConfig {
     /// pin is the teacher's manual override of the clock-driven now-marker;
     /// persisted so a restart mid-lesson restores the exact screen.
     Agenda {
-        #[serde(default)]
+        #[serde(default, deserialize_with = "lenient")]
         source: AgendaSource,
         #[serde(default = "default_true_flag")]
         show_times: bool,
@@ -467,7 +517,7 @@ impl WidgetConfig {
                 if !font_scale.is_finite() {
                     *font_scale = default_font_scale();
                 }
-                *font_scale = font_scale.clamp(0.25, 6.0);
+                *font_scale = font_scale.clamp(FONT_SCALE_MIN, FONT_SCALE_MAX);
                 if content.chars().count() > TEXT_CONTENT_MAX_CHARS {
                     *content = content.chars().take(TEXT_CONTENT_MAX_CHARS).collect();
                 }
@@ -527,7 +577,12 @@ impl WidgetConfig {
                             .take(MANUAL_AGENDA_TEXT_MAX_CHARS)
                             .collect();
                     }
-                    item.duration_min = item.duration_min.map(|d| d.clamp(1, 600));
+                    item.duration_min = item.duration_min.map(|d| {
+                        d.clamp(
+                            crate::schedule::AGENDA_DURATION_MIN,
+                            crate::schedule::AGENDA_DURATION_MAX,
+                        )
+                    });
                 }
             }
             WidgetConfig::Deadline {
@@ -792,7 +847,19 @@ mod tests {
         let WidgetConfig::Text { font_scale, .. } = big else {
             panic!("still a text config");
         };
-        assert_eq!(font_scale, 6.0);
+        assert_eq!(font_scale, FONT_SCALE_MAX);
+
+        let mut small = WidgetConfig::Text {
+            content: String::new(),
+            font_scale: 0.01,
+            align: TextAlign::Left,
+            extra: Default::default(),
+        };
+        small.clamp();
+        let WidgetConfig::Text { font_scale, .. } = small else {
+            panic!("still a text config");
+        };
+        assert_eq!(font_scale, FONT_SCALE_MIN);
     }
 
     #[test]
@@ -895,6 +962,163 @@ mod tests {
         assert_eq!(text.matches("\"kind\"").count(), 1);
     }
 
+    /// One row per enum-valued field: an unreadable VALUE (a spelling some
+    /// later version writes) costs that field and NOTHING else — the content
+    /// beside it and the ADR-007 `extra` buffer both come through.
+    ///
+    /// `("json", "enumKey", "defaultSpelling", &[(contentKey, contentValue)])`
+    /// — the two lamp-only kinds have no content beyond `extra`, which the
+    /// common `futureNote` assertion covers.
+    #[allow(clippy::type_complexity)]
+    fn unknown_enum_value_cases() -> Vec<(
+        &'static str,
+        &'static str,
+        &'static str,
+        Vec<(&'static str, serde_json::Value)>,
+    )> {
+        vec![
+            (
+                r#"{"kind":"text","content":"Husk gymtøy","align":"justified","futureNote":"keep"}"#,
+                "align",
+                "center",
+                vec![("content", serde_json::json!("Husk gymtøy"))],
+            ),
+            (
+                r#"{"kind":"clock","face":"sundial","showSeconds":true,"futureNote":"keep"}"#,
+                "face",
+                "digital",
+                vec![("showSeconds", serde_json::json!(true))],
+            ),
+            (
+                r#"{"kind":"timer","mode":"pomodoro","durationMs":600000,"futureNote":"keep"}"#,
+                "mode",
+                "countdown",
+                vec![("durationMs", serde_json::json!(600000.0))],
+            ),
+            (
+                r#"{"kind":"groups","mode":"balanced","n":5,"futureNote":"keep"}"#,
+                "mode",
+                "count",
+                vec![("n", serde_json::json!(5))],
+            ),
+            (
+                r#"{"kind":"trafficlight","active":"purple","futureNote":"keep"}"#,
+                "active",
+                "red",
+                vec![],
+            ),
+            (
+                // The plan's own example: a v0.5 `WorkMode::Focus`.
+                r#"{"kind":"worksymbol","mode":"focus","futureNote":"keep"}"#,
+                "mode",
+                "silent",
+                vec![],
+            ),
+            (
+                r#"{"kind":"agenda","source":"ical","manualItems":[{"id":"a1","text":"Les s. 40"}],"futureNote":"keep"}"#,
+                "source",
+                "planner",
+                vec![(
+                    "manualItems",
+                    serde_json::json!([{"id":"a1","text":"Les s. 40","durationMin":null,"done":false}]),
+                )],
+            ),
+        ]
+    }
+
+    #[test]
+    fn an_unknown_enum_value_costs_the_field_and_nothing_else() {
+        for (json, enum_key, default_spelling, content) in unknown_enum_value_cases() {
+            let mut cfg: WidgetConfig = serde_json::from_str(json)
+                .unwrap_or_else(|e| panic!("{enum_key} must not fail the whole config: {e}"));
+            cfg.clamp();
+            let out = serde_json::to_value(&cfg).expect("serialises");
+            assert_eq!(
+                out[enum_key],
+                serde_json::json!(default_spelling),
+                "{enum_key}: an unreadable value takes the field default"
+            );
+            assert_eq!(
+                out["futureNote"],
+                serde_json::json!("keep"),
+                "{enum_key}: the ADR-007 buffer survives the bad neighbour"
+            );
+            for (key, value) in content {
+                assert_eq!(out[key], value, "{enum_key}: {key} survives");
+            }
+        }
+    }
+
+    /// `default` and `deserialize_with` answer DIFFERENT roads — an ABSENT
+    /// key never reaches the lenient function at all. Both roads must end at
+    /// the same value, or "unknown spelling" and "field not written yet"
+    /// would mean different things on the projector.
+    #[test]
+    fn an_absent_enum_key_lands_where_an_unreadable_one_does() {
+        for (json, enum_key, default_spelling, _) in unknown_enum_value_cases() {
+            let mut absent: serde_json::Value = serde_json::from_str(json).unwrap();
+            absent
+                .as_object_mut()
+                .expect("case json is an object")
+                .remove(enum_key)
+                .expect("case json carries the enum key");
+
+            let mut cfg: WidgetConfig =
+                serde_json::from_value(absent).expect("an absent key is fine");
+            cfg.clamp();
+            let out = serde_json::to_value(&cfg).unwrap();
+            assert_eq!(
+                out[enum_key],
+                serde_json::json!(default_spelling),
+                "{enum_key}: an absent key takes the same default"
+            );
+            assert_eq!(
+                out["futureNote"],
+                serde_json::json!("keep"),
+                "{enum_key}: and still keeps the unknown neighbour"
+            );
+        }
+    }
+
+    /// The whole point, end to end through the seam that used to lose it.
+    ///
+    /// Before the lenient guard this row cost the teacher her text: `align`
+    /// failed the WHOLE `WidgetConfig`, `from_str(..).ok()` answered `None`,
+    /// and [`row_to_instance`] fell back to `default_for("text")` — empty
+    /// content, empty `extra` — which `replace_widgets` then wrote to disk at
+    /// the first edit. Now only the alignment is lost.
+    #[test]
+    fn a_row_with_an_unknown_enum_value_keeps_the_rest_of_its_config() {
+        let inst = row_to_instance(
+            "w1",
+            "text",
+            0.1,
+            0.1,
+            0.3,
+            0.2,
+            0,
+            r#"{"kind":"text","content":"Prøve fredag","align":"justified","futureNote":7}"#,
+        )
+        .expect("the widget survives either way — the question is with WHAT");
+        assert_ne!(
+            inst.config,
+            WidgetConfig::default_for("text").unwrap(),
+            "the wholesale default_for fallback must NOT have run"
+        );
+        let WidgetConfig::Text {
+            content,
+            align,
+            extra,
+            ..
+        } = &inst.config
+        else {
+            panic!("kind column said text");
+        };
+        assert_eq!(content, "Prøve fredag");
+        assert_eq!(*align, TextAlign::Center, "only the alignment is lost");
+        assert_eq!(extra["futureNote"], serde_json::json!(7));
+    }
+
     /// The same tolerance end-to-end through the row seam: a stored config
     /// with a newer field parses, clamps and re-serialises with the field.
     #[test]
@@ -915,5 +1139,112 @@ mod tests {
         let out = serde_json::to_value(&cfg).unwrap();
         assert_eq!(out["futureSides"], serde_json::json!(20));
         assert_eq!(out["count"], serde_json::json!(2));
+    }
+
+    /// ADR-007 one level DOWN (1/3): a field a newer version wrote on a
+    /// CHECKLIST ROW must survive the row seam, the clamp (which truncates
+    /// text in place) and the re-serialise. The variant's own flatten map
+    /// only ever caught top-level keys.
+    #[test]
+    fn unknown_fields_on_a_checklist_item_survive_the_row_seam() {
+        let inst = row_to_instance(
+            "w1",
+            "checklist",
+            0.1,
+            0.1,
+            0.3,
+            0.2,
+            0,
+            r#"{"kind":"checklist","items":[
+                 {"id":"i1","text":"Matpakke","done":true,"colour":"gold","futureNest":{"a":[1]}},
+                 {"id":"i2","text":"Gymtøy","done":false}
+               ]}"#,
+        )
+        .expect("known kind parses");
+        let mut cfg = inst.config;
+        cfg.clamp();
+        let out = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(out["items"][0]["colour"], serde_json::json!("gold"));
+        assert_eq!(
+            out["items"][0]["futureNest"],
+            serde_json::json!({ "a": [1] })
+        );
+        assert_eq!(out["items"][0]["text"], serde_json::json!("Matpakke"));
+        assert_eq!(out["items"][0]["done"], serde_json::json!(true));
+        assert_eq!(
+            out["items"][1],
+            serde_json::json!({"id":"i2","text":"Gymtøy","done":false}),
+            "an item with nothing unknown gains no keys"
+        );
+    }
+
+    /// ADR-007 one level DOWN (2/3): the same for a MANUAL AGENDA LINE, whose
+    /// clamp also rewrites `duration_min` — the extra must survive that too.
+    #[test]
+    fn unknown_fields_on_a_manual_agenda_item_survive_the_row_seam() {
+        let inst = row_to_instance(
+            "w1",
+            "agenda",
+            0.1,
+            0.1,
+            0.3,
+            0.2,
+            0,
+            r#"{"kind":"agenda","source":"manual","manualItems":[
+                 {"id":"a1","text":"Gjennomgang","durationMin":9999,"owner":"Kari"}
+               ]}"#,
+        )
+        .expect("known kind parses");
+        let mut cfg = inst.config;
+        cfg.clamp();
+        let out = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(out["manualItems"][0]["owner"], serde_json::json!("Kari"));
+        assert_eq!(
+            out["manualItems"][0]["durationMin"],
+            serde_json::json!(crate::schedule::AGENDA_DURATION_MAX),
+            "the clamp still runs — it just no longer costs the unknown key"
+        );
+        assert_eq!(
+            out["manualItems"][0]["text"],
+            serde_json::json!("Gjennomgang")
+        );
+    }
+
+    /// ADR-007 one level DOWN (3/3): the `PartialEq` consequence, pinned on
+    /// purpose. Both item types derive `PartialEq` and `extra` is part of the
+    /// value, so two rows that differ ONLY in a newer version's field are NOT
+    /// equal — nothing may treat them as interchangeable, because "equal"
+    /// here would license overwriting a field this build cannot see.
+    ///
+    /// And unlike [`WidgetConfig`], a list element carries no serde tag:
+    /// `extra` must never acquire a `"kind"` key, which is why `clamp` has no
+    /// tag to scrub down here.
+    #[test]
+    fn nested_items_that_differ_only_in_an_unknown_field_are_not_equal() {
+        let parse = |json: &str| -> WidgetConfig {
+            let mut c: WidgetConfig = serde_json::from_str(json).expect("parses");
+            c.clamp();
+            c
+        };
+        let plain = parse(r#"{"kind":"checklist","items":[{"id":"i1","text":"Matpakke"}]}"#);
+        let newer =
+            parse(r#"{"kind":"checklist","items":[{"id":"i1","text":"Matpakke","pinned":true}]}"#);
+        assert_ne!(
+            plain, newer,
+            "an item carrying a newer version's field is a different stored row"
+        );
+
+        let WidgetConfig::Checklist { items, .. } = &newer else {
+            panic!("still a checklist");
+        };
+        assert_eq!(items[0].extra["pinned"], serde_json::json!(true));
+        assert!(
+            !items[0].extra.contains_key("kind"),
+            "a list element is not internally tagged — no tag can land in extra"
+        );
+        let WidgetConfig::Checklist { items, .. } = &plain else {
+            panic!("still a checklist");
+        };
+        assert!(items[0].extra.is_empty(), "and a plain row buffers nothing");
     }
 }

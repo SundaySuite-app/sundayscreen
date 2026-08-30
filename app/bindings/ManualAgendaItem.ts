@@ -2,5 +2,10 @@
 
 /**
  * One line of a manual agenda (planner-free mode).
+ *
+ * ADR-007 applies one level DOWN as well: keys a NEWER version wrote on an
+ * individual LINE survive this build's load→save cycle. Keep the whole item
+ * when you edit one (`{ ...item, done: true }`), never rebuild it field by
+ * field — a rebuilt line drops what this build cannot see.
  */
 export type ManualAgendaItem = { id: string, text: string, durationMin: number | null, done: boolean, };

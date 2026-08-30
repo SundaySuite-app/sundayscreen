@@ -9,6 +9,7 @@ pub mod layout;
 pub mod members;
 pub mod picker;
 pub mod schedule;
+pub(crate) mod serde_util;
 pub mod settings;
 pub mod timer;
 pub mod update;

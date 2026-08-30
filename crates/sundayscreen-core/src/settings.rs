@@ -12,6 +12,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::serde_util::lenient;
+
 /// The saved main-window geometry, restored on boot. `None` in
 /// [`Settings::window`] means "never saved — use the tauri.conf.json default".
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
@@ -97,19 +99,10 @@ where
     Ok(raw.as_str().map(UpdateChannel::parse).unwrap_or_default())
 }
 
-/// Lenient per-field deserializer: tolerate a malformed VALUE by taking the
-/// field's `Default` instead of failing the whole blob. Without this,
-/// [`Settings::from_json_merged`] falls back to the FULL defaults the moment
-/// ANY field rejects its value — a hand-edited language string would reset the
-/// active class along with it. Here a bad value costs that one field.
-fn lenient<'de, D, T>(de: D) -> Result<T, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: serde::de::DeserializeOwned + Default,
-{
-    let raw = serde_json::Value::deserialize(de)?;
-    Ok(serde_json::from_value(raw).unwrap_or_default())
-}
+// The generic `lenient` now lives in `crate::serde_util` — `layout.rs` needs
+// the same guard for the widget configs. Without it, `from_json_merged` would
+// fall back to the FULL defaults the moment ANY field rejected its value: a
+// hand-edited language string would reset the active class along with it.
 
 /// [`lenient`] for a field whose default is `true`: the generic version falls
 /// back to `T::default()`, and `bool::default()` is `false` — which would turn

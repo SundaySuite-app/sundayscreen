@@ -21,6 +21,10 @@ import type { WorkMode } from "./WorkMode";
  * instead of being silently dropped. `#[ts(skip)]` keeps the TS types
  * unchanged — the webview receives the unknown keys inline and its
  * `{ ...cfg }` spreads carry them back untouched.
+ *
+ * ADR-007 covered unknown FIELDS; unknown VALUES fell straight through it.
+ * An enum-valued field this build cannot spell now costs THAT FIELD ONLY —
+ * it reads as the field's default, and everything beside it survives.
  */
 export type WidgetConfig = { "kind": "text", content: string, fontScale: number, align: TextAlign, } | { "kind": "clock", face: ClockFace, showSeconds: boolean, showDate: boolean, } | { "kind": "timer", durationMs: number, warnAtMs: number, soundOn: boolean, mode: TimerMode, } | { "kind": "namepicker", noRepeat: boolean, lastDrawn: string | null, } | { "kind": "groups", mode: GroupMode, n: number, 
 /**

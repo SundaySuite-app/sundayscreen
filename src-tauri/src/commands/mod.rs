@@ -26,3 +26,4 @@ pub mod picker;
 pub mod planner;
 pub mod scenes;
 pub mod settings;
+pub mod transfer;

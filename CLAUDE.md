@@ -11,7 +11,11 @@ visningsflaten. macOS + Windows.
 ## Produktløfter (brytes ALDRI)
 
 1. **Null nettavhengighet i drift.** Updater er eneste nettfunksjon og feiler
-   stille. Ingen telemetri i v1. Elevnavn forlater aldri maskinen.
+   stille. Ingen telemetri i v1. **Appen** sender aldri elevnavn noe sted —
+   presiseringen er viktig siden R4: læreren kan selv eksportere oppsettet
+   sitt til en fil («Flytt oppsettet»), og den fila inneholder elevnavn i
+   klartekst. Den lages bare på hennes eget initiativ, med hennes eget valg
+   av lagringssted, og inneholder aldri fraværsmarkeringer (ADR-010/ADR-012).
 2. **Restart midt i timen gjenoppretter skjermen eksakt** — siste synlige
    resultat (trukket navn, lysfarge, terningkast) persisteres i widget-config.
 3. **En nedgradering sletter aldri en nyere versjons widgets** — ukjent `kind`

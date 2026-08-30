@@ -33,6 +33,12 @@ tauri = { version = "2", features = [] }
 # double-launched; desktop-only (the only target here). Must be the FIRST
 # plugin registered.
 tauri-plugin-single-instance = "2"
+# The native save/open dialog for «flytt oppsettet». Used ONLY from Rust
+# (`commands/transfer.rs`), so `capabilities/default.json` needs no entry —
+# Tauri's ACL governs IPC from the WEBVIEW, and the webview never sees this
+# plugin. Same shape as the updater, which has shipped that way since v0.1.
+# There is deliberately no npm counterpart: all file I/O stays in Rust.
+tauri-plugin-dialog = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

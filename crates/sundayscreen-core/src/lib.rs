@@ -12,5 +12,6 @@ pub mod schedule;
 pub(crate) mod serde_util;
 pub mod settings;
 pub mod timer;
+pub mod transfer;
 pub mod update;
 pub mod window;

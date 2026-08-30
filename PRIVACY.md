@@ -3,7 +3,9 @@
 Kort versjon: **alt bor på din maskin.**
 
 - Klasselister (elevnavn), skjermoppsett og innstillinger lagres KUN lokalt,
-  i en SQLite-fil under appens datamappe på maskinen.
+  i en SQLite-fil under appens datamappe på maskinen. Appen flytter dem aldri
+  selv; det eneste unntaket er «Flytt oppsettet», som DU starter — se
+  punktet om eksport under.
 - Samme datamappe inneholder også automatiske sikkerhetskopier
   (`sundayscreen.backup-1.sqlite`, `-2`, `-3` — de tre siste vellykkede
   oppstartene) og, om en database noensinne har blitt funnet ødelagt og
@@ -13,6 +15,14 @@ Kort versjon: **alt bor på din maskin.**
   overskriver den neste gang. Det bygges aldri opp en fraværshistorikk — appen
   vet hvem som er her akkurat i dag, og ingenting om i går. Fraværsføring hører
   hjemme i skolens eget system.
+- **Eksport skjer bare når du selv ber om det.** Under «Klasser og navn» kan
+  du lagre hele oppsettet ditt til én fil for å flytte det til en annen
+  maskin. Fila lages først når du har trykket på knappen OG valgt hvor den
+  skal ligge — appen sender den ingen steder, og det finnes ingen automatisk
+  eller planlagt eksport. Fila inneholder **elevnavnene i klartekst**, så den
+  hører hjemme samme sted som resten av klasselistene dine. Den inneholder
+  ALDRI fraværsmarkeringer (se punktet over) og heller ikke dagens
+  trekningsrunde, agendaer eller dagsnotater.
 - Appen sender ingen telemetri, ingen analyser, ingen krasjrapporter.
 - Det eneste nettkallet appen noensinne gjør, er å spørre
   `updates.sundaysuite.app` om det finnes en ny versjon. Kallet inneholder
@@ -20,4 +30,5 @@ Kort versjon: **alt bor på din maskin.**
   likt.
 - Ingen konto, ingen innlogging, ingen sky.
 
-Sletter du appens datamappe, er alt borte. Det finnes ingen kopi hos oss.
+Sletter du appens datamappe, er alt borte — bortsett fra eksportfiler du selv
+har lagret et annet sted. Det finnes ingen kopi hos oss.

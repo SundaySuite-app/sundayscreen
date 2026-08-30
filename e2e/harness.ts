@@ -653,6 +653,36 @@ export async function installFixtures(
             return db.members[classId];
           },
 
+          // ── «Flytt oppsettet» ──────────────────────────────────────────
+          //
+          // The real pair opens a NATIVE file dialog and touches the disk,
+          // both of which are invisible to Playwright BY CONSTRUCTION — that
+          // is the whole point of keeping the plugin Rust-side. So the fake
+          // answers with a fixed path and a fixed receipt: what these
+          // journeys can actually check is the FRONTEND's half — the
+          // flush-before-export, the receipt sentence, the reload of the
+          // class and scene menus, and one distinct message per refusal.
+          //
+          // A spec that wants a refusal overwrites just `transfer_import`
+          // with `addInitScript` (see transfer.spec.ts). The mini backend is
+          // deliberately NOT re-implementing the remap: a fake with its own
+          // idea of the import semantics is the seam bug this house keeps
+          // finding, and the Rust tests own that half.
+          transfer_export: (args?: Record<string, unknown>) =>
+            `/Users/e2e/Documents/${String(arg(args, "suggestedName"))}`,
+          transfer_import: () => ({
+            outcome: "imported",
+            classes: 2,
+            scenes: 3,
+            members: 47,
+            plannerImported: false,
+            // The default answer is the INTERESTING one: this machine
+            // already had a school day, so the week plan stayed behind and
+            // the receipt has to say so.
+            plannerSkipped: true,
+            fileAppVersion: "0.0.0-e2e",
+          }),
+
           layout_load: (args?: Record<string, unknown>) =>
             load().layouts[String(arg(args, "sceneId"))] ?? [],
           layout_save: (args?: Record<string, unknown>) => {

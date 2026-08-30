@@ -26,6 +26,7 @@ import type { ActiveContext } from "../bindings/ActiveContext";
 import type { ClassSnapshot } from "../bindings/ClassSnapshot";
 import type { DrawResult } from "../bindings/DrawResult";
 import type { GroupMode } from "../bindings/GroupMode";
+import type { ImportReceipt } from "../bindings/ImportReceipt";
 import type { Member } from "../bindings/Member";
 import type { Settings } from "../bindings/Settings";
 import type { UpdateStatus } from "../bindings/UpdateStatus";
@@ -432,6 +433,33 @@ const api = {
 
   updateInstall: async (): Promise<UpdateStatus> =>
     invoke<UpdateStatus>("update_install"),
+
+  // ── «Flytt oppsettet» (eksport/import) ──────────────────────────────────
+  //
+  // Both are WRITES, and both go through `write()`: one writes a FILE, the
+  // other writes rows. A `call()` fallback would be the worst possible shape
+  // here — a receipt for an export that never reached the disk, or an
+  // "imported nothing" answer for an import that actually failed.
+  //
+  // The dialog TITLE travels in as an argument (and the export's suggested
+  // filename with it): the file dialog is native and opened in Rust, so this
+  // is the same rule `classEnsureActive(defaultName)` follows — the backend
+  // never owns a sentence a teacher reads.
+
+  /** Write the whole setup to a file the teacher picks. Answers with the
+   *  path written, or `null` when she closed the dialog (not a failure). */
+  transferExport: async (
+    dialogTitle: string,
+    suggestedName: string,
+  ): Promise<string | null> =>
+    write<string | null>("transfer_export", { dialogTitle, suggestedName }),
+
+  /** Read a setup file the teacher picks and ADD what is in it. Always
+   *  answers with a receipt — the refusals (not our file, too new, too big)
+   *  are OUTCOMES, because each is a different sentence and none of them
+   *  wrote anything. Only a real storage failure rejects. */
+  transferImport: async (dialogTitle: string): Promise<ImportReceipt> =>
+    write<ImportReceipt>("transfer_import", { dialogTitle }),
 
   /** What the SILENT boot check found, or `null` while it has not answered
    *  (and forever, offline). A READ with a `null` fallback for the same

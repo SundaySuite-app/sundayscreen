@@ -106,3 +106,61 @@ Konsekvens eieren bør kjenne: på 1080p blir kortene ~1,35× større, og
 ~4–5 får plass før kaskaden i stedet for ~6–7. Har man rutinemessig seks
 widgets oppe samtidig, er grepet feil — da senkes heller registertallene og
 brøken gjør resten.
+
+## ADR-012 — «Flytt oppsettet»: én fil, alltid som NYTT (2026-08-30)
+
+> Nummerhullet er ekte: **ADR-007** (config-felttoleranse) står i
+> `docs/GRANSKING-v1.md`, ikke her. Den er ikke tapt, og dette dokumentet
+> hopper fra 006 til 008 av den grunnen alene.
+
+Læreren skal kunne flytte klasser, elevnavn, skjermer og timeoppsett til en
+annen maskin uten sky og uten konto. Valgene som er låst:
+
+- **Filformatet er ETT JSON-dokument** (`kind: "sundayscreen-setup"`,
+  `schemaVersion: 1`), definert i `crates/sundayscreen-core/src/transfer.rs`
+  — GUI-fritt og enhetstestet. Portene i rekkefølge: `kind` sjekkes FØRST (en
+  fremmed fil får «dette er ikke en SundayScreen-fil», aldri en parsefeil);
+  en NYERE `schemaVersion` avvises HELT, med `appVersion` i setningen (aldri
+  halv-import — en nyere fils form er ukjent, og å adoptere halvparten er å
+  miste resten i stillhet); ellers `#[serde(default)]` overalt og ukjente
+  nøkler ignorert. `SCHEMA_VERSION` flyttes KUN ved brudd, aldri for et nytt
+  felt — suite-presedensen er SundaySyncs `SCHEMA_VERSION: u32 = 1`.
+  `appVersion` er ren diagnostikk og aldri en beslutningsakse.
+- **Import legger ALLTID til.** Nye klasser, nye skjermer, nye ider. Ingenting
+  slås sammen, overskrives eller slettes, og `app_setting` røres ikke i det
+  hele tatt — importerer man midt i en time, endrer ingenting seg på tavla.
+  Alternativet (fletting på navn) måtte gjettet om «7B» på to maskiner er
+  samme klasse, og en feil gjetning ville kostet en navneliste.
+- **Ukeplanen er unntaket, og den er alt-eller-ingenting.** Øktmalen er en
+  GLOBAL singleton. `UNIQUE (weekday, period_id)` ser ut som et vern og er
+  det ikke: de importerte øktene får FERSKE ider, så hver eneste importerte
+  celle er unik mot alle eksisterende og begge lander — resultatet er en
+  stille DOBBEL skoledag (`resolve_day` itererer alle øktrader, og editorens
+  `periods_overlap`-gate omgås av en direkte INSERT). Derfor importeres
+  planleggerdelen KUN inn i en TOM `period`-tabell; ellers hoppes den over,
+  og kvitteringen SIER det.
+- **Grensene avviser, de trunkerer ikke.** `members::reconcile` kapper en
+  limt liste med `take(MEMBERS_MAX)` — riktig for et tekstfelt læreren ser,
+  feil for en fil hun ikke ser. En import forbi en grense refuseres helt, før
+  første INSERT (løfte 4).
+- **Widgets reiser som RÅ `kind`/`config`-strenger.** Toleransen for en ukjent
+  `kind` bor i `commands/layout.rs`, ikke i lagret — så en fil fra en NYERE
+  SundayScreen bærer sine ukjente kort uendret gjennom en import, akkurat som
+  en nedgradering bærer dem gjennom en lagring (løfte 3). To separate felter,
+  fordi kolonnen er to felter: slått sammen blir «ukjent kind» og «korrupt
+  config» det samme.
+- **Fila inneholder ALDRI `absent_on`.** Betalt strukturelt, ikke ved å huske
+  å filtrere: `TransferClass::members` er `Vec<String>`. ADR-010 og PRIVACY.md
+  lover at det ikke finnes fraværshistorikk noe sted, og en fil på en
+  minnepenn ville vært nettopp det. Heller ikke `draw_state`,
+  `date_override`/`agenda_item`/`day_note` (dato-nøklede — fjorårets fil ville
+  importert agendaer på passerte datoer, og de to siste har ingen UNIQUE) og
+  ikke `app_setting`.
+- **Fildialogen er ren Rust.** `tauri-plugin-dialog` registreres i `lib.rs` og
+  kalles bare fra `commands/transfer.rs`; all fil-I/O er `std::fs` i Rust.
+  `capabilities/default.json` er URØRT — Tauris ACL styrer IPC FRA webviewet,
+  og webviewet ser aldri pluginen. Presedensen er appens egen updater, som
+  har gått i produksjon uten capability-oppføring av samme grunn. Ingen
+  npm-pakke; CSP-en er urørt. Dialogtitlene sendes INN som argumenter, slik
+  `class_ensure_active(default_name)` gjør: en setning læreren leser skal
+  aldri være kompilert inn i backenden.

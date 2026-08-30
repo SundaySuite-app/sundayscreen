@@ -267,13 +267,19 @@ pub async fn insert_class(pool: &SqlitePool, name: &str) -> AppResult<ClassRow> 
     Ok(row)
 }
 
-/// Every class, in display order.
-pub async fn list_classes(pool: &SqlitePool) -> AppResult<Vec<ClassRow>> {
+/// Every class, in display order. Generic over the executor so the setup
+/// EXPORT can read the whole database inside one transaction — a snapshot
+/// taken query-by-query off the pool could catch a class list and a member
+/// list that disagree (same reason `list_members` went generic in F9-funn #2).
+pub async fn list_classes<'e, E>(executor: E) -> AppResult<Vec<ClassRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let rows = sqlx::query(
         "SELECT id, name, sort_index, created_at FROM class
          ORDER BY sort_index, created_at",
     )
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     Ok(rows.into_iter().map(row_to_class).collect())
 }
@@ -561,23 +567,30 @@ fn row_to_scene(r: sqlx::sqlite::SqliteRow) -> SceneRow {
     }
 }
 
-/// Look a scene up by id.
-pub async fn get_scene(pool: &SqlitePool, id: &str) -> AppResult<Option<SceneRow>> {
+/// Look a scene up by id. Generic over the executor (see [`list_classes`]).
+pub async fn get_scene<'e, E>(executor: E, id: &str) -> AppResult<Option<SceneRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let row =
         sqlx::query("SELECT id, class_id, name, sort_index, created_at FROM scene WHERE id = ?1")
             .bind(id)
-            .fetch_optional(pool)
+            .fetch_optional(executor)
             .await?;
     Ok(row.map(row_to_scene))
 }
 
-/// Every GLOBAL library scene, in display order.
-pub async fn list_global_scenes(pool: &SqlitePool) -> AppResult<Vec<SceneRow>> {
+/// Every GLOBAL library scene, in display order. Generic over the executor
+/// (see [`list_classes`]).
+pub async fn list_global_scenes<'e, E>(executor: E) -> AppResult<Vec<SceneRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let rows = sqlx::query(
         "SELECT id, class_id, name, sort_index, created_at FROM scene
          WHERE class_id IS NULL ORDER BY sort_index, created_at",
     )
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     Ok(rows.into_iter().map(row_to_scene).collect())
 }
@@ -674,14 +687,18 @@ pub struct WidgetRow {
     pub config: String,
 }
 
-/// Every widget row for a scene, in z order.
-pub async fn load_widget_rows(pool: &SqlitePool, scene_id: &str) -> AppResult<Vec<WidgetRow>> {
+/// Every widget row for a scene, in z order. Generic over the executor (see
+/// [`list_classes`]).
+pub async fn load_widget_rows<'e, E>(executor: E, scene_id: &str) -> AppResult<Vec<WidgetRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let rows = sqlx::query(
         "SELECT id, kind, x, y, w, h, z, config FROM widget_instance
          WHERE scene_id = ?1 ORDER BY z, id",
     )
     .bind(scene_id)
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     Ok(rows
         .into_iter()

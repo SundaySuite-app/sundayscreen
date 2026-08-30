@@ -11,13 +11,16 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 
+import type { ImportReceipt } from "../bindings/ImportReceipt";
 import type { UpdateStatus } from "../bindings/UpdateStatus";
 import { t, tf, tn } from "../i18n";
+import { localDateStr } from "../planner/date-core";
 import { appVersion, updateReady } from "../state/app-info";
 import {
   classes,
   createClass,
   deleteClass,
+  loadClasses,
   loadMembers,
   managePanelOpen,
   members,
@@ -28,7 +31,9 @@ import {
   saveMembers,
   switchClass,
 } from "../state/classes";
-import { activeClass } from "../state/layout";
+import { activeClass, flushPending } from "../state/layout";
+import { refreshPlanner, refreshToday } from "../state/planner";
+import { loadScenes } from "../state/scenes";
 import { settings } from "../state/settings";
 import styles from "./ManagePanel.module.css";
 import { Icon } from "../ui/Icon";
@@ -84,6 +89,11 @@ export function ManagePanel() {
   const [updStatus, setUpdStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
+  /** The transfer section's own receipt line, and its own busy flag: a native
+   *  file dialog is open for as long as the teacher takes, and both buttons
+   *  must be dead while it is. */
+  const [transferReceipt, setTransferReceipt] = useState<string | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
 
   useEffect(() => {
     const id = current?.id ?? null;
@@ -144,6 +154,107 @@ export function ManagePanel() {
       setError(t("manage.actionFailed"));
     } finally {
       setInstalling(false);
+    }
+  };
+
+  /**
+   * «Eksporter oppsett …» — the board on screen IS what goes in the file.
+   *
+   * `flushPending()` first (the B7 lesson): the layout store debounces, so a
+   * widget the teacher moved two seconds ago is still only in memory. Without
+   * this the file would record a screen she is not looking at.
+   */
+  const doExport = async () => {
+    setTransferBusy(true);
+    setError(null);
+    setTransferReceipt(null);
+    try {
+      await flushPending();
+      const path = await window.api.transferExport(
+        t("transfer.exportDialog"),
+        `${t("transfer.fileStem")}-${localDateStr(new Date())}.json`,
+      );
+      // `null` is the teacher closing the dialog — not a failure, and not a
+      // receipt either. Silence is the honest answer.
+      if (path !== null) setTransferReceipt(tf("transfer.exported", { path }));
+    } catch (e) {
+      console.warn("[manage] setup export failed", e);
+      setError(t("manage.actionFailed"));
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
+  /** The sentence for an import that LANDED: what came, and what the school
+   *  day did — the part a teacher must not have to discover on Monday. */
+  const importedText = (r: ImportReceipt): string => {
+    const what = [
+      tn("transfer.classCount", r.classes),
+      tn("transfer.sceneCount", r.scenes),
+      tn("transfer.nameCount", r.members),
+    ].join(", ");
+    const planner = r.plannerImported
+      ? ` ${t("transfer.plannerImported")}`
+      : r.plannerSkipped
+        ? ` ${t("transfer.plannerSkipped")}`
+        : "";
+    return `${tf("transfer.imported", { what })}${planner}`;
+  };
+
+  /** …and for one that did not. Every refusal wrote NOTHING, and each has
+   *  its own remedy, so they may not collapse into one message. */
+  const refusedText = (r: ImportReceipt): string => {
+    if (r.outcome === "notOurFile") return t("transfer.notOurFile");
+    if (r.outcome === "tooLarge") return t("transfer.tooLarge");
+    if (r.outcome === "tooNew") {
+      return r.fileAppVersion
+        ? tf("transfer.tooNew", { v: r.fileAppVersion })
+        : t("transfer.tooNewUnknown");
+    }
+    return t("transfer.unreadable");
+  };
+
+  /**
+   * «Importer oppsett …» — always ADDS. Nothing is overwritten, and the
+   * settings blob (which class and screen are on the board) is not touched,
+   * so importing mid-lesson changes nothing the pupils can see.
+   *
+   * The reloads afterwards are not optional: `classes`/`scenes` are signals
+   * the backend cannot push to, so without them the new classes exist in the
+   * database and in no menu.
+   */
+  const doImport = async () => {
+    setTransferBusy(true);
+    setError(null);
+    setTransferReceipt(null);
+    try {
+      // Same sequencing discipline as every other write that reaches past
+      // the board (`switchClass`, `saveCurrentAsScene`): let the debounced
+      // layout write land BEFORE a long transaction opens, rather than have
+      // it arrive somewhere in the middle of one.
+      await flushPending();
+      const receipt = await window.api.transferImport(
+        t("transfer.importDialog"),
+      );
+      if (receipt.outcome === "cancelled") return;
+      if (receipt.outcome !== "imported") {
+        setError(refusedText(receipt));
+        return;
+      }
+      await loadClasses();
+      await loadScenes();
+      if (receipt.plannerImported) {
+        // The panel's own week AND the board's today: this machine had no
+        // school day a moment ago, and now it has one.
+        await refreshPlanner();
+        await refreshToday();
+      }
+      setTransferReceipt(importedText(receipt));
+    } catch (e) {
+      console.warn("[manage] setup import failed", e);
+      setError(t("manage.actionFailed"));
+    } finally {
+      setTransferBusy(false);
     }
   };
 
@@ -394,6 +505,35 @@ export function ManagePanel() {
                   </button>
                 </div>
               </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Move the setup ──────────────────────────────────────────────
+            Between the columns and «about» on purpose: «about» is THIS
+            INSTALLATION (version, channel, update), this is THESE DATA. And
+            «Importer oppsett …» must not stand next to «Oppdater og start på
+            nytt» — two irreversible-looking buttons, one row apart. */}
+        <div class={styles.transfer}>
+          <h3 class={styles.transferTitle}>{t("transfer.title")}</h3>
+          <p class={styles.transferNote}>{t("transfer.note")}</p>
+          <div class={styles.transferRow}>
+            <button
+              class={styles.transferBtn}
+              disabled={transferBusy}
+              onClick={() => void doExport()}
+            >
+              {t("transfer.export")}
+            </button>
+            <button
+              class={styles.transferBtn}
+              disabled={transferBusy}
+              onClick={() => void doImport()}
+            >
+              {t("transfer.import")}
+            </button>
+            {transferReceipt && (
+              <span class={styles.transferReceipt}>{transferReceipt}</span>
             )}
           </div>
         </div>

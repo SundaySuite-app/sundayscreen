@@ -42,6 +42,12 @@ pub fn run() {
     #[cfg(feature = "updater")]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
+    // The native file dialog, for «flytt oppsettet» alone. Registered here
+    // and reached ONLY from `commands::transfer`: the webview cannot call it
+    // (no capability entry, no npm package), so the app's permission surface
+    // is unchanged and every byte read or written goes through Rust.
+    let builder = builder.plugin(tauri_plugin_dialog::init());
+
     builder
         .setup(|app| {
             use tauri::Manager;
@@ -259,6 +265,8 @@ pub fn run() {
             commands::picker::picker_reset,
             commands::picker::groups_split,
             commands::picker::attendance_set,
+            commands::transfer::transfer_export,
+            commands::transfer::transfer_import,
             window::window_set_fullscreen,
             window::window_is_fullscreen,
             update::update_check,

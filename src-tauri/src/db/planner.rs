@@ -19,7 +19,8 @@ fn period_kind(raw: &str) -> PeriodKind {
     }
 }
 
-fn period_kind_tag(kind: PeriodKind) -> &'static str {
+/// `pub(crate)` for `db::import`, which writes period rows of its own.
+pub(crate) fn period_kind_tag(kind: PeriodKind) -> &'static str {
     match kind {
         PeriodKind::Lesson => "lesson",
         PeriodKind::Break => "break",
@@ -42,12 +43,17 @@ fn override_kind_tag(kind: OverrideKind) -> &'static str {
 
 // ── Periods ─────────────────────────────────────────────────────────────────
 
-pub async fn list_periods(pool: &SqlitePool) -> AppResult<Vec<Period>> {
+/// Generic over the executor so the setup EXPORT can read the whole database
+/// inside one transaction (see `store::list_classes`).
+pub async fn list_periods<'e, E>(executor: E) -> AppResult<Vec<Period>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let rows = sqlx::query(
         "SELECT id, label, start_min, end_min, kind, sort_index FROM period
          ORDER BY sort_index, start_min",
     )
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     Ok(rows
         .into_iter()
@@ -105,12 +111,16 @@ pub async fn replace_periods(pool: &SqlitePool, periods: &[Period]) -> AppResult
 
 // ── Weekly slots ────────────────────────────────────────────────────────────
 
-pub async fn list_week_slots(pool: &SqlitePool) -> AppResult<Vec<WeekSlot>> {
+/// Generic over the executor (see [`list_periods`]).
+pub async fn list_week_slots<'e, E>(executor: E) -> AppResult<Vec<WeekSlot>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let rows = sqlx::query(
         "SELECT id, weekday, period_id, class_id, subject, scene_id FROM week_slot
          ORDER BY weekday, period_id",
     )
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?;
     Ok(rows.into_iter().map(row_to_slot).collect())
 }

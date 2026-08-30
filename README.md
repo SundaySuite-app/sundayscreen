@@ -12,12 +12,13 @@ En del av [Sunday Suite](https://sundaysuite.app).
 
 ## Hvorfor ikke bare Classroomscreen?
 
-|                | Classroomscreen (web)        | SundayScreen                                             |
-| -------------- | ---------------------------- | -------------------------------------------------------- |
-| Uten nett      | ❌ krever nettleser + nett   | ✅ helt offline                                          |
-| Klasseprofiler | betalt funksjon              | ✅ innebygd — navneliste + eget skjermoppsett per klasse |
-| Lagring        | i skyen                      | ✅ lokal SQLite på maskinen                              |
-| Pris           | abonnement for full funksjon | ✅ gratis, MIT-lisensiert                                |
+|                 | Classroomscreen (web)        | SundayScreen                                                           |
+| --------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| Uten nett       | ❌ krever nettleser + nett   | ✅ helt offline                                                        |
+| Klasseprofiler  | betalt funksjon              | ✅ innebygd — navneliste + eget skjermoppsett per klasse               |
+| Lagring         | i skyen                      | ✅ lokal SQLite på maskinen                                            |
+| Flytt oppsettet | følger kontoen i skyen       | ✅ én fil du eksporterer selv — klasser, navn, skjermer og timeoppsett |
+| Pris            | abonnement for full funksjon | ✅ gratis, MIT-lisensiert                                              |
 
 ## Stack
 

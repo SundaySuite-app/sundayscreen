@@ -19,6 +19,13 @@
   box-shadow: var(--shadow-dialog);
   padding: var(--sp-6);
   gap: var(--sp-5);
+  /* The panel grew a third band in R4 («Flytt oppsettet») and stopped
+     fitting a 1280×720 window. Without this the flex column simply SQUEEZED
+     the grid below its content, and the next band was painted straight over
+     «Lagre navneliste» — a button still visible, and no longer clickable.
+     The panel scrolls instead; the bands keep their heights (see the
+     `flex-shrink: 0` on each). */
+  overflow-y: auto;
 }
 
 .header {
@@ -69,6 +76,10 @@
   grid-template-columns: 280px 1fr;
   gap: var(--sp-6);
   min-height: 0;
+  /* Never shrunk below its content: `.namesArea` carries a `min-height`, so
+     a squeezed grid row overflows rather than compressing, and whatever
+     comes next in the panel lands on top of it. */
+  flex-shrink: 0;
 }
 
 .classColumn {
@@ -328,6 +339,67 @@
   color: var(--ink);
 }
 
+/* «Flytt oppsettet» — these DATA, as opposed to `.about`, which is this
+   installation. Same divider treatment so the panel reads as three bands. */
+.transfer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.transferTitle {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.transferNote {
+  margin: 0;
+  max-width: 68ch;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.transferRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.transferBtn {
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-4);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.transferBtn:hover:not(:disabled) {
+  border-color: var(--gold-line);
+  color: var(--ink);
+}
+
+.transferBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.transferReceipt {
+  color: var(--good);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
 .about {
   display: flex;
   align-items: center;
@@ -337,6 +409,7 @@
   border-top: 1px solid var(--line);
   font-size: var(--fs-sm);
   color: var(--ink-3);
+  flex-shrink: 0;
 }
 
 .aboutVersion {

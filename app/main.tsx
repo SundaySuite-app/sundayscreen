@@ -22,7 +22,8 @@ import { resolveStartupLocale, setLocale, t } from "./i18n";
 import { installKeyboard } from "./screen/keyboard";
 import { initWindowState } from "./screen/window-state";
 import { Shell } from "./Shell";
-import { loadAppInfo } from "./state/app-info";
+import { loadAppInfo, scheduleUpdateRead } from "./state/app-info";
+import { loadBootFault } from "./state/boot";
 import { loadClasses, loadMembers } from "./state/classes";
 import { loadScenes } from "./state/scenes";
 import { parseGoto } from "@lib/goto-core";
@@ -100,4 +101,10 @@ async function boot(): Promise<void> {
   // A one-shot read the footer shows. No await — a line that can render "—"
   // until the number lands should not delay boot.
   void loadAppInfo();
+  // What the boot itself had to say. Deliberately AFTER the rest is under
+  // way: if the database did not open, everything above has already failed in
+  // its own honest way, and this is the chip that explains why.
+  void loadBootFault();
+  // …and the silent boot check's answer, ~20 s from now (see the constant).
+  scheduleUpdateRead();
 }

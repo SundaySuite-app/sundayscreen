@@ -5,7 +5,14 @@
   },
   "boot": {
     "loading": "Loading …",
-    "hydrateError": "Settings could not be read — the app is using defaults."
+    "hydrateError": "Settings could not be read — the app is using defaults.",
+    "fault": {
+      "databaseTooNew": "This database was made by a newer SundayScreen. Install the newest version again — the file is untouched: {path}",
+      "schemaUpdateStopped": "The schema update stopped. The file is untouched: {path}",
+      "unreadable": "The database could not be opened, so SundayScreen is running without it. The file is untouched: {path}",
+      "startedEmpty": "The database was damaged, so SundayScreen started empty. The old file and the previous backup (sundayscreen.backup-1.sqlite) are beside {path}",
+      "rescueFailed": "The database was damaged, and SundayScreen could not make a new one. Nothing was deleted — the old files are beside {path}"
+    }
   },
   "class": {
     "defaultName": "My class",
@@ -162,7 +169,9 @@
     "available": "Version {v} is ready",
     "install": "Update and restart",
     "error": "Could not check right now — try again when online",
-    "disabled": "Updates are disabled in this build"
+    "disabled": "Updates are disabled in this build",
+    "pending": "v{v} ready",
+    "pendingTitle": "Version {v} is ready — get it under “Manage classes”."
   },
   "layout": {
     "loadFailed": "Could not read the board from storage — changes will not be saved until the app restarts.",

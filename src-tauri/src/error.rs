@@ -4,8 +4,11 @@
 //! `serde::Serialize` so it crosses the IPC boundary as a stable JSON shape
 //! (`{ code, message }`) the frontend can pattern-match on.
 
+use std::path::Path;
+
 use serde::{Serialize, Serializer};
 use thiserror::Error;
+use ts_rs::TS;
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -133,6 +136,123 @@ pub fn should_quarantine(err: &AppError) -> bool {
     primary == SQLITE_CORRUPT || primary == SQLITE_NOTADB
 }
 
+// ── Boot: saying it out loud ────────────────────────────────────────────────
+
+/// Which boot failure happened — the one axis the shell's chip switches on.
+///
+/// A UNIT enum on purpose. `BootFault` carries the path and the schema number
+/// alongside it, so the frontend reads `fault.kind === "databaseTooNew"`
+/// rather than digging through a nested tag (which is what an internally
+/// tagged enum with a shared field would have cost).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "BootFaultKind.ts")]
+#[serde(rename_all = "camelCase")]
+pub enum BootFaultKind {
+    /// The file names a schema version this build does not have — i.e. it was
+    /// written by a NEWER SundayScreen. The proven downgrade case
+    /// (`VersionMissing`), and the only one where "install the newer app
+    /// again" is the actual remedy.
+    DatabaseTooNew,
+    /// The schema update itself stopped: a migration was modified since it ran
+    /// (`VersionMismatch`), a statement failed (`ExecuteMigration`), or one is
+    /// half-applied (`Dirty`). Our bug to fix, not the teacher's.
+    SchemaUpdateStopped,
+    /// Could not be opened at all — locked by another process, no permission,
+    /// a full disk. Nothing about the file's contents.
+    Unreadable,
+    /// NOT an open failure: the bytes were PROVEN corrupt, moved aside, and
+    /// the database now running is the empty one made in their place. The old
+    /// bytes and the rotating backups are still on disk.
+    StartedEmpty,
+    /// The quarantine ran and then making a fresh database ALSO failed — so
+    /// there is no database at all, and the file has been renamed.
+    ///
+    /// Its own kind rather than falling back to [`Self::Unreadable`] for one
+    /// reason: every other sentence ends in "the file is untouched", and after
+    /// a quarantine that is no longer true. A sentence that lies about the one
+    /// thing this whole boot path exists to promise is worse than no sentence.
+    RescueFailed,
+}
+
+/// What the boot has to tell the teacher, held in managed state and read once
+/// by the shell (`boot_fault`).
+///
+/// It exists because the honest alternative was worse: returning `Err` from
+/// `setup` stops the whole app, so the ONE thing that could explain the
+/// problem — a window with a sentence in it — never appears. The shell boots
+/// degraded instead (typed fallbacks where the shim has them, honest
+/// rejections everywhere else) and puts this at the top of its chip.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "BootFault.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct BootFault {
+    pub kind: BootFaultKind,
+    /// Where the file is. The sentence ENDS in it: "the file is untouched:
+    /// <path>" is what makes the promise checkable by the person reading it,
+    /// and what she can hand to whoever helps her.
+    pub db_path: String,
+    /// The migration version sqlx named, when it named one.
+    ///
+    /// DIAGNOSTIC ONLY, and deliberately not in any sentence: this is a schema
+    /// number (`0005_…sql` → 5), not an app version. "Install version 5 or
+    /// newer" would be a fabricated instruction — there is no SundayScreen 5.
+    /// The shell says "a newer SundayScreen" and leaves the number to the log.
+    pub schema_version: Option<u32>,
+}
+
+impl BootFault {
+    /// Classify a failed `open_pool`. Sibling to [`should_quarantine`], and
+    /// for the same reason: the boot path's two decisions are the ones that
+    /// have to be readable in a test rather than inferred from a `match` in
+    /// `lib.rs` that nothing can call.
+    pub fn from_open_error(err: &AppError, db_path: &Path) -> Self {
+        use sqlx::migrate::MigrateError as M;
+
+        // `MigrateError` is `#[non_exhaustive]`; the wildcard is required and
+        // lands on `Unreadable`, which is the safe direction to be wrong in —
+        // a vague "could not be opened" beside an untouched file, never a
+        // confident claim about a version.
+        let (kind, schema_version) = match err {
+            AppError::Migration(M::VersionMissing(n) | M::VersionNotPresent(n)) => {
+                (BootFaultKind::DatabaseTooNew, u32::try_from(*n).ok())
+            }
+            AppError::Migration(
+                M::VersionMismatch(n) | M::Dirty(n) | M::ExecuteMigration(_, n),
+            ) => (BootFaultKind::SchemaUpdateStopped, u32::try_from(*n).ok()),
+            _ => (BootFaultKind::Unreadable, None),
+        };
+        BootFault {
+            kind,
+            db_path: db_path.display().to_string(),
+            schema_version,
+        }
+    }
+
+    /// The quarantine happened and the app is running on a fresh, empty
+    /// database. Not an error state — the app WORKS — but the teacher's
+    /// classes are gone from it, and a warning in a terminal no classroom has
+    /// open is not telling her.
+    pub fn started_empty(db_path: &Path) -> Self {
+        BootFault {
+            kind: BootFaultKind::StartedEmpty,
+            db_path: db_path.display().to_string(),
+            schema_version: None,
+        }
+    }
+
+    /// The quarantine moved the file and the replacement could not be made.
+    /// Deliberately NOT `from_open_error` on that second failure: the sentence
+    /// that classification produces ends in "the file is untouched", and by
+    /// this point it has been renamed.
+    pub fn rescue_failed(db_path: &Path) -> Self {
+        BootFault {
+            kind: BootFaultKind::RescueFailed,
+            db_path: db_path.display().to_string(),
+            schema_version: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,6 +355,95 @@ mod tests {
         assert!(should_quarantine(&db_err(11)), "SQLITE_CORRUPT");
         assert!(should_quarantine(&db_err(26)), "SQLITE_NOTADB");
         assert!(should_quarantine(&db_err(267)), "SQLITE_CORRUPT_VTAB");
+    }
+
+    // ── The other half of the boot decision: what do we SAY? ────────────────
+
+    fn fault(err: AppError) -> BootFault {
+        BootFault::from_open_error(&err, std::path::Path::new("/tmp/sundayscreen.sqlite"))
+    }
+
+    #[test]
+    fn a_downgrade_says_the_database_is_newer() {
+        let f = fault(AppError::Migration(
+            sqlx::migrate::MigrateError::VersionMissing(5),
+        ));
+        assert_eq!(f.kind, BootFaultKind::DatabaseTooNew);
+        // Kept for the log, never for the sentence: 5 is a schema version.
+        assert_eq!(f.schema_version, Some(5));
+        assert_eq!(f.db_path, "/tmp/sundayscreen.sqlite");
+    }
+
+    #[test]
+    fn a_stopped_schema_update_is_its_own_answer() {
+        // The remedy differs — "install the newer app again" would be a lie
+        // here — so these may never collapse into the downgrade case.
+        for err in [
+            AppError::Migration(sqlx::migrate::MigrateError::VersionMismatch(3)),
+            AppError::Migration(sqlx::migrate::MigrateError::Dirty(3)),
+            AppError::Migration(sqlx::migrate::MigrateError::ExecuteMigration(
+                sqlx::Error::PoolClosed,
+                3,
+            )),
+        ] {
+            let f = fault(err);
+            assert_eq!(f.kind, BootFaultKind::SchemaUpdateStopped);
+            assert_eq!(f.schema_version, Some(3));
+        }
+    }
+
+    #[test]
+    fn an_environment_failure_claims_nothing_about_versions() {
+        for err in [
+            db_err(5),
+            AppError::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "EACCES",
+            )),
+            AppError::Database(sqlx::Error::PoolTimedOut),
+            AppError::Migration(sqlx::migrate::MigrateError::Execute(
+                sqlx::Error::PoolClosed,
+            )),
+        ] {
+            let f = fault(err);
+            assert_eq!(f.kind, BootFaultKind::Unreadable);
+            assert_eq!(f.schema_version, None);
+        }
+    }
+
+    #[test]
+    fn the_quarantine_case_reports_an_empty_start() {
+        // The one fault that is not an open failure: everything works, and
+        // the teacher's data is not in it.
+        let f = BootFault::started_empty(std::path::Path::new("/tmp/sundayscreen.sqlite"));
+        assert_eq!(f.kind, BootFaultKind::StartedEmpty);
+        assert_eq!(f.schema_version, None);
+    }
+
+    #[test]
+    fn a_failed_rescue_never_borrows_the_untouched_sentence() {
+        // After a quarantine the file HAS been renamed. `from_open_error`
+        // would have answered `Unreadable` here, whose sentence ends in "the
+        // file is untouched" — the one claim that must never be made falsely.
+        let path = std::path::Path::new("/tmp/sundayscreen.sqlite");
+        assert_eq!(
+            BootFault::rescue_failed(path).kind,
+            BootFaultKind::RescueFailed
+        );
+        assert_eq!(
+            BootFault::from_open_error(&db_err(11), path).kind,
+            BootFaultKind::Unreadable,
+            "the two must stay distinguishable — same failure, different file state"
+        );
+    }
+
+    #[test]
+    fn the_two_boot_decisions_stay_independent() {
+        // A failure that must NOT be quarantined must still get a fault to
+        // say so with — the pairing the R4 boot path is built on.
+        let downgrade = AppError::Migration(sqlx::migrate::MigrateError::VersionMissing(5));
+        assert!(!should_quarantine(&downgrade));
+        assert_eq!(fault(downgrade).kind, BootFaultKind::DatabaseTooNew);
     }
 
     #[test]

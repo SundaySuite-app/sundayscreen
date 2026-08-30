@@ -106,6 +106,87 @@ test("the toolbar stays ONE row at 1024×768 with long names", async ({
   expect(box.x + box.width).toBeLessThanOrEqual(1024);
 });
 
+// The database did not open. `setup` no longer returns `Err` for that (an app
+// that will not start has no surface to explain itself on): it succeeds with a
+// BootFault in managed state, the shell runs degraded, and the chip says which
+// of the four things happened AND where the untouched file is.
+//
+// EXACT text, deliberately: chipText() is priority-ordered, and a substring
+// assertion would pass just as happily on the hydrate-error sentence below it.
+
+const DB_PATH =
+  "/Users/laerer/Library/Application Support/screen/sundayscreen.sqlite";
+
+async function withBootFault(
+  page: import("@playwright/test").Page,
+  kind: string,
+  schemaVersion: number | null = null,
+): Promise<void> {
+  await installFixtures(page);
+  await page.addInitScript(
+    ([k, v, p]) => {
+      const fixtures = (window as unknown as Record<string, unknown>)
+        .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+      fixtures.boot_fault = { kind: k, dbPath: p, schemaVersion: v };
+    },
+    [kind, schemaVersion, DB_PATH] as const,
+  );
+  await page.goto("/");
+}
+
+test("a downgrade says so, names no version number, and points at the file", async ({
+  page,
+}) => {
+  // `schemaVersion: 5` is the empirically proven downgrade (v0.3 wrote
+  // migration 0005). It stays OUT of the sentence: 5 is a schema version, and
+  // "install version 5 or newer" would send a teacher looking for a
+  // SundayScreen that does not exist.
+  await withBootFault(page, "databaseTooNew", 5);
+
+  const chip = page.locator('[data-status="error"]');
+  await expect(chip).toHaveText(
+    "Denne databasen er laget av en nyere SundayScreen. Installer den " +
+      `nyeste versjonen igjen — fila er urørt: ${DB_PATH}`,
+  );
+  await expect(chip).not.toContainText("5");
+  // …and the app is USABLE: the surface that carries the sentence is the
+  // whole point of not refusing to start.
+  await expect(
+    page.getByRole("button", { name: "Legg til verktøy" }),
+  ).toBeVisible();
+});
+
+test("a stopped schema update is its own sentence", async ({ page }) => {
+  await withBootFault(page, "schemaUpdateStopped", 5);
+  await expect(page.locator('[data-status="error"]')).toHaveText(
+    `Skjemaoppdateringen stoppet. Fila er urørt: ${DB_PATH}`,
+  );
+});
+
+test("a quarantined database says the app started empty — and where to look", async ({
+  page,
+}) => {
+  // Until R4 this was a `warn!` in a terminal no classroom has open, while
+  // the teacher stared at a board with none of her classes on it.
+  await withBootFault(page, "startedEmpty");
+  await expect(page.locator('[data-status="error"]')).toHaveText(
+    "Databasen var ødelagt, så SundayScreen startet tom. Den gamle fila og " +
+      `forrige sikkerhetskopi (sundayscreen.backup-1.sqlite) ligger ved siden av ${DB_PATH}`,
+  );
+});
+
+test("after a quarantine the chip stops claiming the file is untouched", async ({
+  page,
+}) => {
+  // The quarantine renamed the file, so «fila er urørt» — the promise every
+  // other sentence here ends in — would be false. This is the one kind that
+  // says «ingenting er slettet» instead, which is still true.
+  await withBootFault(page, "rescueFailed");
+  const chip = page.locator('[data-status="error"]');
+  await expect(chip).toContainText("Ingenting er slettet");
+  await expect(chip).not.toContainText("urørt");
+});
+
 // Without fixtures every wired command legitimately rejects — the shell must
 // still render (never a white screen), and it must be HONEST about the
 // failed settings read rather than pretending defaults were chosen.

@@ -7,6 +7,8 @@
 //! check builds its endpoint at call time (`core::update::channel_feed_url`)
 //! instead of trusting tauri.conf.json's single static URL.
 
+use std::sync::{Arc, Mutex};
+
 use serde::Serialize;
 #[cfg(feature = "updater")]
 use sundayscreen_core::settings::UpdateChannel;
@@ -38,6 +40,45 @@ pub enum UpdateStatus {
     Error {
         message: String,
     },
+}
+
+/// Where the silent boot check leaves its answer.
+///
+/// The check has existed since v0.1 and has always written to a terminal no
+/// classroom has open. This is the mailbox that gives it a RECEIVER: one slot,
+/// written once ~5 s after boot, read once by the shell.
+///
+/// It is an `Arc` inside rather than a bare `Mutex` so the spawned task can
+/// hold its OWN handle. `app.state::<T>()` panics when the type was never
+/// managed, and a panic inside the boot check would be a crash caused by the
+/// one feature that is supposed to fail silently. Managing it before the spawn
+/// (see `lib.rs`) is the rule; carrying the handle is what makes the rule
+/// unbreakable.
+#[derive(Clone, Default)]
+pub struct BootUpdate(Arc<Mutex<Option<UpdateStatus>>>);
+
+impl BootUpdate {
+    /// Post the answer. A poisoned lock is logged and dropped — the update
+    /// marker is the least important thing in the room.
+    #[cfg(feature = "updater")]
+    fn post(&self, status: UpdateStatus) {
+        match self.0.lock() {
+            Ok(mut slot) => *slot = Some(status),
+            Err(e) => tracing::warn!("the boot check could not store its answer: {e}"),
+        }
+    }
+
+    fn read(&self) -> Option<UpdateStatus> {
+        self.0.lock().ok().and_then(|slot| slot.clone())
+    }
+}
+
+/// What the boot check found, or `None` while it has not answered yet (and
+/// forever, on a machine that is offline — which is the normal classroom
+/// state, and why this is a READ with a fallback rather than a rejection).
+#[tauri::command]
+pub fn update_pending(pending: State<'_, BootUpdate>) -> Option<UpdateStatus> {
+    pending.read()
 }
 
 #[cfg(feature = "updater")]
@@ -78,14 +119,16 @@ async fn check_feed(app: &tauri::AppHandle, channel: UpdateChannel) -> UpdateSta
     }
 }
 
-/// The silent boot check: log the outcome, swallow EVERYTHING — an offline
-/// classroom must never see this fail. Spawned from setup.
+/// The silent boot check: log the outcome, POST it to `slot`, swallow
+/// EVERYTHING — an offline classroom must never see this fail. Spawned from
+/// setup, with the mailbox handed in (see [`BootUpdate`]).
 #[cfg(feature = "updater")]
-pub fn spawn_boot_check(app: tauri::AppHandle, channel: UpdateChannel) {
+pub fn spawn_boot_check(app: tauri::AppHandle, channel: UpdateChannel, slot: BootUpdate) {
     tauri::async_runtime::spawn(async move {
         // Let the shell finish waking before touching the network.
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        match check_feed(&app, channel).await {
+        let status = check_feed(&app, channel).await;
+        match &status {
             UpdateStatus::Available { version } => {
                 tracing::info!(%version, "update available on the {} ring", channel.as_tag());
             }
@@ -96,6 +139,10 @@ pub fn spawn_boot_check(app: tauri::AppHandle, channel: UpdateChannel) {
             }
             UpdateStatus::Disabled => {}
         }
+        // Every outcome, not just the interesting one: "the check ran and
+        // said up to date" and "the check never answered" are different
+        // facts, and only the mailbox can tell them apart.
+        slot.post(status);
     });
 }
 

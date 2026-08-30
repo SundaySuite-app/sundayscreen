@@ -5,7 +5,14 @@
   },
   "boot": {
     "loading": "Laster …",
-    "hydrateError": "Innstillingene kunne ikke leses — appen bruker standardvalg."
+    "hydrateError": "Innstillingene kunne ikke leses — appen bruker standardvalg.",
+    "fault": {
+      "databaseTooNew": "Denne databasen er laget av en nyere SundayScreen. Installer den nyeste versjonen igjen — fila er urørt: {path}",
+      "schemaUpdateStopped": "Skjemaoppdateringen stoppet. Fila er urørt: {path}",
+      "unreadable": "Databasen kunne ikke åpnes, så SundayScreen kjører uten den. Fila er urørt: {path}",
+      "startedEmpty": "Databasen var ødelagt, så SundayScreen startet tom. Den gamle fila og forrige sikkerhetskopi (sundayscreen.backup-1.sqlite) ligger ved siden av {path}",
+      "rescueFailed": "Databasen var ødelagt, og SundayScreen fikk ikke laget en ny. Ingenting er slettet — de gamle filene ligger ved siden av {path}"
+    }
   },
   "class": {
     "defaultName": "Min klasse",
@@ -162,7 +169,9 @@
     "available": "Versjon {v} er klar",
     "install": "Oppdater og start på nytt",
     "error": "Fikk ikke sjekket nå — prøv igjen når du er på nett",
-    "disabled": "Oppdatering er slått av i denne builden"
+    "disabled": "Oppdatering er slått av i denne builden",
+    "pending": "v{v} klar",
+    "pendingTitle": "Versjon {v} er klar — hent den under «Administrer klasser»."
   },
   "layout": {
     "loadFailed": "Fikk ikke lest tavla fra lagringen — endringer lagres ikke før appen har startet på nytt.",

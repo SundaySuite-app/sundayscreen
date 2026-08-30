@@ -126,3 +126,21 @@
   color: var(--ink-3);
   font-size: var(--fs-sm);
 }
+
+/* «A newer version is waiting», beside the version number.
+ *
+ * Gold, in the grammar the token file actually allows: a TINT plate with an
+ * edge and ordinary ink on top. `color: var(--gold)` would be 1.80:1 on this
+ * surface — decoration shaped like a sentence. Deliberately small, quiet and
+ * inert: it is a mark, not a call to action, and the place to act on it is
+ * the manage panel (which the tooltip names). */
+.updateMark {
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}

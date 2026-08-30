@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { UpdateStatus } from "../bindings/UpdateStatus";
 import { t, tf, tn } from "../i18n";
-import { appVersion } from "../state/app-info";
+import { appVersion, updateReady } from "../state/app-info";
 import {
   classes,
   createClass,
@@ -424,6 +424,25 @@ export function ManagePanel() {
               {t("update.channelBeta")}
             </button>
           </span>
+          {/* The boot check's mark, mirrored from the toolbar: when a new
+              version is already known, say so here too and offer the install
+              directly — without making the teacher press «Se etter
+              oppdatering» to learn what the app already knows. Hidden as soon
+              as a manual check has produced its own, fresher answer. */}
+          {updateReady.value !== null && updStatus === null && (
+            <>
+              <span class={styles.updGood} title={t("update.pendingTitle")}>
+                {tf("update.pending", { v: updateReady.value })}
+              </span>
+              <button
+                class={styles.installBtn}
+                disabled={installing}
+                onClick={() => void install()}
+              >
+                {t("update.install")}
+              </button>
+            </>
+          )}
           <button
             class={styles.checkBtn}
             disabled={checking}

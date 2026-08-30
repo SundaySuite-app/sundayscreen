@@ -9,6 +9,7 @@
 import { invoke as tauriInvoke, isTauri } from "@tauri-apps/api/core";
 
 import type { AppInfo } from "../bindings/AppInfo";
+import type { BootFault } from "../bindings/BootFault";
 import type { Class } from "../bindings/Class";
 import type { Scene } from "../bindings/Scene";
 import type { AgendaItem } from "../bindings/AgendaItem";
@@ -201,6 +202,16 @@ const api = {
 
   appInfo: async (): Promise<AppInfo> =>
     call("app_info", undefined, { name: "SundayScreen", version: "—" }),
+
+  /**
+   * Did the boot go wrong? A READ with a typed fallback, and the fallback has
+   * to be `null`: in a plain browser (and in every fixtureless test) there IS
+   * no boot fault, and a chip claiming one would be the loudest lie the shell
+   * can tell. `boot_fault` is one of the three commands that do NOT take
+   * `State<Db>`, which is what lets it answer on the very boot it describes.
+   */
+  bootFault: async (): Promise<BootFault | null> =>
+    call<BootFault | null>("boot_fault", undefined, null),
 
   /**
    * `settings_get`, with the one shim-side responsibility: make a FAILED read
@@ -421,6 +432,12 @@ const api = {
 
   updateInstall: async (): Promise<UpdateStatus> =>
     invoke<UpdateStatus>("update_install"),
+
+  /** What the SILENT boot check found, or `null` while it has not answered
+   *  (and forever, offline). A READ with a `null` fallback for the same
+   *  reason as `bootFault`: no answer must never render as an answer. */
+  updatePending: async (): Promise<UpdateStatus | null> =>
+    call<UpdateStatus | null>("update_pending", undefined, null),
 };
 
 export type Api = typeof api;

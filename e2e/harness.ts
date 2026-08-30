@@ -228,6 +228,12 @@ export async function installFixtures(
       },
       update_check: { phase: "upToDate" },
       app_info: { name: "SundayScreen", version: "0.0.0-e2e" },
+      // The two "how did the boot go" reads. `null` is the HEALTHY answer to
+      // both — nothing went wrong, and the silent boot check has not found an
+      // update — and a journey that wants either one overwrites just this key
+      // with `addInitScript` (see boot.spec / update.spec).
+      boot_fault: null,
+      update_pending: null,
 
       class_ensure_active: (args?: Record<string, unknown>) => {
         const db = load();

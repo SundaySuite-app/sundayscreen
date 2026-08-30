@@ -3,34 +3,27 @@
 // chrome-core.ts) and comes back when the pointer reaches for it — never
 // while one of its own menus is open.
 
-import { appVersion } from "../state/app-info";
-import { attendancePanelOpen } from "../state/attendance";
-import { classMenuOpen, managePanelOpen } from "../state/classes";
+import { appVersion, updateReady } from "../state/app-info";
 import {
-  addMenuOpen,
+  anyOverlayOpen,
   chromeActivity,
   chromeVisible,
   fullscreen,
   toggleFullscreen,
 } from "../state/chrome";
-import { t } from "../i18n";
+import { t, tf } from "../i18n";
 import { Icon } from "../ui/Icon";
-import { sceneMenuOpen } from "../state/scenes";
-import { openPlanner, plannerPanelOpen } from "../state/planner";
+import { openPlanner } from "../state/planner";
 import { AddMenu } from "./AddMenu";
 import { ClassSwitcher } from "./ClassSwitcher";
 import { SceneSwitcher } from "./SceneSwitcher";
 import styles from "./Toolbar.module.css";
 
 export function Toolbar() {
-  const shown =
-    chromeVisible.value ||
-    plannerPanelOpen.value ||
-    managePanelOpen.value ||
-    attendancePanelOpen.value ||
-    classMenuOpen.value ||
-    sceneMenuOpen.value ||
-    addMenuOpen.value;
+  // The list of what counts as "open" lives ONCE, in state/chrome.ts. This
+  // was its third hand-rolled copy (the idle ticker and Shell's reveal handle
+  // were the other two, and Shell's had already drifted past four panels).
+  const shown = chromeVisible.value || anyOverlayOpen.value;
   const fsLabel = fullscreen.value
     ? t("chrome.fullscreenOff")
     : t("chrome.fullscreenOn");
@@ -77,6 +70,20 @@ export function Toolbar() {
             />
           </button>
           <span>{appVersion.value}</span>
+          {/* The silent boot check's ONE visible consequence. A tinted pill,
+              not gold TEXT: gold reaches 1.80:1 on this surface (tokens.css
+              — «gold is a surface, not ink»), and a marker nobody can read is
+              not a marker. It never interrupts, never opens anything and
+              never pulls the hidden toolbar back up: the teacher meets it the
+              next time she reaches for the line herself. */}
+          {updateReady.value !== null && (
+            <span
+              class={styles.updateMark}
+              title={tf("update.pendingTitle", { v: updateReady.value })}
+            >
+              {tf("update.pending", { v: updateReady.value })}
+            </span>
+          )}
         </span>
       </footer>
     </div>

@@ -58,6 +58,15 @@ pub fn run() {
                 format!("creating app data dir: {e}")
             })?;
             let db_path = db_dir.join("sundayscreen.sqlite");
+
+            // The boot check's mailbox, managed BEFORE anything can spawn into
+            // it (`update::BootUpdate`). It has no dependency on the database
+            // and must answer even when there is none — so it goes up first,
+            // and the handle is carried into the spawn rather than looked up
+            // from state inside it.
+            let boot_update = update::BootUpdate::default();
+            app.manage(boot_update.clone());
+
             // Two very different failures used to share one answer here, and
             // the wrong one won: EVERY open error moved the file aside and
             // booted empty. Installing an older build over a newer one
@@ -72,11 +81,20 @@ pub fn run() {
             // must not be an invisible crash on a machine with no terminal,
             // and the renamed bytes stay behind for rescue. Everything else
             // leaves the file exactly as it is.
-            let mut recreated = false;
+            //
+            // And when it does not open, `setup` still SUCCEEDS. Returning
+            // `Err` here stops the whole app — which means the one thing that
+            // could explain the problem, a window with a sentence in it, never
+            // appears. The shell boots degraded instead (exactly like a plain
+            // browser: typed fallbacks where the shim has them, honest
+            // rejections everywhere else) and puts `BootFault` at the top of
+            // its chip. `set_ignore_missing` is still NOT the fix: nothing
+            // reads or writes a schema it does not understand, because `Db` is
+            // simply never managed.
+            let mut fault: Option<error::BootFault> = None;
             let pool = match tauri::async_runtime::block_on(db::store::open_pool(&db_path)) {
-                Ok(pool) => pool,
+                Ok(pool) => Some(pool),
                 Err(first_err) if error::should_quarantine(&first_err) => {
-                    recreated = true;
                     tracing::error!(
                         db = %db_path.display(),
                         "the database file is corrupt — moving it aside and recreating: {first_err}"
@@ -88,84 +106,128 @@ pub fn run() {
                     for moved in db::store::quarantine_database(&db_path, stamp) {
                         tracing::warn!(file = %moved.display(), "kept the old bytes for rescue");
                     }
-                    tauri::async_runtime::block_on(db::store::open_pool(&db_path)).map_err(|e| {
-                        tracing::error!("recreating database also failed: {e}");
-                        format!("opening database: {e}")
-                    })?
+                    match tauri::async_runtime::block_on(db::store::open_pool(&db_path)) {
+                        Ok(pool) => {
+                            // The app works and the teacher's classes are not
+                            // in it. That was a `warn!` in a terminal no
+                            // classroom has open until R4.
+                            fault = Some(error::BootFault::started_empty(&db_path));
+                            Some(pool)
+                        }
+                        Err(e) => {
+                            // NOT `from_open_error`: its sentences all end in
+                            // "the file is untouched", and the quarantine
+                            // above has just renamed it.
+                            tracing::error!("recreating database also failed: {e}");
+                            fault = Some(error::BootFault::rescue_failed(&db_path));
+                            None
+                        }
+                    }
                 }
                 Err(other) => {
-                    // The file is intact. Refusing to start is the honest
-                    // answer: running on against a schema we do not
-                    // understand would corrupt it for the newer build too
-                    // (which is why `set_ignore_missing` is NOT the fix).
-                    //
-                    // TODO(spor 1.2): let `setup` SUCCEED with a
-                    // `BootFault { kind, db_path }` in managed state instead,
-                    // so the shell can say "this database was made by a newer
-                    // SundayScreen — install version X or newer. The file is
-                    // untouched: <path>." Until then this is a hard stop with
-                    // an accurate log line, not a silent data loss.
+                    // The file is INTACT — nothing here touches it.
                     tracing::error!(
                         db = %db_path.display(),
                         "opening the database failed — the file was NOT modified: {other}"
                     );
-                    return Err(format!(
-                        "opening database {} failed (file left untouched): {other}",
-                        db_path.display()
-                    )
-                    .into());
+                    fault = Some(error::BootFault::from_open_error(&other, &db_path));
+                    None
                 }
             };
 
-            // Restore the saved window geometry BEFORE the shell paints, so
-            // the projector setup comes back without a visible jump.
-            match tauri::async_runtime::block_on(settings::load(&pool)) {
-                Ok(loaded) => {
-                    if window::restore_window_state(app.handle(), &loaded) {
-                        // Fullscreen was asked for and could not be applied.
-                        // Leaving the flag stored would make the frontend
-                        // believe it is fullscreen — and a frontend in that
-                        // belief saves NO window geometry for the whole
-                        // session.
-                        if let Err(e) =
-                            tauri::async_runtime::block_on(settings::update(&pool, |s| {
-                                if let Some(w) = &mut s.window {
-                                    w.fullscreen = false;
-                                }
-                            }))
-                        {
-                            tracing::warn!("clearing the stale fullscreen flag failed: {e}");
+            let recreated = matches!(
+                fault,
+                Some(error::BootFault {
+                    kind: error::BootFaultKind::StartedEmpty,
+                    ..
+                })
+            );
+            if let Some(f) = &fault {
+                tracing::warn!(
+                    kind = ?f.kind,
+                    schema_version = ?f.schema_version,
+                    "boot fault — the shell will say so"
+                );
+            }
+            app.manage(commands::app::BootStatus(fault));
+
+            if let Some(pool) = pool {
+                // Restore the saved window geometry BEFORE the shell paints, so
+                // the projector setup comes back without a visible jump.
+                match tauri::async_runtime::block_on(settings::load(&pool)) {
+                    Ok(loaded) => {
+                        if window::restore_window_state(app.handle(), &loaded) {
+                            // Fullscreen was asked for and could not be applied.
+                            // Leaving the flag stored would make the frontend
+                            // believe it is fullscreen — and a frontend in that
+                            // belief saves NO window geometry for the whole
+                            // session.
+                            if let Err(e) =
+                                tauri::async_runtime::block_on(settings::update(&pool, |s| {
+                                    if let Some(w) = &mut s.window {
+                                        w.fullscreen = false;
+                                    }
+                                }))
+                            {
+                                tracing::warn!("clearing the stale fullscreen flag failed: {e}");
+                            }
                         }
+                        // The silent boot check — the app's ONE network call,
+                        // and it swallows every failure (offline is the normal
+                        // classroom state). Its mailbox was managed above, and
+                        // it carries its own handle: nothing here can panic on
+                        // unmanaged state.
+                        #[cfg(feature = "updater")]
+                        update::spawn_boot_check(
+                            app.handle().clone(),
+                            loaded.update_channel,
+                            boot_update,
+                        );
                     }
-                    // The silent boot check — the app's ONE network call, and
-                    // it swallows every failure (offline is the normal
-                    // classroom state).
-                    #[cfg(feature = "updater")]
-                    update::spawn_boot_check(app.handle().clone(), loaded.update_channel);
+                    Err(e) => tracing::warn!("settings load for window restore failed: {e}"),
                 }
-                Err(e) => tracing::warn!("settings load for window restore failed: {e}"),
-            }
 
-            // A rotating copy of the database that just migrated cleanly, so
-            // there is something to go back to when the worst happens. Taken
-            // AFTER the window restore so the projector picture is not held up
-            // by it, and NEVER fatal: a full disk must not stop the lesson.
-            if recreated {
-                // The database we just made is empty. Rotating it in would
-                // push the last good copy one slot closer to the bin.
-                tracing::warn!("skipping the startup backup — this database was just recreated");
-            } else {
-                match tauri::async_runtime::block_on(db::store::backup_rotating(&pool, &db_path)) {
-                    Ok(path) => tracing::info!(backup = %path.display(), "startup backup written"),
-                    Err(e) => tracing::warn!("startup backup failed (continuing anyway): {e}"),
+                // A rotating copy of the database that just migrated cleanly,
+                // so there is something to go back to when the worst happens.
+                // Taken AFTER the window restore so the projector picture is
+                // not held up by it, and NEVER fatal: a full disk must not
+                // stop the lesson.
+                if recreated {
+                    // The database we just made is empty. Rotating it in would
+                    // push the last good copy one slot closer to the bin.
+                    tracing::warn!(
+                        "skipping the startup backup — this database was just recreated"
+                    );
+                } else {
+                    match tauri::async_runtime::block_on(db::store::backup_rotating(
+                        &pool, &db_path,
+                    )) {
+                        Ok(path) => {
+                            tracing::info!(backup = %path.display(), "startup backup written")
+                        }
+                        Err(e) => tracing::warn!("startup backup failed (continuing anyway): {e}"),
+                    }
                 }
-            }
 
-            app.manage(db::Db::new(pool));
+                app.manage(db::Db::new(pool));
+            }
             Ok(())
         })
+        // Most commands below take `State<'_, Db>`, and on a boot fault that
+        // state is NOT managed. Tauri 2 answers such a call with an
+        // `InvokeError` ("state not managed for field `db` …",
+        // tauri-2.11.5/src/state.rs:61) — a REJECTION, never a panic — so the
+        // shim's own machinery handles it: reads fall back to their typed
+        // defaults, writes reject, nothing fabricates a success. That is the
+        // ENTIRE cost of letting `setup` succeed, which is why it was worth
+        // paying: the alternative was 36 commands each learning to check a
+        // flag. What it requires in exchange is that the five commands which
+        // must still work — `app_info`, `boot_fault`, `update_pending` and the
+        // two `window_*` (they take `WebviewWindow`, not `Db`) — never grow a
+        // `Db` argument. The shell's ability to explain itself depends on it.
         .invoke_handler(tauri::generate_handler![
             commands::app::app_info,
+            commands::app::boot_fault,
             commands::settings::settings_get,
             commands::settings::settings_save,
             commands::classes::class_ensure_active,
@@ -201,6 +263,7 @@ pub fn run() {
             window::window_is_fullscreen,
             update::update_check,
             update::update_install,
+            update::update_pending,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

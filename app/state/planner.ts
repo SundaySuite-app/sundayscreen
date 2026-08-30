@@ -28,6 +28,7 @@ import {
   lessonKeyInWindow,
   suggest,
 } from "../planner/suggest-core";
+import { shownLesson } from "../widgets/agenda/agenda-widget-core";
 import { loadScenes, switchLesson } from "./scenes";
 import { settings } from "./settings";
 import { t } from "../i18n";
@@ -121,6 +122,27 @@ export async function refreshToday(): Promise<void> {
     todayReadFailed.value = true;
   }
 }
+
+/**
+ * When the lesson the board is INSIDE ends, in minutes since local midnight —
+ * `null` whenever no lesson is running (between lessons, on a free day, on a
+ * Saturday, and for a lesson that has not STARTED yet).
+ *
+ * It answers through `shownLesson`, the same door «Dagens time» uses, on
+ * purpose. A second window derivation is exactly the seam this house keeps
+ * finding bugs in — two layers each correct on their own, disagreeing at the
+ * joint — and «hvor lenge er det igjen av timen» must never be able to
+ * disagree with the lesson the agenda widget has on the board.
+ *
+ * Resolution is the planner's 30 s tick, so the answer can be up to half a
+ * minute stale at a lesson boundary. That is the same staleness the agenda's
+ * now-marker already lives with, and the timer clamps whatever it derives.
+ */
+export const runningLessonEndMin = computed<number | null>(() => {
+  const nowMin = minutesOfDay(new Date(plannerNowMs.value));
+  const shown = shownLesson(todayPlan.value, nowMin);
+  return shown?.current ? shown.entry.period.endMin : null;
+});
 
 /** After ANY planner write — from the panel OR a widget's check-off: the
  *  panel's day and the widgets' today both reflect the store again, so

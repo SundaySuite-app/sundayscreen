@@ -102,7 +102,8 @@
     "presetMinutes": {
       "one": "Set to {n} minute",
       "other": "Set to {n} minutes"
-    }
+    },
+    "untilLessonEnd": "Set the timer to the rest of the lesson (until {time})"
   },
   "clock": {
     "digital": "Digital",

@@ -7,8 +7,10 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { TimerAction } from "../../bindings/TimerAction";
 import type { TimerState } from "../../bindings/TimerState";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
-import { t, tn } from "../../i18n";
+import { t, tf, tn } from "../../i18n";
+import { formatMin, minutesOfDay } from "../../planner/date-core";
 import { updateWidgetConfig } from "../../state/layout";
+import { runningLessonEndMin } from "../../state/planner";
 import { Icon } from "../../ui/Icon";
 import { playChime } from "./chime";
 import styles from "./timer.module.css";
@@ -40,6 +42,29 @@ const MINUTE_MS = 60_000;
  * adjustment moved to where it is actually needed (see below).
  */
 const PRESET_MINUTES = [1, 5, 10, 15, 20];
+
+/**
+ * Which preset steps aside for the «rest of the lesson» pill while a lesson
+ * is running. FIVE means five — the count is the constraint, not the
+ * contents — so the conditional pill REPLACES one rather than joining them.
+ *
+ * 15 is the one the row can spare. It is the only preset with a neighbour on
+ * both sides (10 and 20 stay), so the ladder it leaves — 1 · 5 · 10 · 20 —
+ * still covers a school hour end to end; and «kvarteret» is precisely the
+ * length the new pill usually answers better anyway, because what the
+ * teacher actually means by it is «until we are done here».
+ */
+const PRESET_REPLACED_BY_LESSON = 15;
+
+/**
+ * Mirrors `TIMER_MIN_MS` / `TIMER_MAX_MS` in
+ * `crates/sundayscreen-core/src/layout.rs`, the same way this folder's
+ * neighbours mirror their clamps: the backend clamps `durationMs` on the way
+ * in, so a value outside the range would be shown on the board now and
+ * silently be a different number after the next restart.
+ */
+const TIMER_MIN_MS = 5_000;
+const TIMER_MAX_MS = 86_400_000; // 24 h
 
 export function TimerWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
@@ -95,15 +120,32 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
         ? "warn"
         : "calm";
 
-  const setDuration = (minutes: number) => {
-    updateWidgetConfig(widget.id, { ...cfg, durationMs: minutes * MINUTE_MS });
+  /** The ONE way the configured length is written — every caller goes through
+   *  the clamp, so nothing can put a number here the backend would change. */
+  const setDurationMs = (ms: number) => {
+    updateWidgetConfig(widget.id, {
+      ...cfg,
+      durationMs: Math.min(Math.max(ms, TIMER_MIN_MS), TIMER_MAX_MS),
+    });
   };
+
+  const setDuration = (minutes: number) => setDurationMs(minutes * MINUTE_MS);
 
   const setMode = (mode: "countdown" | "stopwatch") => {
     if (mode === cfg.mode) return;
     setState({ phase: "idle" });
     updateWidgetConfig(widget.id, { ...cfg, mode });
   };
+
+  // The app has known when the lesson ends since the planner landed, and has
+  // never said it: «vi har tjueto minutter igjen» was start-then-adjust.
+  // `null` whenever no lesson is running — the pill cannot appear on a
+  // Saturday, in a break, or in front of a lesson that has not started.
+  const lessonEndMin = runningLessonEndMin.value;
+  const presets =
+    lessonEndMin == null
+      ? PRESET_MINUTES
+      : PRESET_MINUTES.filter((m) => m !== PRESET_REPLACED_BY_LESSON);
 
   return (
     <div class={styles.timer} data-tone={tone}>
@@ -171,7 +213,7 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
       <div data-settings-row data-no-drag>
         {state.phase === "idle" &&
           cfg.mode === "countdown" &&
-          PRESET_MINUTES.map((m) => (
+          presets.map((m) => (
             <button
               key={m}
               data-settings-btn
@@ -183,6 +225,43 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
               {m}
             </button>
           ))}
+        {/*
+         * «Til timen slutter», in one click.
+         *
+         * The face is the END TIME, not a sentence: at 13 px the row has
+         * room for ~236 px of buttons at the timer's 260 px minimum, and
+         * four pills plus «Til 09:15» measures past that — the sixth-pill
+         * wrap the comment above warns about, arriving through width instead
+         * of count. `09:15` is five tabular glyphs, reads in the same
+         * grammar as the numbers beside it, and the whole sentence is one
+         * hover away in the label. What it can never be is ambiguous: the
+         * pill only exists while that lesson is running.
+         *
+         * It sets `durationMs` and nothing else (ADR-003): a timer that is
+         * already counting is never touched — this branch is idle-only —
+         * and the minutes are read from the wall clock at CLICK time, not
+         * from the render that drew the pill.
+         */}
+        {state.phase === "idle" &&
+          cfg.mode === "countdown" &&
+          lessonEndMin != null && (
+            <button
+              data-settings-btn
+              aria-label={tf("timer.untilLessonEnd", {
+                time: formatMin(lessonEndMin),
+              })}
+              title={tf("timer.untilLessonEnd", {
+                time: formatMin(lessonEndMin),
+              })}
+              onClick={() =>
+                setDurationMs(
+                  (lessonEndMin - minutesOfDay(new Date())) * MINUTE_MS,
+                )
+              }
+            >
+              {formatMin(lessonEndMin)}
+            </button>
+          )}
         {(state.phase === "running" || state.phase === "paused") &&
           cfg.mode === "countdown" && (
             <>

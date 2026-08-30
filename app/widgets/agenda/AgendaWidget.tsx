@@ -7,6 +7,7 @@
 import { useEffect, useState } from "preact/hooks";
 
 import type { AgendaItem } from "../../bindings/AgendaItem";
+import type { AgendaItemSpec } from "../../bindings/AgendaItemSpec";
 import type { ManualAgendaItem } from "../../bindings/ManualAgendaItem";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
@@ -30,6 +31,13 @@ import styles from "./agenda.module.css";
 const MANUAL_AGENDA_MAX = 30;
 const AGENDA_TEXT_MAX = 500;
 
+/** The PLANNER side's own ceiling — `AGENDA_MAX_ITEMS` in
+ *  crates/sundayscreen-core/src/schedule.rs. Same number as the manual list,
+ *  a different constant on purpose (the Rust side says so too): the board's
+ *  field must refuse the 31st line exactly where `normalize_agenda` would
+ *  silently drop it. */
+const PLANNER_AGENDA_MAX = 30;
+
 export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
   const [addDraft, setAddDraft] = useState("");
@@ -39,10 +47,34 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
     const id = setInterval(() => force((n) => n + 1), 60_000);
     return () => clearInterval(id);
   }, []);
-  if (cfg.kind !== "agenda") return null;
 
   void plannerNowMs.value; // subscribe to the 30 s planner tick
   const nowMin = minutesOfDay(new Date());
+  const plan = todayPlan.value;
+  const shown = shownLesson(plan, nowMin);
+
+  // A half-typed line belongs to the LESSON it was typed under, and BOTH
+  // halves of that key move while the widget stands untouched on a board: the
+  // 60 s re-derive above flips `shown` the minute a lesson ends, and midnight
+  // (or any planner write) swaps the date. `addDraft` lives in useState and
+  // would survive both — and be committed to a lesson the teacher never had
+  // in front of her. It is cleared where the key changes, not where the
+  // component happens to re-render.
+  //
+  // The manual list has no lesson to belong to, and its draft is written into
+  // the widget's own config: it keeps the EMPTY key, so a period boundary
+  // ticking past a manual widget cannot wipe what someone is typing. Changing
+  // the source is a key change either way, which is right — a line meant for
+  // the widget must not follow the switch into the plan.
+  const draftKey =
+    cfg.kind === "agenda" && cfg.source !== "manual" && plan && shown
+      ? `${plan.date}:${shown.entry.period.id}`
+      : "";
+  useEffect(() => {
+    setAddDraft("");
+  }, [draftKey]);
+
+  if (cfg.kind !== "agenda") return null;
 
   if (cfg.source === "manual") {
     return (
@@ -57,7 +89,6 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
     );
   }
 
-  const shown = shownLesson(todayPlan.value, nowMin);
   // «No lesson right now» and «no timetable at all» are different days, and
   // only one of them has something the teacher can do about it.
   //
@@ -67,8 +98,44 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   // PERIOD regardless of weekday, so an empty entry list means the template
   // itself is empty. The `!= null` guard keeps the text from flickering
   // before the first IPC answer lands.
-  const plan = todayPlan.value;
   const noTimetable = plan != null && plan.entries.length === 0;
+
+  // The lesson the field writes to, captured from the render the teacher is
+  // looking at — never re-derived from the clock at write time, which could
+  // land the line in the NEXT lesson if she pressed Enter across a boundary.
+  const periodId = shown?.entry.period.id ?? "";
+
+  /**
+   * Replace-all with one row changed. Two disciplines, both load-bearing:
+   *
+   *   - the list is read from the STORE at write time (`peek`), never from
+   *     the render that drew the field, so a check-off that landed between
+   *     the keystroke and the Enter is not undone by this write;
+   *   - `todayReadFailed` blocks it outright. `planner_agenda_set` is a
+   *     replace-all, and replacing the list on a plan we KNOW is stale would
+   *     resurrect rows deleted in the panel — the F13 lie, on the writing
+   *     side, where it costs data instead of a sentence.
+   */
+  const writeAgenda = (
+    build: (items: AgendaItem[]) => AgendaItemSpec[],
+    onFail: () => void,
+  ) => {
+    const at = todayPlan.peek();
+    const entry = at?.entries.find((e) => e.period.id === periodId);
+    if (!at || !entry || todayReadFailed.peek()) return;
+    void window.api
+      .plannerAgendaSet(at.date, periodId, build(entry.agenda))
+      .then(plannerChanged)
+      .catch((e) => {
+        console.warn("[agenda] agenda write failed", e);
+        toast("error", t("manage.actionFailed"));
+        onFail();
+      });
+  };
+
+  const readFailed = todayReadFailed.value;
+  const listFull = (shown?.entry.agenda.length ?? 0) >= PLANNER_AGENDA_MAX;
+
   return (
     <div class={styles.agenda}>
       {shown ? (
@@ -98,6 +165,10 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
               shown.current ? nowMin - shown.entry.period.startMin : -1
             }
             pinned={cfg.pinnedItemId}
+            // A stale plan may not be REPLACED, so it may not be pruned from
+            // either: the remove button is simply not there while the read is
+            // failing, rather than standing dead under the mouse.
+            removable={!readFailed}
             onToggleDone={(item) => {
               void window.api
                 .plannerAgendaCheck(item.id, !item.done)
@@ -113,12 +184,48 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
                 pinnedItemId: cfg.pinnedItemId === item.id ? null : item.id,
               })
             }
+            onRemove={(item) =>
+              writeAgenda(
+                (items) => items.filter((i) => i.id !== item.id).map(toSpec),
+                () => undefined,
+              )
+            }
           />
           {shown.entry.agenda.length === 0 && (
-            <p class={styles.empty}>{t("agenda.plan")}</p>
+            // A DOOR, like «ingen timeplan» further down: «planlegg timen i
+            // planleggeren» was already an instruction, and the widget stands
+            // in front of the class — so it opens the thing it asks for
+            // (durations and messages still live there) instead of naming it.
+            <button class={styles.emptyBtn} data-no-drag onClick={openPlanner}>
+              {t("agenda.plan")}
+            </button>
           )}
+          {/*
+           * The plan is no longer read-only on the board. Four activities on
+           * today's lesson used to cost seven clicks and a full-screen panel
+           * in front of the class; here it is the same four Enters manual
+           * mode has always had — writing to the PLAN, so the panel, «Dagen i
+           * dag» and tomorrow's restart all see the same line.
+           */}
+          <AddRow
+            draft={addDraft}
+            setDraft={setAddDraft}
+            disabled={readFailed || listFull}
+            blockedTitle={readFailed ? t("planner.readFailed") : undefined}
+            onAdd={(text) =>
+              writeAgenda(
+                (items) => [
+                  ...items.map(toSpec),
+                  { id: null, text, durationMin: null, done: false },
+                ],
+                // The line is not lost with the write: the field took it back
+                // if the teacher has not started typing the next one.
+                () => setAddDraft((d) => (d === "" ? text : d)),
+              )
+            }
+          />
         </>
-      ) : todayReadFailed.value ? (
+      ) : readFailed ? (
         <p class={styles.empty}>{t("planner.readFailed")}</p>
       ) : noTimetable ? (
         // A DOOR, not a message: the one thing this teacher needs is the
@@ -187,38 +294,76 @@ function ManualAgenda(props: {
           patch((list) => list.filter((i) => i.id !== item.id))
         }
       />
-      <form
-        class={styles.addRow}
-        data-no-drag
-        onSubmit={(e) => {
-          e.preventDefault();
-          const text = props.addDraft.trim();
-          // The backend clamps at MANUAL_AGENDA_MAX_ITEMS; letting the board
-          // show a 31st line it would drop on restart is a lie (F-funn F10).
-          if (!text || props.items.length >= MANUAL_AGENDA_MAX) return;
+      <AddRow
+        draft={props.addDraft}
+        setDraft={props.setAddDraft}
+        // The backend clamps at MANUAL_AGENDA_MAX_ITEMS; letting the board
+        // show a 31st line it would drop on restart is a lie (F-funn F10).
+        disabled={items.length >= MANUAL_AGENDA_MAX}
+        onAdd={(text) =>
           patch((list) => [
             ...list,
             { id: crypto.randomUUID(), text, durationMin: null, done: false },
-          ]);
-          props.setAddDraft("");
-        }}
-      >
-        <input
-          class={styles.addInput}
-          placeholder={t("agenda.addPlaceholder")}
-          aria-label={t("agenda.addPlaceholder")}
-          maxLength={AGENDA_TEXT_MAX}
-          disabled={props.items.length >= MANUAL_AGENDA_MAX}
-          value={props.addDraft}
-          onInput={(e) =>
-            props.setAddDraft((e.target as HTMLInputElement).value)
-          }
-        />
-      </form>
+          ])
+        }
+      />
 
       <SettingsRow widget={widget} />
     </div>
   );
+}
+
+/**
+ * The one-line «add an activity» form, shared by both sources.
+ *
+ * It was manual mode's alone, which is what made the planner source
+ * read-only on the board — and `AgendaSource::default()` is Planner, so
+ * read-only was the mode every new widget started in. The FORM is identical
+ * either way (type, Enter, gone); only what the line is written INTO differs,
+ * and that is the caller's `onAdd`.
+ */
+function AddRow(props: {
+  draft: string;
+  setDraft: (v: string) => void;
+  disabled: boolean;
+  /** Why the field is dead, when it is not simply a full list. */
+  blockedTitle?: string;
+  onAdd: (text: string) => void;
+}) {
+  return (
+    <form
+      class={styles.addRow}
+      data-no-drag
+      onSubmit={(e) => {
+        e.preventDefault();
+        const text = props.draft.trim();
+        if (!text || props.disabled) return;
+        props.onAdd(text);
+        props.setDraft("");
+      }}
+    >
+      <input
+        class={styles.addInput}
+        placeholder={t("agenda.addPlaceholder")}
+        aria-label={t("agenda.addPlaceholder")}
+        title={props.blockedTitle}
+        maxLength={AGENDA_TEXT_MAX}
+        disabled={props.disabled}
+        value={props.draft}
+        onInput={(e) => props.setDraft((e.target as HTMLInputElement).value)}
+      />
+    </form>
+  );
+}
+
+/** A stored item, as the replace-all wants it back. */
+function toSpec(i: AgendaItem): AgendaItemSpec {
+  return {
+    id: i.id,
+    text: i.text,
+    durationMin: i.durationMin,
+    done: i.done,
+  };
 }
 
 function ItemList(props: {

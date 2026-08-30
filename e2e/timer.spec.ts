@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { addWidget, installFixtures } from "./harness";
 
@@ -179,6 +179,136 @@ test("at its SMALLEST the timer keeps the five presets on one line", async ({
     );
   expect(tops).toHaveLength(5);
   expect(new Set(tops).size).toBe(1);
+});
+
+// ── «Til timen slutter» ─────────────────────────────────────────────────────
+//
+// The app has known when the lesson ends since the planner landed and has
+// never said it. The pill is the sentence — and it may only exist while a
+// lesson is actually running, which is the half a weekday-indexed planner is
+// historically bad at (the R11 weekend lock).
+
+/** One lesson in the template (08:30–09:15) on MONDAY, subject «Norsk». The
+ *  planner UI is the only door into the fixture store, and one period plus
+ *  one slot is the smallest week that resolves to a lesson. */
+async function planMondayLesson(page: Page): Promise<void> {
+  await page.goto("/?goto=planner:periods");
+  // A fresh dev server can push one vite full-reload shortly after boot; let
+  // it land BEFORE we interact, or it wipes the panel mid-journey.
+  await page.waitForLoadState("networkidle");
+
+  await page.getByRole("button", { name: "Legg til time" }).click();
+  await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await expect(page.getByText("Lagret")).toBeVisible();
+
+  await page.getByRole("button", { name: "Ukeplan" }).click();
+  await page.locator("button:has-text('—')").first().click();
+  await page.getByLabel("Fag").fill("Norsk");
+  await page.getByRole("button", { name: "Lagre", exact: true }).click();
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await expect(page.getByRole("region", { name: "Planlegger" })).toHaveCount(0);
+}
+
+test("«resten av timen» is one click, and it replaces the 15", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  // A Monday, 08:35 — five minutes into the lesson planned below.
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+  await planMondayLesson(page);
+
+  await addWidget(page, "Tidtaker");
+  const timer = page.locator('[data-widget-kind="timer"]');
+  await timer.hover();
+
+  // FIVE pills, not six: the row is width-bound at the timer's 260 px
+  // minimum, so the conditional pill takes a preset's place rather than
+  // joining them — and 15 is the one with a neighbour on both sides.
+  const pill = timer.getByRole("button", {
+    name: "Still tidtakeren på resten av timen (til 09:15)",
+  });
+  await expect(pill).toBeVisible();
+  await expect(timer.getByRole("button", { name: /^Sett til/ })).toHaveCount(4);
+  await expect(
+    timer.getByRole("button", { name: "Sett til 15 minutter" }),
+  ).toHaveCount(0);
+
+  // 09:15 − 08:35 = 40 minutes. «Vi har førti minutter igjen» used to be
+  // start-then-adjust, in front of the class.
+  await pill.click();
+  await expect(timer.getByText("40:00")).toBeVisible();
+
+  // And it is a real countdown from there.
+  await timer.getByRole("button", { name: "Start" }).click();
+  await page.clock.fastForward(60_000);
+  await expect(timer.getByText("39:00")).toBeVisible();
+});
+
+test("at its SMALLEST the lesson pill still shares the preset line", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await planMondayLesson(page);
+
+  await addWidget(page, "Tidtaker");
+  const timer = page.locator('[data-widget-kind="timer"]');
+  await timer.hover();
+
+  // Drag the SE handle far past the minimum; `minSizePx` (260×180) stops it.
+  const hb = (await timer
+    .getByRole("button", { name: "Endre størrelse" })
+    .boundingBox())!;
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hb.x - 500, hb.y - 500, { steps: 10 });
+  await page.mouse.up();
+  expect(Math.round((await timer.boundingBox())!.width)).toBe(260);
+
+  // THE constraint the pill is designed against: at 260 px the row has room
+  // for about 236 px of buttons, so the pill's WIDTH is as capable of
+  // breaking the line as a sixth pill's existence. «09:15» is five tabular
+  // glyphs; a sentence on the face would wrap the row over the digits.
+  await timer.hover();
+  const tops = await timer
+    .getByRole("button", { name: /^Sett til|resten av timen/ })
+    .evaluateAll((els) =>
+      els.map((e) => Math.round(e.getBoundingClientRect().top)),
+    );
+  expect(tops).toHaveLength(5);
+  expect(new Set(tops).size).toBe(1);
+});
+
+test("the lesson pill is absent on a Saturday and before the lesson starts", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  // A SATURDAY — the day a weekday-indexed planner goes blind on.
+  await page.clock.install({ time: new Date("2026-09-05T10:00:00") });
+  await planMondayLesson(page);
+
+  await addWidget(page, "Tidtaker");
+  const timer = page.locator('[data-widget-kind="timer"]');
+  const pill = timer.getByRole("button", { name: /resten av timen/ });
+  await timer.hover();
+  await expect(pill).toHaveCount(0);
+  await expect(timer.getByRole("button", { name: /^Sett til/ })).toHaveCount(5);
+
+  // Monday morning, BEFORE the lesson: «Dagens time» shows it as the NEXT
+  // lesson, and a lesson that has not started has no rest to offer.
+  await page.clock.setSystemTime(new Date("2026-09-07T07:00:00"));
+  await page.clock.fastForward(30_000); // the planner's date-rollover tick
+  await timer.hover();
+  await expect(pill).toHaveCount(0);
+  await expect(timer.getByRole("button", { name: /^Sett til/ })).toHaveCount(5);
+
+  // 08:30:30 — inside it now, and 09:15 − 08:30 = 45 minutes.
+  await page.clock.fastForward(90 * 60_000);
+  await timer.hover();
+  await expect(pill).toBeVisible();
+  await pill.click();
+  await expect(timer.getByText("45:00")).toBeVisible();
 });
 
 test("the clock shows the mocked time, digital and analog", async ({

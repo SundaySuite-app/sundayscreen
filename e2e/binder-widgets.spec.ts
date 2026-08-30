@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { addWidget, installFixtures } from "./harness";
 
@@ -75,6 +75,136 @@ test("plan a lesson, see it in both widgets, check off an activity", async ({
   await expect(today).toContainText("08:30");
   await expect(today).toContainText("Norsk");
   await expect(today).toContainText("Husk gymtøy");
+});
+
+// ── The board writes back ───────────────────────────────────────────────────
+//
+// Planner mode used to be READ-ONLY on the board: four activities on today's
+// lesson cost seven clicks and a full-screen panel in front of the class,
+// against four Enters in manual mode — and `AgendaSource::default()` is
+// Planner, so read-only was the mode every new widget started in.
+
+/** One lesson (08:30–09:15) on Monday, subject «Norsk», panel closed. */
+async function planMondayLesson(page: Page): Promise<void> {
+  await page.goto("/?goto=planner:periods");
+  await page.waitForLoadState("networkidle");
+
+  await page.getByRole("button", { name: "Legg til time" }).click();
+  await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await expect(page.getByText("Lagret")).toBeVisible();
+
+  await page.getByRole("button", { name: "Ukeplan" }).click();
+  await page.locator("button:has-text('—')").first().click();
+  await page.getByLabel("Fag").fill("Norsk");
+  await page.getByRole("button", { name: "Lagre", exact: true }).click();
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await expect(page.getByRole("region", { name: "Planlegger" })).toHaveCount(0);
+}
+
+test("a line typed on the board lands in the PLAN — and leaves it again", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  // A Monday, 08:35 — inside the lesson.
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+  await planMondayLesson(page);
+
+  await addWidget(page, "Dagens time");
+  const agenda = page.locator('[data-widget-kind="agenda"]');
+  await expect(agenda).toContainText("Norsk");
+
+  // Two lines, four keystrokes and two Enters — no panel, no overlay over
+  // the class.
+  const field = agenda.getByLabel("Ny aktivitet …");
+  await field.fill("Gjennomgang");
+  await field.press("Enter");
+  await expect(
+    agenda.getByRole("button", { name: "Gjennomgang" }),
+  ).toBeVisible();
+  await expect(field).toHaveValue("");
+  await field.fill("Oppgaver");
+  await field.press("Enter");
+  await expect(agenda.getByRole("button", { name: "Oppgaver" })).toBeVisible();
+
+  // Off the board again: the row's own remove button (hover-revealed, so the
+  // hover is part of the gesture).
+  const row = agenda.locator('li:has-text("Gjennomgang")');
+  await row.hover();
+  await row.getByRole("button", { name: "Fjern aktivitet" }).click();
+  await expect(agenda.getByRole("button", { name: "Gjennomgang" })).toHaveCount(
+    0,
+  );
+  await expect(agenda.getByRole("button", { name: "Oppgaver" })).toBeVisible();
+
+  // THE seam: none of that lived in the widget's config — it went through
+  // `planner_agenda_set` into the plan, so a fresh boot into the planner's
+  // day tab sees exactly one activity, and it is the surviving one.
+  await page.goto("/?goto=planner:day");
+  await page.waitForLoadState("networkidle");
+  const panel = page.getByRole("region", { name: "Planlegger" });
+  await expect(panel.getByLabel("Hva skal skje …")).toHaveCount(1);
+  await expect(panel.getByLabel("Hva skal skje …")).toHaveValue("Oppgaver");
+});
+
+/** Let a journey kill `planner_day_get` mid-session, the way a locked or
+ *  half-mounted database does — a spec-local init script layered over the
+ *  harness's own, which is how the shim's seam models a rejected command. */
+async function breakableDayGet(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    const fixtures = w.__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    const real = fixtures.planner_day_get as (
+      args?: Record<string, unknown>,
+    ) => unknown;
+    w.__failDayGet = false;
+    fixtures.planner_day_get = (args?: Record<string, unknown>) => {
+      if (w.__failDayGet)
+        throw new Error("planner_day_get: database is locked");
+      return real(args);
+    };
+  });
+}
+
+test("a failed read locks the board's field instead of replacing the plan", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await breakableDayGet(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+  await planMondayLesson(page);
+
+  await addWidget(page, "Dagens time");
+  const agenda = page.locator('[data-widget-kind="agenda"]');
+  const field = agenda.getByLabel("Ny aktivitet …");
+  await field.fill("Gjennomgang");
+  await field.press("Enter");
+  const row = agenda.locator('li:has-text("Gjennomgang")');
+  await expect(row).toBeVisible();
+  await row.hover();
+  await expect(
+    row.getByRole("button", { name: "Fjern aktivitet" }),
+  ).toHaveCount(1);
+
+  // The store goes away under her feet. The check-off itself SUCCEEDS; the
+  // re-read after it is what fails, which is the ordinary way this state
+  // arrives — quietly, in the middle of a lesson.
+  await page.evaluate(() => {
+    (window as unknown as Record<string, unknown>).__failDayGet = true;
+  });
+  await agenda.getByRole("button", { name: "Merk gjort" }).click();
+
+  // `planner_agenda_set` is a replace-all: writing the list back on a plan we
+  // KNOW is stale would resurrect rows deleted in the panel. So both writing
+  // doors close — and the last good plan stays on the board rather than
+  // pretending the lesson has nothing in it.
+  await expect(field).toBeDisabled();
+  await row.hover();
+  await expect(
+    row.getByRole("button", { name: "Fjern aktivitet" }),
+  ).toHaveCount(0);
+  await expect(
+    agenda.getByRole("button", { name: "Gjennomgang" }),
+  ).toBeVisible();
 });
 
 test("manual mode works without any plan", async ({ page }) => {

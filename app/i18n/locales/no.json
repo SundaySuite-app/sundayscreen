@@ -102,7 +102,8 @@
     "presetMinutes": {
       "one": "Sett til {n} minutt",
       "other": "Sett til {n} minutter"
-    }
+    },
+    "untilLessonEnd": "Still tidtakeren på resten av timen (til {time})"
   },
   "clock": {
     "digital": "Digital",

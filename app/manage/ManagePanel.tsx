@@ -3,8 +3,13 @@
 // from Excel, one name per line. Deleting a class is real data loss, so it
 // takes typing the class name; deleting a widget is a snackbar, not a
 // dialog — the asymmetry is deliberate.
+//
+// The name list is also the one place a FAILED READ could destroy data: the
+// textarea is a draft over a replace-all write, so it is seeded only from a
+// list that actually arrived, and when the read failed the column says so and
+// offers to read again instead of showing an empty class (R4-spor 3.1).
 
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { UpdateStatus } from "../bindings/UpdateStatus";
 import { t, tf, tn } from "../i18n";
@@ -13,8 +18,12 @@ import {
   classes,
   createClass,
   deleteClass,
+  loadMembers,
   managePanelOpen,
   members,
+  membersHydrated,
+  membersHydratedFor,
+  membersReadFailed,
   renameClass,
   saveMembers,
   switchClass,
@@ -27,28 +36,71 @@ import { namesToText, parseNameList } from "./name-list-core";
 
 export function ManagePanel() {
   const current = activeClass.value;
+  /** Is the list on screen an actual READ of the class on screen? The whole
+   *  names column hangs off this: what is rendered, and whether the save
+   *  button exists at all. */
+  const hydrated = membersHydrated(current?.id);
+  /** …and did it fail, as opposed to not having landed yet? */
+  const readFailed = !hydrated && membersReadFailed.value;
 
   const [newName, setNewName] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteDraft, setDeleteDraft] = useState("");
-  const [namesDraft, setNamesDraft] = useState(() =>
-    namesToText(members.peek().map((m) => m.name)),
-  );
+
+  // ── The names draft, and the seed rule that used to delete classes ───────
+  //
+  // The old effect seeded the textarea from `members.peek()` on
+  // `[current?.id]` ALONE. A failed `members_get` answered `[]`, so the draft
+  // was seeded empty, and one click on «Lagre navneliste» sent that emptiness
+  // through a replace-all reconcile: every pupil in the class gone, from a
+  // panel that had said nothing was wrong (R4-spor 3.1).
+  //
+  // Two rules now, and both are load-bearing:
+  //   - seed ONLY from a list that was actually read for the class on screen;
+  //   - seed each class at most once, and never over something the teacher
+  //     has typed — names that land WHILE the panel is open still fill an
+  //     untouched textarea, which is the behaviour the old effect intended.
+  // The refs, not `members.value.length` in the dep list: a members change is
+  // not a reason to re-seed, and a dep that grows with the list would fight
+  // every keystroke that adds a line.
+  const [mountSeed] = useState(() => {
+    const id = activeClass.peek()?.id ?? null;
+    return id !== null && membersHydratedFor.peek() === id
+      ? { id, text: namesToText(members.peek().map((m) => m.name)) }
+      : null;
+  });
+  const [namesDraft, setNamesDraft] = useState(mountSeed?.text ?? "");
+  /** Which class the draft belongs to. */
+  const draftFor = useRef<string | null>(mountSeed?.id ?? null);
+  /** Has this class's draft been seeded from a read list? */
+  const seeded = useRef(mountSeed !== null);
+  /** Has the teacher typed since then? */
+  const edited = useRef(false);
+
   const [savedReceipt, setSavedReceipt] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updStatus, setUpdStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
 
-  // Re-seed the textarea whenever the ACTIVE CLASS changes (a switch inside
-  // the panel) — not on every members change, or typing would fight the
-  // store.
   useEffect(() => {
+    const id = current?.id ?? null;
+    if (draftFor.current !== id) {
+      // Another class is on screen (a switch inside the panel) — the draft
+      // that belonged to the old one must not survive into it.
+      draftFor.current = id;
+      seeded.current = false;
+      edited.current = false;
+      setNamesDraft("");
+      setSavedReceipt(false);
+    }
+    if (id === null || !hydrated || seeded.current || edited.current) return;
+    seeded.current = true;
     setNamesDraft(namesToText(members.peek().map((m) => m.name)));
     setSavedReceipt(false);
-  }, [current?.id]);
+  }, [current?.id, hydrated]);
 
   // Escape is handled centrally (screen/keyboard.ts): text field first, then
   // the class menu, then this panel, then fullscreen — one layer per press.
@@ -270,38 +322,79 @@ export function ManagePanel() {
             <h3 class={styles.namesTitle}>
               {tf("manage.namesFor", { name: current?.name ?? "…" })}
             </h3>
-            <textarea
-              class={styles.namesArea}
-              value={namesDraft}
-              placeholder={t("manage.pasteHint")}
-              onInput={(e) => {
-                setNamesDraft((e.target as HTMLTextAreaElement).value);
-                setSavedReceipt(false);
-              }}
-            />
-            <div class={styles.namesFooter}>
-              <span class={styles.nameCount}>
-                {tn("manage.nameCount", parsedCount)}
-              </span>
-              {savedReceipt && (
-                <span class={styles.receipt}>{t("manage.savedReceipt")}</span>
-              )}
-              <button
-                class={styles.saveNames}
-                onClick={() =>
-                  run(
-                    saveMembers(parseNameList(namesDraft)).then(() => {
-                      setNamesDraft(
-                        namesToText(members.peek().map((m) => m.name)),
-                      );
-                      setSavedReceipt(true);
-                    }),
-                  )
-                }
-              >
-                {t("manage.saveNames")}
-              </button>
-            </div>
+            {readFailed ? (
+              /* The names could not be READ, and everything that writes them
+                 is gone with the textarea: a draft that was never seeded
+                 from a real list is one click away from replace-alling the
+                 class empty. The way back is a button — the failure lasted
+                 the rest of the lesson before, because nothing ever asked
+                 again. */
+              <div class={styles.namesFailed}>
+                <p class={styles.error}>{t("class.membersReadFailed")}</p>
+                <button
+                  class={styles.retryNames}
+                  onClick={() => {
+                    const id = current?.id;
+                    if (!id) return;
+                    setError(null);
+                    // `loadMembers` never rejects (main.tsx voids it), so a
+                    // retry that fails again is read off the signal instead.
+                    void loadMembers(id).then(() => {
+                      if (membersHydratedFor.peek() !== id) {
+                        setError(t("manage.actionFailed"));
+                      }
+                    });
+                  }}
+                >
+                  {t("class.membersRetry")}
+                </button>
+              </div>
+            ) : (
+              <>
+                <textarea
+                  class={styles.namesArea}
+                  value={namesDraft}
+                  placeholder={t("manage.pasteHint")}
+                  onInput={(e) => {
+                    edited.current = true;
+                    setNamesDraft((e.target as HTMLTextAreaElement).value);
+                    setSavedReceipt(false);
+                  }}
+                />
+                <div class={styles.namesFooter}>
+                  <span class={styles.nameCount}>
+                    {tn("manage.nameCount", parsedCount)}
+                  </span>
+                  {savedReceipt && (
+                    <span class={styles.receipt}>
+                      {t("manage.savedReceipt")}
+                    </span>
+                  )}
+                  {/* Disabled until the names have LANDED: the draft is empty
+                      until then, and saving it would be a replace-all with a
+                      list nobody read. */}
+                  <button
+                    class={styles.saveNames}
+                    disabled={!hydrated}
+                    onClick={() =>
+                      run(
+                        saveMembers(parseNameList(namesDraft)).then(() => {
+                          // The stored list IS the draft now.
+                          seeded.current = true;
+                          edited.current = false;
+                          setNamesDraft(
+                            namesToText(members.peek().map((m) => m.name)),
+                          );
+                          setSavedReceipt(true);
+                        }),
+                      )
+                    }
+                  >
+                    {t("manage.saveNames")}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

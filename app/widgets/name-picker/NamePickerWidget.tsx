@@ -16,6 +16,7 @@ import {
   updateWidgetConfigBy,
 } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
+import { toast } from "../../ui/toast";
 import styles from "./name-picker.module.css";
 
 /** How long the name-spin lasts. */
@@ -104,7 +105,12 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
       }, SPIN_MS);
     } catch (e) {
       console.warn("[picker] draw failed", e);
+      // The button comes back FIRST — a teacher standing in front of the
+      // class has to be able to press it again — and the sentence follows.
+      // A failed draw used to be a dead press and a console line nobody in a
+      // classroom has open (funn U#7).
       setSpinning(false);
+      toast("error", t("manage.actionFailed"));
     }
   };
 
@@ -116,6 +122,8 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
       setRound(null);
     } catch (e) {
       console.warn("[picker] reset failed", e);
+      // A round that did NOT reset must not look like one that did.
+      toast("error", t("manage.actionFailed"));
     }
   };
 

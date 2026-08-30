@@ -16,6 +16,7 @@ import {
   updateWidgetConfigBy,
 } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
+import { toast } from "../../ui/toast";
 import styles from "./groups.module.css";
 
 export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
@@ -59,6 +60,9 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
       );
     } catch (e) {
       console.warn("[groups] split failed", e);
+      // «Del inn» that does nothing is indistinguishable from a slow one:
+      // say it, in the same words the manage panel uses (funn U#7).
+      toast("error", t("manage.actionFailed"));
     } finally {
       setBusy(false);
     }

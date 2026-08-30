@@ -164,6 +164,34 @@ async function call<T>(
   }
 }
 
+/**
+ * Invoke a WRITE: remember the failure, then let the rejection travel.
+ *
+ * The third shape, and the one that was missing. `call()` answers a
+ * fabricated success, which is illegal for a write (promise 4); a bare
+ * `invoke` is honest but INVISIBLE — the failure never reaches the ring, so
+ * «Siste IPC-feil» cannot see it and the pattern behind a bad afternoon
+ * (a locked database, a full disk) is unreadable. Every failed draw, round
+ * reset and split went that way, into a `console.warn` nobody in a classroom
+ * has open (funn U#7, filed as fixed for a year without being fixed).
+ *
+ * No toast here, deliberately: the caller stands next to a button the teacher
+ * just pressed and can say something better than "something in the
+ * background did not answer".
+ */
+async function write<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  try {
+    return await invoke<T>(cmd, args);
+  } catch (e) {
+    console.warn(`[api-shim] ${cmd} failed → rejecting`, e);
+    recordFailure(ipcFailures, cmd, ipcErrText(e), Date.now());
+    throw e;
+  }
+}
+
 // ── The surface ─────────────────────────────────────────────────────────────
 
 const api = {
@@ -306,8 +334,15 @@ const api = {
 
   classList: async (): Promise<Class[]> => call("class_list", undefined, []),
 
+  // A READ whose rejection TRAVELS, for the same reason `layoutLoad`'s does:
+  // the member list sits behind `members_set`, a REPLACE-ALL write. A
+  // tolerant `[]` made a failed read look exactly like a class with no
+  // pupils — and the manage panel seeded its textarea from that emptiness,
+  // so one click on «Lagre navneliste» wrote the emptiness back and deleted
+  // the class's names (R4-spor 3.1). `state/classes.ts` catches it and marks
+  // the list UNREAD instead.
   membersGet: async (classId: string): Promise<Member[]> =>
-    call<Member[]>("members_get", { classId }, []),
+    invoke<Member[]>("members_get", { classId }),
 
   // The rest are WRITES — rejections travel, so the manage panel can say
   // what actually went wrong instead of fabricating success.
@@ -327,7 +362,9 @@ const api = {
     invoke<Member[]>("members_set", { classId, names }),
 
   // Draw/split are WRITES against the round state — rejections travel, so
-  // the widgets can say "no names yet" instead of fabricating a pupil.
+  // the widgets can say "no names yet" instead of fabricating a pupil, and
+  // they go through `write()` so the failure is also REMEMBERED (a fallback
+  // here would be a name on the board that was never drawn).
   //
   // `today` is the LOCAL wall date, `YYYY-MM-DD` (ADR-009: JS owns the wall
   // clock, Rust validates the shape). It decides who is marked away — mint
@@ -338,10 +375,10 @@ const api = {
     noRepeat: boolean,
     today: string,
   ): Promise<DrawResult> =>
-    invoke<DrawResult>("picker_draw", { classId, noRepeat, today }),
+    write<DrawResult>("picker_draw", { classId, noRepeat, today }),
 
   pickerReset: async (classId: string): Promise<void> =>
-    invoke<void>("picker_reset", { classId }),
+    write<void>("picker_reset", { classId }),
 
   groupsSplit: async (
     classId: string,
@@ -349,7 +386,7 @@ const api = {
     n: number,
     today: string,
   ): Promise<Member[][]> =>
-    invoke<Member[][]>("groups_split", { classId, mode, n, today }),
+    write<Member[][]>("groups_split", { classId, mode, n, today }),
 
   // WRITE — rejection travels: a chip must never dim on a write that did not
   // land. Answers with the whole updated member list, so the panel renders

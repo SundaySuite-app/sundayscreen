@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { addWidget, installFixtures } from "./harness";
 
@@ -57,6 +57,85 @@ test("a 500-name paste counts, saves, and still draws", async ({ page }) => {
   const picker = page.locator('[data-widget-kind="namepicker"]');
   await picker.getByRole("button", { name: "Trekk navn" }).click();
   await expect(picker.getByText("499 igjen i runden")).toBeVisible();
+});
+
+// ── The names have not landed YET ───────────────────────────────────────────
+//
+// A slow read is a THIRD state, distinct from a finished one and a failed
+// one, and the manage panel's textarea has to behave in all three: seed when
+// the list finally lands on an untouched draft, never seed over typing, and
+// never offer to save a draft nobody read (R4-spor 3.1).
+
+/** Hold `members_get` open until the page releases it. */
+async function deferMembersGet(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    const fixtures = w.__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    const real = fixtures.members_get as (
+      args?: Record<string, unknown>,
+    ) => unknown;
+    w.__releaseMembers = () => {};
+    fixtures.members_get = (args?: Record<string, unknown>) =>
+      new Promise((resolve) => {
+        w.__releaseMembers = () => resolve(real(args));
+      });
+  });
+}
+
+/** Let the held read answer. */
+async function releaseMembers(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    (window as unknown as { __releaseMembers: () => void }).__releaseMembers(),
+  );
+}
+
+async function openManage(page: Page): Promise<void> {
+  const vp = page.viewportSize();
+  if (vp) await page.mouse.move(vp.width / 2, vp.height - 8);
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+}
+
+test("names that land while the panel is open fill an untouched textarea", async ({
+  page,
+}) => {
+  await installFixtures(page, { memberNames: ["Kari", "Ola"] });
+  await deferMembersGet(page);
+  await page.goto("/");
+
+  await openManage(page);
+  const area = page.getByPlaceholder(/Ett navn per linje/);
+  const save = page.getByRole("button", { name: "Lagre navneliste" });
+  // Nothing has been read yet: an empty draft that cannot be saved over the
+  // class.
+  await expect(area).toHaveValue("");
+  await expect(save).toBeDisabled();
+
+  await releaseMembers(page);
+  await expect(area).toHaveValue("Kari\nOla");
+  await expect(save).toBeEnabled();
+});
+
+test("a name typed before the list lands is never overwritten by the seed", async ({
+  page,
+}) => {
+  await installFixtures(page, { memberNames: ["Kari", "Ola"] });
+  await deferMembersGet(page);
+  await page.goto("/");
+
+  await openManage(page);
+  const area = page.getByPlaceholder(/Ett navn per linje/);
+  await area.fill("Nils");
+
+  // The read lands AFTER the first keystroke: the seed must lose. A draft
+  // that jumped back to the stored list under the teacher's hands would be
+  // the same class of bug as the wipe, from the other side.
+  await releaseMembers(page);
+  await expect(page.getByText("1 navn")).toBeVisible();
+  await expect(area).toHaveValue("Nils");
+  await expect(
+    page.getByRole("button", { name: "Lagre navneliste" }),
+  ).toBeEnabled();
 });
 
 test("hammering the draw button cannot double-draw", async ({ page }) => {

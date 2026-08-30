@@ -11,6 +11,38 @@ async function wakeChrome(page: Page): Promise<void> {
   if (vp) await page.mouse.move(vp.width / 2, vp.height - 8);
 }
 
+/** Open «Klasser og navn» from the class switcher. */
+async function openManage(page: Page): Promise<void> {
+  await wakeChrome(page);
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+}
+
+/**
+ * Make the FIRST `members_get` reject and every later one answer normally —
+ * the failure shape a locked or half-mounted database has at boot. A
+ * spec-local init script layered over the harness's own (they run in
+ * install order), because a throwing fixture is exactly how the shim's seam
+ * models a rejected command.
+ */
+async function failFirstMembersGet(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const fixtures = (window as unknown as Record<string, unknown>)
+      .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    const real = fixtures.members_get as (
+      args?: Record<string, unknown>,
+    ) => unknown;
+    let failNext = true;
+    fixtures.members_get = (args?: Record<string, unknown>) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("members_get: database is locked");
+      }
+      return real(args);
+    };
+  });
+}
+
 test("each class keeps its own layout across switches", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");
@@ -59,6 +91,51 @@ test("a pasted name list saves, counts, and survives a reload", async ({
   await expect(page.getByPlaceholder(/Ett navn per linje/)).toHaveValue(
     "Kari\nOla\nPer",
   );
+});
+
+test("a failed name-list read says so, and «Lagre navneliste» cannot wipe the class", async ({
+  page,
+}) => {
+  // R4-spor 3.1: `members_get` was the last TOLERANT read sitting behind a
+  // replace-all write. A failure answered `[]`, the panel seeded its textarea
+  // from that emptiness, and one click on «Lagre navneliste» deleted every
+  // pupil in the class — from a panel that had said nothing was wrong.
+  await installFixtures(page, { memberNames: ["Kari", "Ola", "Per"] });
+  await failFirstMembersGet(page);
+  await page.goto("/");
+
+  await openManage(page);
+  await expect(page.getByText(/Navnelista kunne ikke leses/)).toBeVisible();
+  // Nothing that WRITES the list is on screen: no draft, no save button.
+  await expect(page.getByPlaceholder(/Ett navn per linje/)).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Lagre navneliste" }),
+  ).toHaveCount(0);
+
+  // The way back — read again, in the panel, without restarting the app.
+  await page.getByRole("button", { name: "Prøv å lese på nytt" }).click();
+  await expect(page.getByPlaceholder(/Ett navn per linje/)).toHaveValue(
+    "Kari\nOla\nPer",
+  );
+  await expect(page.getByText("3 navn")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Lagre navneliste" }),
+  ).toBeEnabled();
+
+  // …and the stored class was never touched while the read was broken. Read
+  // the fake store DIRECTLY: an assertion through the same IPC that just
+  // failed would be measuring the wrong thing.
+  const stored = await page.evaluate(
+    () =>
+      (
+        (
+          JSON.parse(localStorage.getItem("__e2e_db__") ?? "{}") as {
+            members?: Record<string, unknown[]>;
+          }
+        ).members?.c1 ?? []
+      ).length,
+  );
+  expect(stored).toBe(3);
 });
 
 test("deleting a class requires typing its name", async ({ page }) => {

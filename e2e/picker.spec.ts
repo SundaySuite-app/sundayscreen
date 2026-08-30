@@ -107,6 +107,47 @@ test("a pupil marked away today is never drawn or dealt a group", async ({
   await expect(groups.getByText("Kari", { exact: true })).toHaveCount(0);
 });
 
+test("a draw that fails says so, and no name lands on the board", async ({
+  page,
+}) => {
+  // R4-spor 3.2: `picker_draw` was a bare invoke whose rejection ended in
+  // `console.warn` — a dead button in front of a class, invisible to the
+  // failure ring too. GRANSKING-v1 filed that (U#7) as fixed; it was not.
+  await installFixtures(page, { memberNames: NAMES });
+  await page.addInitScript(() => {
+    const fixtures = (window as unknown as Record<string, unknown>)
+      .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    fixtures.picker_draw = () => {
+      throw new Error("picker_draw: database is locked");
+    };
+  });
+  await page.goto("/");
+
+  await addWidget(page, "Navnetrekker");
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  const drawBtn = picker.getByRole("button", { name: "Trekk navn" });
+  const display = picker.locator("[data-display]");
+
+  await drawBtn.click();
+  await expect(page.getByText(/Noe gikk galt/)).toBeVisible();
+  // The button comes back, and the board shows no pupil that was never drawn.
+  await expect(drawBtn).toBeEnabled();
+  await expect(display).toHaveText("Klar til å trekke");
+
+  // …and the failure is REMEMBERED, not just spoken: the ring is what the
+  // diagnose surface reads when a whole afternoon has been going wrong.
+  const seen = await page.evaluate(() =>
+    window.api.getRecentIpcFailures().map((f) => f.cmd),
+  );
+  expect(seen).toContain("picker_draw");
+
+  // Nothing was persisted either — a restart still shows an undrawn board.
+  await page.reload();
+  await expect(
+    page.locator('[data-widget-kind="namepicker"] [data-display]'),
+  ).toHaveText("Klar til å trekke");
+});
+
 test("without names the picker is disabled and says why", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");

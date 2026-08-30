@@ -293,9 +293,39 @@
   cursor: pointer;
 }
 
-.saveNames:hover {
+.saveNames:hover:not(:disabled) {
   background: var(--gold);
   color: var(--on-gold);
+}
+
+.saveNames:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The names could not be read: the message and the way back, in the column
+   where the textarea would have been. */
+.namesFailed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-height: 260px;
+}
+
+.retryNames {
+  padding: var(--sp-2) var(--sp-5);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retryNames:hover {
+  border-color: var(--gold-line);
+  color: var(--ink);
 }
 
 .about {

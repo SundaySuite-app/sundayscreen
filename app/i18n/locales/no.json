@@ -8,7 +8,9 @@
     "hydrateError": "Innstillingene kunne ikke leses — appen bruker standardvalg."
   },
   "class": {
-    "defaultName": "Min klasse"
+    "defaultName": "Min klasse",
+    "membersReadFailed": "Navnelista kunne ikke leses. Navnene er ikke borte — appen fikk bare ikke tak i dem nå.",
+    "membersRetry": "Prøv å lese på nytt"
   },
   "error": {
     "ipcFailed": "Noe i bakgrunnen svarte ikke, så denne visningen kan være ufullstendig."

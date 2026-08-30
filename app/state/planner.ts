@@ -22,7 +22,12 @@ import {
   rebasedDate,
   weekdayOf,
 } from "../planner/date-core";
-import { lessonKeyInWindow, suggest } from "../planner/suggest-core";
+import type { BootStamp } from "../planner/suggest-core";
+import {
+  bootGuardApplies,
+  lessonKeyInWindow,
+  suggest,
+} from "../planner/suggest-core";
 import { loadScenes, switchLesson } from "./scenes";
 import { settings } from "./settings";
 import { t } from "../i18n";
@@ -150,21 +155,30 @@ export const currentSuggestion = computed(() => {
 /** Lesson-instances the automation has already had its one say about. */
 const autoSettledKeys = new Set<string>();
 
-/** Was a lesson already running when this process booted? Auto-switching
- *  such a lesson would override the exactly-restored board (promise #2), so
- *  the automation only acts on lessons that START while we are up. */
-let bootMinutesOfDay = -1;
+/**
+ * When this process booted — DATED, not just clock-time. Auto-switching a
+ * lesson that was already running at boot would override the exactly-restored
+ * board (promise #2), so the automation only acts on lessons that START while
+ * we are up. The date is what keeps that guard from outliving its day on a
+ * machine that sleeps instead of shutting down (R4-funn 3.4); the decision
+ * itself is `bootGuardApplies`, in suggest-core, where it can be tested.
+ */
+let bootStamp: BootStamp | null = null;
 
 /**
  * Opt-in automation. Two guards, both learned the hard way (F-funn B3/B4):
  *   - a lesson whose window we are inside is SETTLED even when the board
  *     already shows it, so a later manual switch is not yanked back;
- *   - a lesson that was already running at boot is left alone.
+ *   - a lesson that was already running at boot, ON BOOT DAY, is left alone.
  */
 export function maybeAutoSwitch(): void {
   if (!settings.peek().autoSwitchScenes) return;
+  // The plan, not just its key: the boot guard is decided against the DATE
+  // the lesson was planned for, never the wall clock.
+  const plan = todayPlan.peek();
+  if (plan == null) return;
   const nowMin = minutesOfDay(new Date());
-  const key = lessonKeyInWindow(todayPlan.peek(), nowMin);
+  const key = lessonKeyInWindow(plan, nowMin);
   if (key == null || autoSettledKeys.has(key)) return;
 
   const s = currentSuggestion.peek();
@@ -175,8 +189,9 @@ export function maybeAutoSwitch(): void {
     return;
   }
   // A lesson that was already under way when we booted keeps the restored
-  // screen; the banner still offers the switch.
-  if (bootMinutesOfDay >= 0 && s.startMin < bootMinutesOfDay) {
+  // screen; the banner still offers the switch. Only on boot day: tomorrow's
+  // 08:30 lesson has nothing to do with a 12:40 start yesterday.
+  if (bootGuardApplies(bootStamp, plan.date, s.startMin)) {
     autoSettledKeys.add(key);
     return;
   }
@@ -191,7 +206,8 @@ let ticker: ReturnType<typeof setInterval> | undefined;
 
 /** Boot: one fetch + the 30 s derive-tick (with date-rollover refetch). */
 export async function initPlanner(): Promise<void> {
-  bootMinutesOfDay = minutesOfDay(new Date());
+  const bootedAt = new Date();
+  bootStamp = { date: localDateStr(bootedAt), min: minutesOfDay(bootedAt) };
   await refreshToday();
   if (ticker !== undefined) clearInterval(ticker);
   ticker = setInterval(() => {

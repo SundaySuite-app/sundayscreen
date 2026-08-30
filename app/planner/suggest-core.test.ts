@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DayPlan } from "../bindings/DayPlan";
-import { lessonKeyInWindow, suggest } from "./suggest-core";
+import { bootGuardApplies, lessonKeyInWindow, suggest } from "./suggest-core";
 
 const plan: DayPlan = {
   date: "2026-08-31",
@@ -101,5 +101,63 @@ describe("suggest", () => {
   it("no plan, breaks, free periods: nothing", () => {
     expect(suggest(null, null, null, 530, null)).toBeNull();
     expect(suggest(plan, null, null, 700, null)).toBeNull();
+  });
+});
+
+// The guard that keeps the auto-switch off a lesson that was already running
+// when the app started. Booted 12:40 (760 minutes) on Monday.
+describe("bootGuardApplies", () => {
+  const boot = { date: "2026-08-31", min: 760 };
+
+  const cases: {
+    name: string;
+    stamp: typeof boot | null;
+    planDate: string;
+    startMin: number;
+    guarded: boolean;
+  }[] = [
+    // Boot day, lesson began before we did → the restored board stands.
+    {
+      name: "boot day, lesson started before boot",
+      stamp: boot,
+      planDate: "2026-08-31",
+      startMin: 720,
+      guarded: true,
+    },
+    // Boot day, lesson starts while we are up → the automation may act.
+    {
+      name: "boot day, lesson starts after boot",
+      stamp: boot,
+      planDate: "2026-08-31",
+      startMin: 780,
+      guarded: false,
+    },
+    // The bug (R4-funn 3.4): the machine slept, the stamp did not. Tuesday's
+    // 08:30 lesson must never be settled by Monday's 12:40 start.
+    {
+      name: "another day is never guarded",
+      stamp: boot,
+      planDate: "2026-09-01",
+      startMin: 510,
+      guarded: false,
+    },
+    // No stamp yet (initPlanner has not run): nothing to guard against.
+    {
+      name: "no stamp, no guard",
+      stamp: null,
+      planDate: "2026-08-31",
+      startMin: 60,
+      guarded: false,
+    },
+  ];
+
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(bootGuardApplies(c.stamp, c.planDate, c.startMin)).toBe(c.guarded);
+    });
+  }
+
+  it("the boot minute itself is not 'before boot'", () => {
+    expect(bootGuardApplies(boot, "2026-08-31", 760)).toBe(false);
   });
 });

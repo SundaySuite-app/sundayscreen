@@ -43,6 +43,44 @@ export function suggest(
   return found.onTarget(activeClassId, activeSceneId) ? null : found.suggestion;
 }
 
+/** When the process booted, as the auto-switch needs it: a local DATE plus
+ *  minutes since that day's midnight. */
+export interface BootStamp {
+  /** Local wall date (`YYYY-MM-DD`) the process booted on. */
+  date: string;
+  /** Minutes since local midnight at boot. */
+  min: number;
+}
+
+/**
+ * Should the "already running when we booted" guard silence the auto-switch
+ * for a lesson starting at `startMin`?
+ *
+ * The guard protects the exactly-restored board (promise #2): a lesson that
+ * was already under way when the process started keeps whatever the teacher
+ * left on screen. It therefore only ever applies to the day we BOOTED on.
+ *
+ * The date is the whole point. Classroom machines sleep rather than shut
+ * down — the same premise `rebasedDate` is built on — so a bare
+ * minutes-since-midnight stamp outlives its day: started 12:40, asleep until
+ * the next morning, and every lesson starting before 12:40 is settled
+ * unswitched, silently, for the rest of the app's life (R4-funn 3.4).
+ *
+ * `planDate` is the date of the plan the lesson came from — NEVER the wall
+ * clock. `refreshToday` is void-ed, so on the roll-over tick `todayPlan` is
+ * still yesterday's plan for up to 30 s; comparing against the plan keeps
+ * the guard ACTIVE through that window, leaving it exactly as harmless as
+ * it is today.
+ */
+export function bootGuardApplies(
+  boot: BootStamp | null,
+  planDate: string,
+  startMin: number,
+): boolean {
+  if (boot == null || boot.date !== planDate) return false;
+  return startMin < boot.min;
+}
+
 /**
  * The lesson-instance key whose window covers `nowMin`, whatever the board
  * currently shows — the auto-switch needs this to CONSUME a lesson's key

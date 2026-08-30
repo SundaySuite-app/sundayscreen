@@ -1,32 +1,26 @@
-// Regression gate for docs/COMMAND_AUDIT_2026-08.md — a command that the audit
-// found reachable from the UI must not silently go dark again, and a freshly
-// registered command must not sit unclassified (nobody having said "yes, this
-// one is meant to be unreachable for now").
+// Regression gate for command reachability: a command registered in
+// `tauri::generate_handler![…]` (src-tauri/src/lib.rs) that no frontend call
+// site reaches any more is a feature that has silently stopped working — the
+// shim keeps compiling either way, because `invoke()` never cares whether
+// anything downstream actually calls it. Nothing else in this codebase would
+// notice a dead command until a teacher clicked the button that used to work.
 //
-// WHY THIS EXISTS: the audit's headline number (118 of 178 registered commands
-// reachable from the renderer) is a snapshot, not a standing guarantee. Nothing
-// stopped a future refactor from deleting the one call site that reached a
-// command — the shim would still compile (the fallback/`call()` plumbing
-// doesn't care whether anything downstream calls it), so the loss is invisible
-// until a feature quietly stops working. This script re-runs the audit's own
-// measurement on every `npm run check` and fails on a REGRESSION, not on the
-// existing 60-strong backlog of known-unreachable commands (see the audit §4
-// for why those are unreached on purpose — pending an owner decision, a
-// feature flag, or an SDK).
+// This script both TAKES and CHECKS the measurement — there is no separate
+// audit document behind it. The result lives in
+// `scripts/command-reachability-baseline.json` (its `unreachable` list is
+// empty as of this writing, i.e. every registered command is reached from
+// somewhere). It runs on every `npm run check` and fails on a REGRESSION,
+// not on whatever the current unreachable set happens to be.
 //
-// METHOD — mirrors docs/COMMAND_AUDIT_2026-08.md §1/§7 exactly, because a
-// naive `invoke("name")` grep is provably wrong: it missed every call routed
-// through the shim's `call()`/`editorCall()` wrappers or through a generic
-// type parameter containing its own parens, and undercounted reachable
-// commands by 40 (the audit's "78 vs 60" story). The correct method does not
-// special-case the wrappers at all — it strips comments, then asks whether the
-// command name appears ANYWHERE as a quoted string literal in the renderer
-// source. That is deliberately broader than "at an invoke/call/editorCall call
-// site": only a couple of files import `invoke` at all, so a string-literal hit
-// anywhere in `legacy/`+`src/` (minus generated bindings, locale JSON, and test
-// files) is, in practice, always a real call site. Which files those are is not
-// assumed here — see `KNOWN_INVOKE_IMPORTERS` below, which fails this gate if
-// the set changes.
+// METHOD: strip comments from every scanned file (see stripComments below),
+// then ask whether the command name appears ANYWHERE as a quoted string
+// literal — `"name"`, `'name'`, or `` `name` `` — the FULL token, not a
+// substring (this is what keeps `settings_get` from being credited by a
+// stray `settings_get_all`). Deliberately broader than "at a call site":
+// only `app/lib/api-shim.ts` is allowed to import `@tauri-apps/api/core` at
+// all (checked below, and by ESLint's no-restricted-imports at the call
+// site itself), so a string-literal hit anywhere under `app/` is, in
+// practice, always a real call routed through the shim.
 //
 //   node scripts/check-command-reachability.mjs                  check against the baseline
 //   node scripts/check-command-reachability.mjs --write-baseline regenerate the baseline from the current tree
@@ -52,18 +46,40 @@ const WRITE = process.argv.includes("--write-baseline");
 
 // ── 1. Registered commands: the `generate_handler![…]` list ─────────────────
 
+// Structural, not a `commands::`-anchored regex: an earlier version matched
+// `/commands::[A-Za-z0-9_]+::([A-Za-z0-9_]+)/g`, which silently dropped every
+// entry NOT routed through the `commands::` module — `window::…`,
+// `update::…` — 4 of the app's 36 registered commands, invisible with no
+// error, no warning, nothing. Splitting the block on commas and validating
+// the FULL text of every entry against a general path shape is what has
+// teeth: an entry this does not recognize THROWS with the actual text,
+// instead of being silently excluded from the count. (A
+// `names.length === entries.length` assertion from the same split would be
+// vacuous — every entry produces exactly one name by construction, so that
+// equality can never fail; the regex test below is the only check that can.)
 function registeredCommands() {
   const src = readFileSync(LIB_RS, "utf8");
   const block = src.match(/tauri::generate_handler!\[([\s\S]*?)\]/);
   if (!block) {
     throw new Error(`could not find tauri::generate_handler![…] in ${LIB_RS}`);
   }
-  // `commands::<area>::<name>` — one per registered command. Comments in this
-  // block (there are several, e.g. "// Papirkurv. …") never match this shape,
-  // so they fall out for free without a separate strip pass.
-  const names = [
-    ...block[1].matchAll(/commands::[A-Za-z0-9_]+::([A-Za-z0-9_]+)/g),
-  ].map((m) => m[1]);
+  // One or more `module::` segments, then the command function name — e.g.
+  // `commands::app::app_info` AND `window::window_is_fullscreen` are both
+  // this shape; a bare identifier or a stray comment is not.
+  const ENTRY_RE = /^[A-Za-z0-9_]+(?:::[A-Za-z0-9_]+)+$/;
+  const entries = block[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const names = entries.map((entry) => {
+    if (!ENTRY_RE.test(entry)) {
+      throw new Error(
+        `generate_handler![…] entry does not look like a "module(::module)*::command" ` +
+          `path: "${entry}" — fix the entry, or fix this script's extraction; it refuses to guess.`,
+      );
+    }
+    return entry.split("::").pop();
+  });
   const unique = new Set(names);
   if (unique.size !== names.length) {
     throw new Error(
@@ -73,22 +89,16 @@ function registeredCommands() {
   return [...unique].sort();
 }
 
-// ── 2. Frontend source: app/ + legacy/ + src/, minus generated/locale/test ──
-// (docs/COMMAND_AUDIT_2026-08.md §7, step 2 — src/ is entirely `src/lib/bindings`
-// today, which step 3 below excludes anyway, so this reduces in practice to
-// `app/` (the shell AND `app/lib/`, where the shim now lives) plus
-// legacy/shared + legacy/types.)
-
-// `app` joined the roots the day it was created: «Frivilligen først»'s Preact
-// shell is where the call sites were MOVING TO, so a measurement that only
-// looked at `legacy/` would report a command as newly unreachable the moment
-// its last legacy caller was replaced by an app one — a false alarm — and would
-// miss a genuinely dark command whose only caller lived in the new tree.
+// ── 2. Frontend source: app/, minus generated bindings/locales/tests ───────
 //
-// `legacy` stays a root after PR B carried the inventory into `app/lib/`. What
-// is left there is `shared/` and `types/` — no call sites today, but a root
-// dropped because it is currently empty of them is a root that is not watched
-// when it stops being empty.
+// `src/` is entirely `src/lib/bindings/` — the ts-rs-generated TypeScript
+// types, gitignored and regenerated by `npm run bindings` (see .gitignore).
+// It is listed as a root for the rare case it exists on disk when this
+// script runs, but every file under it is skipped anyway: "bindings" is in
+// EXCLUDE_DIR_NAMES below. `app/` is the only root that ever actually
+// contributes a file — this app has no legacy/ tree and nothing was ever
+// ported into `app/`; it is where the frontend has lived since the first
+// scaffold commit.
 const SEARCH_ROOTS = ["src", "app"];
 const EXCLUDE_DIR_NAMES = new Set(["bindings", "locales", "node_modules"]);
 const INCLUDE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
@@ -129,27 +139,19 @@ function collectSourceFiles() {
 
 // ── 2b. The premise this whole measurement rests on ─────────────────────────
 //
-// A string-literal hit only implies "this command is called" because there is
-// no way into the backend EXCEPT the handful of files that import `invoke`. If
-// a third file starts calling the backend directly, a name could appear in one
-// of them without a matching call — or, worse, a command could be reached from
-// a file this script does not even scan.
-//
-// That premise used to be stated as fact in a comment above, and it was WRONG:
-// it named `api-shim.ts` as the only importer while (the since-removed)
-// `deeplinks.ts` had been calling `deeplink_confirm_captions` directly since
-// the day both landed. The comment was copied into
-// `docs/COMMAND_AUDIT_2026-08.md`, so the audit rested on it too. Nothing
-// noticed, because nothing checked.
-//
-// So it is checked now. This is a gate, not a note: if the set changes, the
-// measurement's justification has changed with it, and somebody has to re-read
-// the audit rather than trust a number computed under an assumption that no
-// longer holds.
+// A string-literal hit only implies "this command is called" because there
+// is no way into the backend EXCEPT the one file that imports `invoke`. If a
+// second file started calling the backend directly, a name could appear in
+// it without a matching call — or, worse, a command could be reached from a
+// file this script does not even scan. That is not left as an assumption:
+// `checkInvokeImporters` below re-derives the actual set of files that
+// import `@tauri-apps/api/core` on every run and fails if it differs from
+// this list, so the premise cannot go stale without the gate noticing.
 const KNOWN_INVOKE_IMPORTERS = [
-  // The shim every page goes through — `call()`/`editorCall()` wrap `invoke`.
-  // It moved from `legacy/renderer/` to `app/lib/` in fase B's PR B; it is the
-  // same file and the same single door.
+  // The one door: `invoke()`, wrapped by two local helpers — `call()` (typed
+  // fallback, never rejects; for reads) and `write()` (records the failure,
+  // then lets it reject; for writes). All three, and every command name
+  // passed to them, live in this single file.
   "app/lib/api-shim.ts",
 ];
 
@@ -161,8 +163,10 @@ const KNOWN_INVOKE_IMPORTERS = [
 // no-restricted-imports says the same thing at the call site, and this says it
 // where the exemption would have to be written.
 //
-// «The shell» is `app/` MINUS `app/lib/`, since PR B moved the ported inventory
-// — the shim included — inside `app/`. The exclusion is one prefix and not a
+// «The shell» is `app/` MINUS `app/lib/` — the pure, DOM-free layer
+// (api-shim itself, the i18n loader, the other `*-core` modules CLAUDE.md's
+// "Pure core-stil" convention calls out) that the rest of `app/`'s thin
+// components are built on top of. The exclusion is one prefix and not a
 // hole: `app/lib/` is covered by the set-equality check below, which is the
 // stricter of the two (it fails on ANY change to the set, in either direction),
 // and by ESLint's `app/lib/**` block. What is given up here is only the
@@ -200,7 +204,7 @@ function checkInvokeImporters(files) {
     );
     console.error(
       "  The shell talks to the backend through `window.api` only (see @lib/api-shim).\n" +
-        "  `app/lib/` is the ported inventory, not the shell — the shim itself lives\n" +
+        "  `app/lib/` is the pure/shared layer, not the shell — the shim itself lives\n" +
         "  there, and the set-equality check below is what holds it to exactly one file.",
     );
     return false;
@@ -219,8 +223,7 @@ function checkInvokeImporters(files) {
     console.error(`  no longer importing invoke: ${gone.join(", ")}`);
   console.error(
     "  A string-literal hit counts as 'reachable' only because these are the\n" +
-      "  only doors into the backend. Update KNOWN_INVOKE_IMPORTERS here AND\n" +
-      "  re-check docs/COMMAND_AUDIT_2026-08.md §1, which makes the same claim.",
+      "  only doors into the backend. Update KNOWN_INVOKE_IMPORTERS above to match.",
   );
   return false;
 }
@@ -292,10 +295,9 @@ function stripComments(src) {
 }
 
 // ── 4. Reachability: is `name` a quoted string literal anywhere in `source`? ─
-// Audit rule (§7, step 4): the name must appear as `"name"`, `'name'` or
-// `` `name` `` — the FULL quoted token, not merely a substring of a longer
-// string. This is what keeps `settings_get` from being credited by a stray
-// `settings_get_all`.
+// The name must appear as `"name"`, `'name'` or `` `name` `` — the FULL
+// quoted token, not merely a substring of a longer string. This is what
+// keeps `settings_get` from being credited by a stray `settings_get_all`.
 function isReachable(name, source) {
   return (
     source.includes(`"${name}"`) ||
@@ -416,12 +418,12 @@ if (unclassifiedNew.length > 0) {
   );
   for (const n of unclassifiedNew.sort()) console.error(`    ${n}`);
   console.error(
-    "  A brand-new command with no UI path needs an explicit decision (see the audit's",
+    "  A brand-new command with no UI path needs an explicit decision, not silence.",
   );
   console.error(
-    "  §4 keep/wire/cut framing), not silence. Wire it up, or accept it as intentionally",
+    "  Wire it up, or accept it as intentionally unreachable for now by",
   );
-  console.error("  unreachable for now by regenerating the baseline:");
+  console.error("  regenerating the baseline:");
   console.error(
     "    node scripts/check-command-reachability.mjs --write-baseline",
   );
@@ -457,11 +459,10 @@ if (!failed && premiseHolds) {
   console.log("\n✓ no reachability regressions, no unclassified new commands");
   // …and the half of the truth the tick does not carry. "No regressions" is a
   // statement about MOVEMENT, and it reads to a hurried eye like "everything is
-  // wired". It is not: a standing backlog of commands has no UI path at all,
-  // and they pass this gate every single run precisely because somebody once
-  // said "yes, unreachable for now" by putting them in the baseline. That
-  // decision is a year old in places. Printing the number keeps it from
-  // becoming invisible.
+  // wired". It is not: a standing backlog of commands can have no UI path at
+  // all and still pass this gate every single run, precisely because somebody
+  // once said "yes, unreachable for now" by putting them in the baseline.
+  // Printing the number keeps that backlog from becoming invisible.
   const stillDark = [...baselineUnreachableSet].filter((n) =>
     unreachable.includes(n),
   );

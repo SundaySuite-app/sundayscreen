@@ -22,6 +22,14 @@ step "frontend — prettier --check";     npm run format:check
 step "frontend — tsc --noEmit";         npm run typecheck
 step "frontend — vitest";               npm run test
 
+step "frontend — production build";     npm run build
+# MUST come straight after an EXPLICIT build, not before it and not relying
+# on a later `tauri build`'s implicit beforeBuildCommand: a bundle-budget
+# check that reads a stale dist/ from a previous run (or from `npm run dev`
+# never having produced one) passes silently — it is checking yesterday's
+# bundle, not this commit's.
+step "bundle size budget (raw bytes)";  npm run bundle:check
+
 step "app version in sync";             npm run version-sync
 step "i18n nøkler finnes (app/)";       npm run i18n-keys
 step "i18n ingen døde nøkler";          npm run i18n-keys:unused

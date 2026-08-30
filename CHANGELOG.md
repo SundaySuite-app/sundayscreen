@@ -81,7 +81,9 @@ ADR-008. Samme innhold, nytt nummer; 0.9.0-utgivelsen er trukket.)
   docs/GRANSKING-v1.md).
 
 Kjente begrensninger: macOS-bygget er ad-hoc-signert til `MAC_CERTS` er på
-plass (høyreklikk → Åpne første gang); ikke notarisert (Apple-PLA).
+plass (prøv å åpne først, så Systeminnstillinger → Personvern og sikkerhet →
+«Åpne likevel» — «høyreklikk → Åpne» virker ikke lenger på macOS 15, se
+docs/DISTRIBUTION.md); ikke notarisert (Apple-PLA).
 
 ## [Unreleased]
 

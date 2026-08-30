@@ -1,16 +1,14 @@
 /**
- * Den delte TSX-vandringen for de to nye i18n-gatene i `app/`.
+ * Den delte TSX-vandringen for de to i18n-gatene i `app/`
+ * (`check-i18n-keys.mjs` og `check-i18n-hardcoded-tsx.mjs`).
  *
  * ## Hvorfor compiler-API og ikke regex
  *
- * De to GAMLE gatene (`check-i18n-fallbacks.mjs`, `check-i18n-hardcoded.mjs`,
- * begge slettet i fase B) leste `legacy/renderer/index.html` med regex, og det
- * holdt fordi HTML-en var flat og maskinskrevet. `app/` er TSX: en nøkkel kan
- * stå i en JSX-attributt, i
- * et objektliteral, bak en template-streng, inni en nøstet callback. En regex
- * over det svarer med falske treff der det ikke er noe, og — verre — tier der
- * det er. Derfor vandrer disse gatene TypeScripts egen AST: samme parser som
- * `tsc`, altså nøyaktig den samme forståelsen av filen som byggverket har.
+ * `app/` er TSX: en nøkkel kan stå i en JSX-attributt, i et objektliteral,
+ * bak en template-streng, inni en nøstet callback. En regex over det svarer
+ * med falske treff der det ikke er noe, og — verre — tier der det er. Derfor
+ * vandrer disse gatene TypeScripts egen AST: samme parser som `tsc`, altså
+ * nøyaktig den samme forståelsen av filen som byggverket har.
  *
  * ## Hvorfor ÉN modul for to gater
  *
@@ -46,12 +44,15 @@ export function isScannableFile(name) {
  * ikke finnes (gaten skal ikke krasje på et halvt sjekket ut tre).
  *
  * `exclude` er absolutte stier vandringen ikke går inn i. Den finnes for ÉN
- * ting: `app/lib/` — det porterte inventaret, som fase B flyttet INN i `app/`.
- * Begge gatene under stiller krav ingen av de 76 portede filene er skrevet
- * for (fallback-argumentet er selve legacy-signaturen: `t('a.b', 'norsk')`), og
- * en gate som plutselig dekker dobbelt så mye fordi en mappe FLYTTET er ikke
- * en strengere gate — det er en gate ingen har bestemt seg for. Inventaret
- * bidrar der det faktisk hører hjemme: som strengliteral-kilde i
+ * ting: `app/lib/` — det rene, DOM-frie laget (api-shim, i18n-lasteren, de
+ * andre `*-core`-modulene CLAUDE.mds «Pure core-stil»-konvensjon beskriver).
+ * Katalog-lasteren der (`app/lib/i18n.ts`) beholder MED VILJE den eldre
+ * `t(key, fallback = "")`-signaturen (api-shimmens varsler leser tekst
+ * gjennom den før skallets katalog-baserte `t()` er installert) — nøyaktig
+ * signaturen fallback-forbudet under gjelder for `app/`s egen `t()`. En
+ * vandring som dekket `app/lib/` også ville derfor felle et bevisst
+ * designvalg som gate-feil, ikke oppdage en reell mangel. Laget bidrar der
+ * det faktisk hører hjemme: som strengliteral-kilde i
  * `check-i18n-keys.mjs --unused`.
  */
 export function sourceFiles(dir, exclude = []) {

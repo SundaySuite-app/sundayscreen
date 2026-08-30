@@ -50,6 +50,8 @@ jobs:
             echo "::error::dist/ contains dynamic code evaluation — the CSP (script-src 'self') will break at runtime"
             exit 1
           fi
+      - name: Bundle size budget
+        run: npm run bundle:check
 
       - name: App version in sync
         run: npm run version-sync

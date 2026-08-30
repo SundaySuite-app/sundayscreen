@@ -8,7 +8,10 @@
       `~/.tauri/sundayscreen_updater.key`; nøkkelen er passordløs, og
       workflowen setter BEVISST ingen `…_PASSWORD`-env — tom ≠ fraværende).
 - [ ] `MAC_CERTS` + `MAC_CERTS_PASSWORD` (samme eksport som de andre appene).
-      Til de finnes er macOS-bygget ad-hoc-signert (høyreklikk → Åpne).
+      Til de finnes er macOS-bygget ad-hoc-signert — «høyreklikk → Åpne»
+      virker IKKE lenger på macOS 15; riktig rekkefølge (prøv å åpne først,
+      så Systeminnstillinger → Personvern og sikkerhet → «Åpne likevel») står
+      i docs/DISTRIBUTION.md.
 - [ ] Apple-avtalen (PLA) er fortsatt ikke akseptert for team 784GN847G4 →
       notarisering forblir av til den er det (samme som Rec/Stage/Edit);
       linjene står klare i release.yml.

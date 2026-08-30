@@ -71,24 +71,29 @@ rect: NormRect, z, config }` og `WidgetConfig` som `#[serde(tag =
 ## SQLite-skjema
 
 `0001`: `app_setting` (Settings-JSON), `class`, `class_member` (duplikatnavn
-OK — identitet er id), `widget_instance`, `draw_state`. `0003`: `scene`
+OK — identitet er id), `widget_instance`, `draw_state`. `0002`: indeks på
+`draw_state.member_id` (FK-oppslaget kunne ikke bruke PK-en `(class_id,
+member_id)` alene; hver medlemssletting full-scannet ellers). `0003`: `scene`
 (class_id NULL = global; klassens standard = `default-<klasseid>`) og
 widget_instance GJENOPPBYGD scene-nøklet. `0004`: `period`, `week_slot`,
 `date_override`, `agenda_item`, `day_note` (tid = minutter siden midnatt,
-dato = frontend-myntet `YYYY-MM-DD`). Konvensjoner: TEXT UUID v7, REAL
+dato = frontend-myntet `YYYY-MM-DD`). `0005`: `class_member.absent_on` — en
+DATOSTEMPEL (ikke en boolean), overskrevet aldri akkumulert; ingen
+fraværshistorikk lagres (ADR-010). Konvensjoner: TEXT UUID v7, REAL
 epoch-ms, FK håndhevet. Migrasjonsfiler er APPLIED-FOREVER — aldri rediger
 en anvendt fil (checksum-avvik leses som korrupsjon).
 
 ## IPC-flate
 
-`settings_get/save` · `class_ensure_active → ActiveContext` ·
+`app_info` · `settings_get/save` · `class_ensure_active → ActiveContext` ·
 `class_list/create/rename/delete/switch` · `members_get/set` ·
-`layout_load/save` (scene-nøklet) · `scene_list/create/rename/delete/
-duplicate` · `lesson_switch → ClassSnapshot` · `picker_draw/reset` ·
-`groups_split` · `planner_periods_get/set` · `planner_week_get` ·
-`planner_slot_set` · `planner_override_set` · `planner_day_get → DayPlan` ·
-`planner_agenda_set/check` · `planner_notes_set` · `update_check/install` ·
-`window_set_fullscreen`. Alle gjennom api-shimmen; skriv REJECTer.
+`attendance_set` · `layout_load/save` (scene-nøklet) · `scene_list/create/
+rename/delete/duplicate` · `lesson_switch → ClassSnapshot` ·
+`picker_draw/reset` · `groups_split` · `planner_periods_get/set` ·
+`planner_week_get` · `planner_slot_set` · `planner_override_set` ·
+`planner_day_get → DayPlan` · `planner_agenda_set/check` ·
+`planner_notes_set` · `update_check/install` · `window_set_fullscreen` ·
+`window_is_fullscreen`. Alle gjennom api-shimmen; skriv REJECTer.
 
 ## Faseplan
 
@@ -127,3 +132,28 @@ duplicate` · `lesson_switch → ClassSnapshot` · `picker_draw/reset` ·
 - **R10** Forslag-banner + auto_switch_scenes (suggest-core) ✅
 - **R11** Gransking: 3 granskere, 55 funn, 23 fikset (docs/GRANSKING-R2.md)
   → v0.2.0-beta.1 ✅
+
+### Runde 3 «Bakerste pult» (2026-08-30)
+
+Kvalitetsrunde, ingen ny modell (én kolonne: `absent_on`, migrasjon 0005).
+Seks granskere → motbevisnings-agent per forslag (85 forslag inn, 62
+overlevde). Full gjennomgang i docs/REVISJON-R3.md.
+
+- **Kontrast/typografi** for projektor-avstand: WCAG-luminans-vakt i
+  tokens.css (mutasjonstestet), trafikklysets slukkede/tente lampe snudd
+  (var invertert — den slukkede var husets lyseste flate), tekstwidget/
+  klokke/terning skalert opp.
+- **Widget-ergonomi:** tekst-, tidtaker- og gruppewidgetens hover-rad fikk
+  knappene komponentene allerede lovet (align/fontScale, faste
+  tidtaker-lengder, «Del inn» av tavla mellom økter).
+- **Fravær** (migrasjon 0005, ADR-010): datostempel per elev per dag;
+  navnetrekker/gruppedeler hopper over de markert borte.
+- **Klassebytte er ikke-destruktivt** for trukne navn/grupper (8A stod ikke
+  lenger foran 9B), og to «measure mot feil ramme»-rotårsaker (halvbredde-
+  fella, transform-fella) rettet i skallet der alle arver fiksen.
+- **Vindu/flate:** vinduet åpner aldri større enn skjermen, fullskjerm-
+  flagget måles (ikke bare antatt) ved vindusgjenoppretting, en widget kan
+  ikke lenger sprette ut over kortets minstemål og teleportere ved neste
+  oppstart.
+
+→ v0.3.0-beta.1 ✅

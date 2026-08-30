@@ -43,7 +43,15 @@ ikke `-beta.N` i ProductVersion).
 
 ## Usignert førstegangsåpning (macOS)
 
-Til notariseringen er på plass: høyreklikk appen → Åpne → Åpne.
+Til notariseringen er på plass: «høyreklikk → Åpne»-snarveien er fjernet i
+macOS 15 (Sequoia) — den gjør ingenting lenger, uansett hvor mange ganger
+man prøver. Riktig rekkefølge, i denne rekkefølgen:
+
+1. Prøv å åpne appen normalt (dobbeltklikk). macOS avviser den.
+2. Systeminnstillinger → Personvern og sikkerhet → rull ned til meldingen om
+   at appen ble blokkert → «Åpne likevel». Knappen finnes IKKE i
+   Systeminnstillinger før steg 1 er forsøkt.
+3. Bekreft i dialogen som dukker opp (kan be om passord/Touch ID).
 
 ## Verifisere feeden (og en felle)
 

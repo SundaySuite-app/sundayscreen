@@ -1,60 +1,54 @@
 #!/usr/bin/env node
 /**
  * i18n-nøkkelgate for `app/` — hver nøkkel finnes, i riktig FORM, i både
- * no.json og en.json. Erstatter fallback-gaten for det nye skallet.
+ * no.json og en.json.
  *
- * ## Hvorfor en ny gate og ikke den gamle
+ * ## Hvorfor dette ikke kan stilles med regex
  *
- * `check-i18n-fallbacks.mjs` HOLDT `data-i18n`-reservetekstene i
- * `legacy/renderer/index.html` i takt med no.json — en gate om HTML som skrives
- * to ganger. Både gaten og fila er slettet i fase B, og det er denne gaten som
- * dekker skallet nå. `app/` skriver ingenting to ganger: det finnes ingen
- * `data-i18n`, ingen reservetekst i markup, og ingen fallback-argument (ESLint
- * forbyr det, denne gaten måler det). Spørsmålet flytter seg dermed fra «er de
- * to skrivemåtene enige?» til «peker kallet på noe som faktisk finnes, og som
- * har den formen kallet forutsetter?».
- *
- * Det spørsmålet kan ikke stilles med regex. En `t()` i TSX kan stå hvor som
- * helst, og de fire formene (streng / interpolert / flertallsgruppe / array) er
- * fire ULIKE former i katalogen som feiler på fire ulike stille måter:
+ * `app/` er TSX skrevet mot fem oversetterfunksjoner: `t`, `tf`, `tn`, `tArr`,
+ * `tDyn` (se `scripts/lib/tsx-i18n-scan.mjs`). Et kall kan stå hvor som helst
+ * i treet, og de fire formene (streng / interpolert / flertallsgruppe / array)
+ * feiler på fire ulike STILLE måter når kallet og katalog-oppføringen ikke er
+ * enige om formen:
  *
  *   t()    på en flertallsgruppe → objektet er ingen streng → tom tekst
  *   tn()   på en flat streng     → alle språk får entallsformen for alt
  *   tArr() på en streng          → reservelista (tom) rendres som ingenting
  *   tDyn() på et tomt subtre     → hver eneste dynamiske nøkkel bommer
  *
- * Ingen av dem kaster. Alle fire ser ut som «teksten mangler bare litt».
+ * Ingen av dem kaster. Alle fire ser ut som «teksten mangler bare litt». Denne
+ * gaten spør derfor TypeScripts egen AST (ikke tekstlig regex) om formen kallet
+ * forutsetter, og slår den opp mot begge katalogene.
  *
  * ## Hvorfor BÅDE no.json og en.json
  *
- * `ACTIVE_LOCALES` i `app/i18n/index.ts` er `["no","en"]` gjennom redesignet
- * (de fem andre er PAUSET, se `legacy/locales/parity.test.ts`). Et krav om at
- * nøkkelen finnes i no.json alene ville gjort engelsk til et andrerangs språk
- * som oppdages av en bruker i stedet for av CI — og engelsk er språket
- * halve verden av frivillige leser appen på.
+ * Bokmål er kildespråket appen faktisk tilbyr (`ACTIVE_LOCALES` i
+ * `app/i18n/index.ts` er `["no"]` i dag); engelsk er SCAFFOLDET, ikke
+ * tilbudt — katalogen finnes og holdes i paritet nettopp så aktivering
+ * senere blir denne ene linjen. `REQUIRED_LOCALES` under er derfor `["no",
+ * "en"]`, ikke bare `["no"]`: et krav som bare så no.json ville latt en.json
+ * råtne usett fram til dagen noen slår på engelsk, og da er det en bruker som
+ * oppdager tomrommet, ikke CI.
  *
- * ## `--unused` — FEILENDE siden fase B
+ * ## `--unused`
  *
- * Lister nøkler i no.json ingen leser. Den var informativ mens
- * inventaret eide mesteparten av katalogen; nå er skallet borte, og en
- * nøkkel ingen leser er en setning ingen ser — som likevel må oversettes til
- * sju språk, holdes i paritet og leses på nytt hver gang noen rydder.
+ * Lister nøkler i no.json ingen leser — en nøkkel ingen leser er likevel en
+ * setning som må oversettes, holdes i paritet med en.json og leses på nytt
+ * hver gang katalogen ryddes.
  *
  * ⚠️ «Ingen leser» er IKKE det samme som «ingen `t()` i `app/`». De rene
- * modulene under `@lib/*` svarer med NØKLER — `status/next-recording-core`
- * returnerer `home.readyTitle`, `ui/progress-core` returnerer `progress.eta*`,
- * `status/health-findings` returnerer `health.micDenied` — og siden kaller så
- * `t(k)` med en variabel, som AST-vandringen ser som «dynamisk» og ikke kan
- * slå opp. En prune som bare talte `app/` ville derfor slettet nøkler som
- * FAKTISK rendres, og feilen ville vært tom tekst på en flate ingen test
- * åpner.
+ * modulene under `app/lib/**` (CLAUDE.mds "Pure core-stil": DOM-fri logikk i
+ * `*-core.ts`) svarer ofte med en NØKKEL og lar komponenten oversette den —
+ * siden kaller så `t(k)` med en variabel, som AST-vandringen ser som
+ * «dynamisk» og ikke kan slå opp. En prune som bare talte `app/` ville derfor
+ * slettet nøkler som FAKTISK rendres, og feilen ville vært tom tekst på en
+ * flate ingen test åpner.
  *
  * Derfor to kilder til «brukt»:
  *   1. AST-vandringen over `app/**` (nøyaktig, ser formen kallet forutsetter),
- *   2. et STRENGLITERAL-søk over inventarets kildefiler under
- *      `app/lib/**` — samme metode som
- *      `scripts/check-command-reachability.mjs` bruker og begrunner, og av
- *      samme grunn: det er bredere enn nødvendig, og det er den riktige
+ *   2. et STRENGLITERAL-søk over `app/lib/**` sine kildefiler — samme metode
+ *      som `scripts/check-command-reachability.mjs` bruker og begrunner, og
+ *      av samme grunn: det er bredere enn nødvendig, og det er den riktige
  *      retningen å ta feil i for en gate som SLETTER.
  *
  * `*.test.ts` teller IKKE som leser. En test som pinner katalogen er ikke en
@@ -89,19 +83,25 @@ const APP_DIR = path.join(ROOT, "app");
 /**
  * Den delte kjernen `app/` når gjennom `@lib/*`. Se `--unused` over.
  *
- * Den ligger UNDER `APP_DIR` siden fase B PR B, og er derfor eksplisitt holdt
- * utenfor AST-vandringen (`sourceFiles(APP_DIR, [LIB_DIR])`). Det er ikke en
- * glipe: inventaret er en verbatim port med legacy-signaturen `t(key,
- * fallback)`, og fallback-argumentet er nettopp det denne gaten forbyr i
- * `app/`. Skulle vandringen dekket det, ville flyttingen alene gjort ~30 kall
- * til gate-feil — en regelendring forkledd som en filflytting. Inventaret
- * teller der det hører hjemme: som strengliteral-kilde under `--unused`.
+ * `LIB_DIR` er eksplisitt holdt utenfor AST-vandringen
+ * (`sourceFiles(APP_DIR, [LIB_DIR])`), og det er ikke en glipe: katalog-
+ * lasteren `app/lib/i18n.ts` beholder med vilje den eldre `t(key,
+ * fallback = "")`-signaturen (api-shimmens varsler leser tekst gjennom den
+ * FØR skallets katalog-baserte `app/i18n/index.ts` er installert — se den
+ * filas hode), og fallback-argumentet er nettopp det denne gaten forbyr for
+ * `app/`s egen `t()`. En vandring som også dekket `app/lib/` ville derfor
+ * felle et bevisst designvalg som en gate-feil. Modulene der teller likevel
+ * med — som strengliteral-kilde under `--unused` (se over).
  */
 const LIB_DIR = path.join(APP_DIR, "lib");
 
 /**
- * Språkene `app/` er oversatt til NÅ. Speiler `ACTIVE_LOCALES` i
- * `app/i18n/index.ts`; de fem pausete språkene tas opp igjen i fase B.
+ * Katalogene denne gaten holder i paritet — IKKE det samme som
+ * `ACTIVE_LOCALES` i `app/i18n/index.ts` (`["no"]` i dag; engelsk er
+ * scaffoldet, ikke tilbudt — se filhodet over). Gaten dekker begge likevel:
+ * en.json skal aldri kunne råtne mens ingen bruker ser det, for da er
+ * aktivering («legg «en» til i ACTIVE_LOCALES») dagen katalogen brister i
+ * stedet for den ene linjen den er ment å være.
  */
 const REQUIRED_LOCALES = ["no", "en"];
 
@@ -109,7 +109,7 @@ const CLDR = new Set(["zero", "one", "two", "few", "many", "other"]);
 
 /** En flertallsgruppe: bare CLDR-kategorier som nøkler, og `other` er
  *  påkrevd (det er `tn`s universelle reserve). Samme definisjon som
- *  `legacy/locales/parity.test.ts` og `check-i18n-plurals.mjs`. */
+ *  `app/i18n/locales/parity.test.ts` og `check-i18n-plurals.mjs`. */
 export function isPluralGroup(v) {
   if (!v || typeof v !== "object" || Array.isArray(v)) return false;
   const keys = Object.keys(v);
@@ -437,9 +437,8 @@ function main() {
       console.error(
         `\n${unused.length} nøkkel/nøkler i app/i18n/locales/*.json som verken ` +
           "et `t/tf/tn/tArr/tDyn`-kall i app/ eller en delt kjerne under " +
-          "app/lib/ nevner.\nSlett dem i ALLE sju katalogene " +
-          "(parity.test.ts krever «ingen ekstra nøkler» overalt), og ta dem ut " +
-          "av PAUSED_KEYS hvis de står der.",
+          "app/lib/ nevner.\nSlett dem i BEGGE katalogene, no.json og en.json " +
+          "(parity.test.ts krever «ingen ekstra nøkler» i begge).",
       );
       process.exit(1);
     }

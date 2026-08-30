@@ -3,8 +3,18 @@
 //! Time is deliberately primitive: periods are MINUTES SINCE LOCAL MIDNIGHT
 //! (the school bell does not care about time zones), dates are opaque
 //! `YYYY-MM-DD` strings minted by the FRONTEND (JS owns the local wall
-//! clock; this crate never reads a clock — the house rule), weekdays are ISO
-//! 1..=5. There is no chrono dependency on purpose.
+//! clock; this crate never reads a clock — the house rule). Weekdays are
+//! ISO (1 = Monday), but the valid RANGE depends on which side reads it: the
+//! WRITE side ([`WeekSlot::weekday`], the recurring Mon–Fri timetable) is
+//! 1..=5 (`commands::planner::valid_lesson_weekday`); the READ side (this
+//! module's `weekday` parameter/[`DayPlan::weekday`]) accepts 1..=7, because
+//! a real calendar date can fall on a Saturday or Sunday and still carry a
+//! `DateOverride`, an `AgendaItem`, or a `DayNote` that a caller wants
+//! resolved. Treating both sides as 1..=5 was the false premise behind
+//! Runde 2's "planner is dead on weekends" bug: `day_get` used to be guarded
+//! by the WRITE side's validator, so a real Saturday date never made it this
+//! far (see `commands::planner::valid_any_weekday`, which now guards reads
+//! instead). There is no chrono dependency on purpose.
 //!
 //! The shadowing rule, spelled once in [`resolve_day`]: a `date_override`
 //! row shadows the weekly slot for that (date, period) — `Cancelled` means

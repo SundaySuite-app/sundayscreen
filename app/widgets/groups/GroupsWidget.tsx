@@ -7,6 +7,7 @@ import { useState } from "preact/hooks";
 
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tf, tn } from "../../i18n";
+import { LIMITS } from "@lib/limits.generated";
 import { localDateStr } from "../../planner/date-core";
 import { openAttendance, presentOn } from "../../state/attendance";
 import { managePanelOpen, members } from "../../state/classes";
@@ -69,7 +70,10 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
   };
 
   const setN = (delta: number) => {
-    const n = Math.min(Math.max(cfg.n + delta, 2), 30);
+    const n = Math.min(
+      Math.max(cfg.n + delta, LIMITS.GROUP_N_MIN),
+      LIMITS.GROUP_N_MAX,
+    );
     updateWidgetConfig(widget.id, { ...cfg, n });
   };
 

@@ -7,6 +7,7 @@ import { useState } from "preact/hooks";
 import type { ChecklistItem } from "../../bindings/ChecklistItem";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
+import { LIMITS } from "@lib/limits.generated";
 import { saveNow, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import {
@@ -18,10 +19,10 @@ import {
 } from "./checklist-core";
 import styles from "./checklist.module.css";
 
-/** Mirrors CHECKLIST_MAX_ITEMS / CHECKLIST_TEXT_MAX_CHARS in the core crate
+/** The authority is layout.rs' CHECKLIST_MAX_ITEMS / CHECKLIST_TEXT_MAX_CHARS
  *  (F-funn F10): the board must not show rows a restart would drop. */
-const CHECKLIST_MAX = 30;
-const CHECKLIST_TEXT_MAX = 200;
+const CHECKLIST_MAX = LIMITS.CHECKLIST_MAX_ITEMS;
+const CHECKLIST_TEXT_MAX = LIMITS.CHECKLIST_TEXT_MAX_CHARS;
 
 export function ChecklistWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;

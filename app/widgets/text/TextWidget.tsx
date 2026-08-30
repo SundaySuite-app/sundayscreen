@@ -12,6 +12,7 @@ import { useState } from "preact/hooks";
 import type { TextAlign } from "../../bindings/TextAlign";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
+import { LIMITS } from "@lib/limits.generated";
 import { saveNow, updateWidgetConfig } from "../../state/layout";
 import { clampFontScale, steppedScale } from "./text-core";
 import styles from "./text.module.css";
@@ -110,6 +111,7 @@ export function TextWidget({ widget }: { widget: WidgetInstance }) {
           data-align={cfg.align}
           style={{ "--text-scale": scale }}
           value={cfg.content}
+          maxLength={LIMITS.TEXT_CONTENT_MAX_CHARS}
           data-no-drag
           autofocus
           onInput={(e) =>

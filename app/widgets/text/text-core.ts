@@ -18,9 +18,12 @@
 // whole vocabulary, and the ends are honestly `disabled` rather than
 // silently inert.
 
-/** Mirrors layout.rs. */
-export const FONT_SCALE_MIN = 0.25;
-export const FONT_SCALE_MAX = 6.0;
+import { LIMITS } from "@lib/limits.generated";
+
+/** The authority is layout.rs; these are its generated TS mirror
+ *  (`npm run limits` — see scripts/gen-limits.mjs). */
+export const FONT_SCALE_MIN = LIMITS.FONT_SCALE_MIN;
+export const FONT_SCALE_MAX = LIMITS.FONT_SCALE_MAX;
 
 /** The A− / A+ vocabulary. Ordered, and every member inside the clamp. */
 export const FONT_STOPS: readonly number[] = [

@@ -24,19 +24,16 @@ import { updateWidgetConfig, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import { toast } from "../../ui/toast";
 import { shownLesson } from "./agenda-widget-core";
+import { LIMITS } from "@lib/limits.generated";
 import styles from "./agenda.module.css";
 
-/** Mirrors the backend clamps in crates/sundayscreen-core/src/layout.rs —
- *  the board must never show what a restart would drop. */
-const MANUAL_AGENDA_MAX = 30;
-const AGENDA_TEXT_MAX = 500;
-
-/** The PLANNER side's own ceiling — `AGENDA_MAX_ITEMS` in
- *  crates/sundayscreen-core/src/schedule.rs. Same number as the manual list,
- *  a different constant on purpose (the Rust side says so too): the board's
- *  field must refuse the 31st line exactly where `normalize_agenda` would
- *  silently drop it. */
-const PLANNER_AGENDA_MAX = 30;
+/** The backend clamps — the board must never show what a restart would
+ *  drop. Generated straight from the Rust constants, so the sides cannot
+ *  drift; the manual list and the planner list keep SEPARATE constants on
+ *  purpose (the Rust side says so too — different storage, free to drift). */
+const MANUAL_AGENDA_MAX = LIMITS.MANUAL_AGENDA_MAX_ITEMS;
+const AGENDA_TEXT_MAX = LIMITS.MANUAL_AGENDA_TEXT_MAX_CHARS;
+const PLANNER_AGENDA_MAX = LIMITS.AGENDA_MAX_ITEMS;
 
 export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { TimerAction } from "../../bindings/TimerAction";
 import type { TimerState } from "../../bindings/TimerState";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
+import { LIMITS } from "@lib/limits.generated";
 import { t, tf, tn } from "../../i18n";
 import { formatMin, minutesOfDay } from "../../planner/date-core";
 import { updateWidgetConfig } from "../../state/layout";
@@ -57,14 +58,13 @@ const PRESET_MINUTES = [1, 5, 10, 15, 20];
 const PRESET_REPLACED_BY_LESSON = 15;
 
 /**
- * Mirrors `TIMER_MIN_MS` / `TIMER_MAX_MS` in
- * `crates/sundayscreen-core/src/layout.rs`, the same way this folder's
- * neighbours mirror their clamps: the backend clamps `durationMs` on the way
- * in, so a value outside the range would be shown on the board now and
- * silently be a different number after the next restart.
+ * The backend clamps `durationMs` on the way in, so a value outside the
+ * range would be shown on the board now and silently be a different number
+ * after the next restart. Generated straight from layout.rs, so the two
+ * sides cannot drift.
  */
-const TIMER_MIN_MS = 5_000;
-const TIMER_MAX_MS = 86_400_000; // 24 h
+const TIMER_MIN_MS = LIMITS.TIMER_MIN_MS;
+const TIMER_MAX_MS = LIMITS.TIMER_MAX_MS;
 
 export function TimerWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;

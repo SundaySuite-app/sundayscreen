@@ -30,6 +30,7 @@ import { settings } from "../state/settings";
 import { toast } from "../ui/toast";
 import { Icon } from "../ui/Icon";
 import { localeTag } from "@lib/i18n";
+import { LIMITS } from "@lib/limits.generated";
 import {
   addDays,
   dateAtNoon,
@@ -217,6 +218,7 @@ function PeriodsTab() {
             aria-label={t("planner.label")}
             placeholder={t("planner.label")}
             value={r.label}
+            maxLength={LIMITS.LABEL_MAX_CHARS}
             onInput={(e) =>
               edit(i, { label: (e.target as HTMLInputElement).value })
             }
@@ -784,6 +786,7 @@ function AgendaEditor(props: {
             aria-label={t("planner.activityPlaceholder")}
             placeholder={t("planner.activityPlaceholder")}
             value={r.text}
+            maxLength={LIMITS.TEXT_MAX_CHARS}
             onInput={(e) =>
               edit(i, { text: (e.target as HTMLInputElement).value })
             }
@@ -881,6 +884,7 @@ function NotesEditor(props: {
             aria-label={t("planner.notePlaceholder")}
             placeholder={t("planner.notePlaceholder")}
             value={r.body}
+            maxLength={LIMITS.TEXT_MAX_CHARS}
             onInput={(e) => {
               const body = (e.target as HTMLInputElement).value;
               setDrafts(rows.map((x, j) => (j === i ? { ...x, body } : x)));

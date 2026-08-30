@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tf } from "../../i18n";
+import { LIMITS } from "@lib/limits.generated";
 import { updateWidgetConfig, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import styles from "./dice.module.css";
@@ -110,7 +111,10 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
   };
 
   const setCount = (delta: number) => {
-    const next = Math.min(Math.max(count + delta, 1), 3);
+    const next = Math.min(
+      Math.max(count + delta, LIMITS.DICE_MIN),
+      LIMITS.DICE_MAX,
+    );
     if (next === count) return;
     updateWidgetConfig(widget.id, { ...cfg, count: next, lastRoll: [] });
   };

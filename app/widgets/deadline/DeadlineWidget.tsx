@@ -7,6 +7,7 @@ import { useEffect, useState } from "preact/hooks";
 
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tn } from "../../i18n";
+import { LIMITS } from "@lib/limits.generated";
 import { saveNow, updateWidgetConfig } from "../../state/layout";
 import { breakdown, urgency } from "./deadline-core";
 import styles from "./deadline.module.css";
@@ -52,6 +53,7 @@ export function DeadlineWidget({ widget }: { widget: WidgetInstance }) {
           aria-label={t("deadline.titlePlaceholder")}
           placeholder={t("deadline.titlePlaceholder")}
           value={cfg.title}
+          maxLength={LIMITS.DEADLINE_TITLE_MAX_CHARS}
           autofocus
           data-no-drag
           onInput={(e) =>

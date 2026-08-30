@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { addWidget, installFixtures } from "./harness";
 
@@ -110,15 +110,15 @@ test("a pupil marked away today is never drawn or dealt a group", async ({
 test("a draw that fails says so, and no name lands on the board", async ({
   page,
 }) => {
-  // R4-spor 3.2: `picker_draw` was a bare invoke whose rejection ended in
+  // R4-spor 3.2: the draw was a bare invoke whose rejection ended in
   // `console.warn` — a dead button in front of a class, invisible to the
   // failure ring too. GRANSKING-v1 filed that (U#7) as fixed; it was not.
   await installFixtures(page, { memberNames: NAMES });
   await page.addInitScript(() => {
     const fixtures = (window as unknown as Record<string, unknown>)
       .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
-    fixtures.picker_draw = () => {
-      throw new Error("picker_draw: database is locked");
+    fixtures.picker_draw_many = () => {
+      throw new Error("picker_draw_many: database is locked");
     };
   });
   await page.goto("/");
@@ -139,7 +139,7 @@ test("a draw that fails says so, and no name lands on the board", async ({
   const seen = await page.evaluate(() =>
     window.api.getRecentIpcFailures().map((f) => f.cmd),
   );
-  expect(seen).toContain("picker_draw");
+  expect(seen).toContain("picker_draw_many");
 
   // Nothing was persisted either — a restart still shows an undrawn board.
   await page.reload();
@@ -158,6 +158,224 @@ test("without names the picker is disabled and says why", async ({ page }) => {
     picker.getByRole("button", { name: "Trekk navn" }),
   ).toBeDisabled();
   await expect(picker.getByText("Legg inn navn i klassen først")).toBeVisible();
+});
+
+// ── Several names in one draw ───────────────────────────────────────────────
+//
+// The harness draw is deterministic (first undrawn wins) AND mirrors the
+// backend's reshuffle-with-exclusion exactly, so these can assert names, not
+// just counts.
+
+/** Set the picker's count stepper to `n` by pressing «Ett navn til». */
+async function setDrawCount(picker: Locator, n: number): Promise<void> {
+  await picker.hover();
+  for (let i = 1; i < n; i++) {
+    await picker.getByRole("button", { name: "Ett navn til" }).click();
+  }
+  await expect(picker.locator("[data-draw-count]")).toHaveAttribute(
+    "data-draw-count",
+    String(n),
+  );
+}
+
+/** The names currently on the board, one per line. */
+async function drawnNames(picker: Locator): Promise<string[]> {
+  return (await picker.locator("[data-display]").innerText())
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+test("a draw of three puts three names up, and a restart finds them", async ({
+  page,
+}) => {
+  await installFixtures(page, { memberNames: NAMES });
+  await page.goto("/");
+
+  await addWidget(page, "Navnetrekker");
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  await setDrawCount(picker, 3);
+
+  const drawBtn = picker.getByRole("button", { name: "Trekk navn" });
+  await drawBtn.click();
+  await expect(drawBtn).toBeEnabled();
+
+  const shown = await drawnNames(picker);
+  expect(shown).toEqual(["Kari", "Ola", "Per"]);
+  await expect(picker.getByText("1 igjen i runden")).toBeVisible();
+
+  // Promise 2: the projector shows the same three pupils after a restart.
+  await page.reload();
+  const restored = page.locator('[data-widget-kind="namepicker"]');
+  expect(await drawnNames(restored)).toEqual(["Kari", "Ola", "Per"]);
+  // …and the count the teacher set survives with them.
+  await expect(restored.locator("[data-draw-count]")).toHaveAttribute(
+    "data-draw-count",
+    "3",
+  );
+});
+
+test("a pupil marked away is never one of the three", async ({ page }) => {
+  await installFixtures(page, { memberNames: NAMES });
+  await page.goto("/");
+
+  await addWidget(page, "Navnetrekker");
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+
+  await openAttendance(page);
+  const panel = attendancePanel(page);
+  await panel.getByRole("button", { name: "Kari" }).click();
+  await expect(panel.getByText("3 av 4 til stede")).toBeVisible();
+  await panel.getByRole("button", { name: "Lukk" }).click();
+
+  await setDrawCount(picker, 3);
+  const drawBtn = picker.getByRole("button", { name: "Trekk navn" });
+
+  // Twice: the second draw is the one that wraps the round, which is where a
+  // present-filter that only held for the FIRST pool would show up.
+  for (let round = 0; round < 2; round++) {
+    await drawBtn.click();
+    await expect(drawBtn).toBeEnabled();
+    const shown = await drawnNames(picker);
+    expect(shown).toHaveLength(3);
+    expect(shown).not.toContain("Kari");
+    expect(new Set(shown).size).toBe(3);
+  }
+});
+
+test("a round that completes mid-draw never shows the same pupil twice", async ({
+  page,
+}) => {
+  await installFixtures(page, { memberNames: NAMES });
+  await page.goto("/");
+
+  await addWidget(page, "Navnetrekker");
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  await setDrawCount(picker, 3);
+  const drawBtn = picker.getByRole("button", { name: "Trekk navn" });
+
+  // Three of four taken; the next draw of three must wrap the round.
+  await drawBtn.click();
+  await expect(drawBtn).toBeEnabled();
+  expect(await drawnNames(picker)).toEqual(["Kari", "Ola", "Per"]);
+
+  await drawBtn.click();
+  await expect(drawBtn).toBeEnabled();
+  const shown = await drawnNames(picker);
+  // Mona finishes the old round; the new one opens WITHOUT the two names
+  // this same draw already took.
+  expect(shown).toEqual(["Mona", "Kari", "Ola"]);
+  expect(new Set(shown).size).toBe(3);
+  await expect(picker.getByText("Ny runde!")).toBeVisible();
+});
+
+test("asking for more names than are here says so instead of half-failing", async ({
+  page,
+}) => {
+  await installFixtures(page, { memberNames: ["Kari", "Ola"] });
+  await page.goto("/");
+
+  await addWidget(page, "Navnetrekker");
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  await setDrawCount(picker, 4);
+
+  await picker.getByRole("button", { name: "Trekk navn" }).click();
+  await expect(
+    picker.getByRole("button", { name: "Trekk navn" }),
+  ).toBeEnabled();
+
+  expect(await drawnNames(picker)).toEqual(["Kari", "Ola"]);
+  await expect(
+    picker.getByText("Trakk 2 — det er alle som er her i dag"),
+  ).toBeVisible();
+});
+
+test("the count stepper stops at one and at five", async ({ page }) => {
+  await installFixtures(page, { memberNames: NAMES });
+  await page.goto("/");
+
+  await addWidget(page, "Navnetrekker");
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  await picker.hover();
+  const count = picker.locator("[data-draw-count]");
+  await expect(count).toHaveAttribute("data-draw-count", "1");
+
+  // Below the floor is not a draw at all — the board would go blank.
+  for (let i = 0; i < 3; i++) {
+    await picker.getByRole("button", { name: "Ett navn mindre" }).click();
+  }
+  await expect(count).toHaveAttribute("data-draw-count", "1");
+
+  // Above the ceiling is a card the back row cannot read.
+  for (let i = 0; i < 8; i++) {
+    await picker.getByRole("button", { name: "Ett navn til" }).click();
+  }
+  await expect(count).toHaveAttribute("data-draw-count", "5");
+});
+
+test("at its SMALLEST the settings row keeps one line, above the button", async ({
+  page,
+}) => {
+  // The row is SIX controls and 323 px wide since the count stepper landed.
+  // `minSizePx` was raised to 380×260 for exactly that: the row wraps under
+  // ~339 px of card, and a stepper split across two lines is not a stepper.
+  await installFixtures(page, {
+    memberNames: [...NAMES, "Ida", "Jonas", "Solveig"],
+  });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  await addWidget(page, "Navnetrekker");
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  await picker.hover();
+
+  // Drag the SE handle far past the minimum; `minSizePx` (380×260) stops it.
+  const hb = (await picker
+    .getByRole("button", { name: "Endre størrelse" })
+    .boundingBox())!;
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hb.x - 500, hb.y - 500, { steps: 10 });
+  await page.mouse.up();
+
+  const box = (await picker.boundingBox())!;
+  expect(Math.round(box.width)).toBe(380);
+  expect(Math.round(box.height)).toBe(260);
+
+  await picker.hover();
+  const tops = await picker
+    .locator("[data-settings-row] > *")
+    .evaluateAll((els) =>
+      els.map((e) => Math.round(e.getBoundingClientRect().top)),
+    );
+  expect(tops).toHaveLength(6);
+  expect(new Set(tops).size).toBe(1);
+
+  // …and the reserve holds: the row never prints over «Trekk navn», which is
+  // the one control that stays on the board.
+  const drawBox = (await picker
+    .getByRole("button", { name: "Trekk navn" })
+    .boundingBox())!;
+  expect(drawBox.y + drawBox.height).toBeLessThanOrEqual(Math.min(...tops));
+
+  // A five-name draw still fits in the smallest card the teacher can make.
+  for (let i = 1; i < 5; i++) {
+    await picker.getByRole("button", { name: "Ett navn til" }).click();
+  }
+  await picker.getByRole("button", { name: "Trekk navn" }).click();
+  await expect(
+    picker.getByRole("button", { name: "Trekk navn" }),
+  ).toBeEnabled();
+  const drawn = await picker.locator("[data-display]").evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const last = el.children[el.children.length - 1].getBoundingClientRect();
+    // `scrollHeight - clientHeight` would answer 1 on sub-pixel rounding
+    // alone; the last name's own box against the column's is the real
+    // question — the column CLIPS, so an overflow here is a cut-off pupil.
+    return { lines: el.children.length, over: last.bottom - box.bottom };
+  });
+  expect(drawn.lines).toBe(5);
+  expect(drawn.over).toBeLessThanOrEqual(0);
 });
 
 // ── «Legg inn navn» is a DOOR ───────────────────────────────────────────────

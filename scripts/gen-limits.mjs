@@ -1,4 +1,4 @@
-// The 24 limit numbers guarded here (font-scale bounds, text-length caps,
+// The limit numbers guarded here (count grows with the const list) (font-scale bounds, text-length caps,
 // item counts, a duration range…) used to exist ONCE in Rust and then again,
 // by hand, wherever the frontend needed the same number — a widget's
 // stepper, a maxLength attribute, the e2e harness's fake backend. Nothing

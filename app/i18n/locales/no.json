@@ -125,7 +125,13 @@
     "roundDone": "Alle er trukket — neste trekk starter ny runde",
     "reset": "Ny runde",
     "noRepeat": "Ingen gjentak",
-    "allAway": "Alle er borte i dag"
+    "allAway": "Alle er borte i dag",
+    "increase": "Ett navn til",
+    "decrease": "Ett navn mindre",
+    "drewFewer": {
+      "one": "Trakk {n} — det er alle som er her i dag",
+      "other": "Trakk {n} — det er alle som er her i dag"
+    }
   },
   "groups": {
     "modeCount": "X grupper",

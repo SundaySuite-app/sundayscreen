@@ -1,3 +1,15 @@
+/* The hover row is `position: absolute; bottom: var(--sp-2)` on the shell, so
+   the card has to RESERVE that strip — see groups.module.css for the full
+   account of the 44px form. The picker's row grew from three controls to six
+   when the count stepper landed: 323 px measured, plate padding and all, and
+   the row's own `max-width: calc(100% - var(--sp-4))` makes it wrap under
+   ~339 px of card. `minSizePx` is set above that (380 px) precisely so the
+   common case is ONE line — but a normalised rect can still land narrower on
+   a 1024 px projector, and there the reserve has to double or the second line
+   prints over «Trekk navn», the one control that stays on the board. The
+   threshold sits above the measured wrap on purpose (groups' reasoning):
+   over-reserving costs a few pixels, under-reserving puts the plate back on
+   the button. The query resolves against the shell's `container-type: size`. */
 .picker {
   width: 100%;
   height: 100%;
@@ -7,24 +19,53 @@
   justify-content: center;
   gap: var(--sp-3);
   padding: var(--sp-4);
+  padding-bottom: calc(44px + var(--sp-2) + var(--sp-3));
+}
+
+@container (max-width: 370px) {
+  .picker {
+    padding-bottom: calc(88px + var(--sp-2) + var(--sp-3));
+  }
+}
+
+/* One name or five, stacked in a column. `--pick-scale` comes in inline from
+   the COUNT (the group generator's crowding ladder) — at one name it is 1,
+   i.e. byte-for-byte the size the picker has always drawn a name at. Five
+   names at full 20cqmin would be 285 px of line in a 260 px card; the ladder
+   is set so all five still fit at `minSizePx` (measured). */
+.display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5cqmin;
+  /* Shrink, then CLIP. A card persisted narrower than `minSizePx` (an old
+     layout, or a normalised rect on a 1024 px projector) pays the doubled
+     reserve and has very little left; without `min-height: 0` the column
+     would push «Trekk navn» down under the hover row, and without the clip a
+     zero-height centred column paints its names straight out over the card's
+     top edge. Both were measured, not guessed. */
+  min-height: 0;
+  overflow: hidden;
+  text-align: center;
+  --pick-scale: 1;
 }
 
 .name {
-  font-size: 20cqmin;
+  font-size: calc(20cqmin * var(--pick-scale));
   font-weight: 700;
   color: var(--ink);
-  text-align: center;
   line-height: 1.1;
   word-break: break-word;
 }
 
-.name[data-empty] {
+.display[data-empty] {
   color: var(--ink-3);
   font-weight: 400;
   font-size: 8cqmin;
 }
 
-.name[data-spinning] {
+.display[data-spinning] .name {
   color: var(--ink-2);
 }
 
@@ -63,6 +104,18 @@
   font-size: max(var(--fs-sm), 4.5cqmin);
   color: var(--ink-2);
   font-weight: 600;
+}
+
+/* The count between − and + inside the hover row. The number is content, not
+   a control, so it carries none of the chip styling — same shape the group
+   generator's stepper uses. */
+.n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .draw {

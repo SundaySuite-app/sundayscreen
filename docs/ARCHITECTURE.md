@@ -89,7 +89,7 @@ en anvendt fil (checksum-avvik leses som korrupsjon).
 `class_list/create/rename/delete/switch` · `members_get/set` ·
 `attendance_set` · `layout_load/save` (scene-nøklet) · `scene_list/create/
 rename/delete/duplicate` · `lesson_switch → ClassSnapshot` ·
-`picker_draw/reset` · `groups_split` · `planner_periods_get/set` ·
+`picker_draw_many/reset` · `groups_split` · `planner_periods_get/set` ·
 `planner_week_get` · `planner_slot_set` · `planner_override_set` ·
 `planner_day_get → DayPlan` · `planner_agenda_set/check` ·
 `planner_notes_set` · `update_check/install` · `window_set_fullscreen` ·

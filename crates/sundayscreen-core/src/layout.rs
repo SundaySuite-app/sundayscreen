@@ -117,6 +117,9 @@ pub enum GroupMode {
 fn default_no_repeat() -> bool {
     true
 }
+fn default_draw_count() -> u32 {
+    1
+}
 fn default_group_n() -> u32 {
     2
 }
@@ -129,6 +132,13 @@ pub const GROUP_N_MIN: u32 = 2;
 pub const GROUP_N_MAX: u32 = 30;
 pub const DICE_MIN: u32 = 1;
 pub const DICE_MAX: u32 = 3;
+
+/// How many names ONE draw may put on the board. The ceiling is a
+/// READABILITY bound, not a technical one: the picker's minimum card is
+/// 260×190 px, and six names stacked in it are smaller than the back row can
+/// read — the whole point of drawing a name onto a projector.
+pub const PICK_N_MIN: u32 = 1;
+pub const PICK_N_MAX: u32 = 5;
 
 fn default_timer_duration_ms() -> f64 {
     300_000.0 // 5 minutes
@@ -289,14 +299,34 @@ pub enum WidgetConfig {
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
     },
-    /// The picker persists the last drawn NAME (a display string, not a
-    /// member id — the pupil may be edited away later, the screen memory
-    /// stays honest).
+    /// The picker persists the last drawn NAMES (display strings, not member
+    /// ids — the pupil may be edited away later, the screen memory stays
+    /// honest).
+    ///
+    /// `last_drawn` and `last_drawn_many` are BOTH written, and the
+    /// duplication is the point. Widening `last_drawn` from
+    /// `Option<String>` to a list would have cost an older build the WHOLE
+    /// config: a type error fails the entire `WidgetConfig` parse,
+    /// `row_to_instance`'s `from_str(..).ok()` answers with
+    /// `default_for(kind)`, so `no_repeat` flips back to true, the ADR-007
+    /// `extra` buffer empties — and the first edit the teacher makes writes
+    /// that loss to disk. Added ALONGSIDE, the two new keys are ordinary
+    /// unknown FIELDS to an older build: they land in `extra` and come back
+    /// out of its load→save untouched. `last_drawn` carries the FIRST name
+    /// of the draw, so an older build still shows something true.
     NamePicker {
         #[serde(default = "default_no_repeat")]
         no_repeat: bool,
         #[serde(default)]
         last_drawn: Option<String>,
+        /// The whole draw, in draw order. Empty in a config written before
+        /// multi-draw existed — the widget falls back to `last_drawn` there,
+        /// which is what keeps promise 2 across the upgrade.
+        #[serde(default)]
+        last_drawn_many: Vec<String>,
+        /// How many names the next draw asks for, 1..=[`PICK_N_MAX`].
+        #[serde(default = "default_draw_count")]
+        draw_count: u32,
         #[serde(flatten)]
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
@@ -392,6 +422,16 @@ fn default_true_flag() -> bool {
     true
 }
 
+/// Cap one persisted pupil name at [`crate::members::NAME_MAX_CHARS`],
+/// counting CODEPOINTS the way `members::clean_name` does — the picker and
+/// the group generator both store names, and they must cut them the same
+/// way the name list itself did.
+fn cap_name(name: &mut String) {
+    if name.chars().count() > crate::members::NAME_MAX_CHARS {
+        *name = name.chars().take(crate::members::NAME_MAX_CHARS).collect();
+    }
+}
+
 impl WidgetConfig {
     /// The `kind` column value for this config — the serde tag, spelled once.
     pub fn kind(&self) -> &'static str {
@@ -437,6 +477,8 @@ impl WidgetConfig {
             "namepicker" => Some(WidgetConfig::NamePicker {
                 no_repeat: default_no_repeat(),
                 last_drawn: None,
+                last_drawn_many: Vec::new(),
+                draw_count: default_draw_count(),
                 extra: Default::default(),
             }),
             "groups" => Some(WidgetConfig::Groups {
@@ -537,11 +579,22 @@ impl WidgetConfig {
                 }
                 *warn_at_ms = warn_at_ms.clamp(0.0, *duration_ms);
             }
-            WidgetConfig::NamePicker { last_drawn, .. } => {
+            WidgetConfig::NamePicker {
+                last_drawn,
+                last_drawn_many,
+                draw_count,
+                ..
+            } => {
                 if let Some(name) = last_drawn {
-                    if name.chars().count() > crate::members::NAME_MAX_CHARS {
-                        *name = name.chars().take(crate::members::NAME_MAX_CHARS).collect();
-                    }
+                    cap_name(name);
+                }
+                *draw_count = (*draw_count).clamp(PICK_N_MIN, PICK_N_MAX);
+                // Groups' precedent for a persisted Vec: cut the list to its
+                // ceiling FIRST, then cap every entry. A config that arrived
+                // with fifty names in it cannot make the board render fifty.
+                last_drawn_many.truncate(PICK_N_MAX as usize);
+                for name in last_drawn_many.iter_mut() {
+                    cap_name(name);
                 }
             }
             WidgetConfig::Groups { n, last_result, .. } => {
@@ -550,9 +603,7 @@ impl WidgetConfig {
                 for group in last_result.iter_mut() {
                     group.truncate(crate::members::MEMBERS_MAX);
                     for name in group.iter_mut() {
-                        if name.chars().count() > crate::members::NAME_MAX_CHARS {
-                            *name = name.chars().take(crate::members::NAME_MAX_CHARS).collect();
-                        }
+                        cap_name(name);
                     }
                 }
             }
@@ -941,6 +992,136 @@ mod tests {
         assert_eq!(out["otherNew"], serde_json::json!(7));
         assert_eq!(out["content"], serde_json::json!("hei"));
         assert_eq!(out["kind"], serde_json::json!("text"));
+    }
+
+    // ── The picker's multi-draw fields, and the downgrade they were shaped
+    //    around ────────────────────────────────────────────────────────────
+
+    /// This build's own cycle: a config carrying the two new keys AND an
+    /// unknown one comes back out of parse→clamp→serialise whole.
+    #[test]
+    fn a_multi_draw_picker_config_survives_a_round_trip() {
+        let json = r#"{"kind":"namepicker","noRepeat":false,"lastDrawn":"Kari",
+            "lastDrawnMany":["Kari","Ola","Per"],"drawCount":3,"futureNote":7}"#;
+        let mut cfg: WidgetConfig = serde_json::from_str(json).expect("known kind parses");
+        cfg.clamp();
+        let out = serde_json::to_value(&cfg).expect("serialises");
+        assert_eq!(out["lastDrawn"], serde_json::json!("Kari"));
+        assert_eq!(
+            out["lastDrawnMany"],
+            serde_json::json!(["Kari", "Ola", "Per"])
+        );
+        assert_eq!(out["drawCount"], serde_json::json!(3));
+        assert_eq!(out["noRepeat"], serde_json::json!(false));
+        assert_eq!(out["futureNote"], serde_json::json!(7), "ADR-007 still");
+        assert_eq!(out["kind"], serde_json::json!("namepicker"));
+    }
+
+    /// The reason `last_drawn` was KEPT rather than widened (R4 risk #3).
+    ///
+    /// This is the older build, spelled out as it actually is: a picker that
+    /// knows `noRepeat` and `lastDrawn` and buffers everything else in the
+    /// ADR-007 flatten map. Handed a config written by THIS build it must
+    /// (a) still find a name to show, and (b) hand `lastDrawnMany` /
+    /// `drawCount` straight back on its next save. Had the field been
+    /// widened to a list instead, the type error would have failed the whole
+    /// parse and `row_to_instance` would have answered `default_for` — the
+    /// exact loss this shape exists to avoid.
+    #[test]
+    fn an_older_build_shows_a_name_and_hands_the_new_keys_back() {
+        #[derive(Debug, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct OldNamePicker {
+            #[serde(default = "default_no_repeat")]
+            no_repeat: bool,
+            #[serde(default)]
+            last_drawn: Option<String>,
+            #[serde(flatten)]
+            extra: serde_json::Map<String, serde_json::Value>,
+        }
+
+        let mut fresh = WidgetConfig::NamePicker {
+            no_repeat: false,
+            last_drawn: Some("Kari".into()),
+            last_drawn_many: vec!["Kari".into(), "Ola".into(), "Per".into()],
+            draw_count: 3,
+            extra: Default::default(),
+        };
+        fresh.clamp();
+        let written = serde_json::to_string(&fresh).expect("serialises");
+
+        let old: OldNamePicker = serde_json::from_str(&written).expect("the old parse SUCCEEDS");
+        assert_eq!(
+            old.last_drawn.as_deref(),
+            Some("Kari"),
+            "the older board still shows the first name of the draw"
+        );
+        assert!(!old.no_repeat, "and its own settings are untouched");
+
+        let back = serde_json::to_value(&old).expect("the old build saves");
+        assert_eq!(
+            back["lastDrawnMany"],
+            serde_json::json!(["Kari", "Ola", "Per"])
+        );
+        assert_eq!(back["drawCount"], serde_json::json!(3));
+
+        // …and the round trip is closed: what the older build wrote parses
+        // back here with the whole draw intact.
+        let mut again: WidgetConfig =
+            serde_json::from_str(&back.to_string()).expect("this build re-reads it");
+        again.clamp();
+        assert_eq!(again, fresh);
+    }
+
+    #[test]
+    fn the_draw_count_and_the_drawn_list_are_clamped() {
+        let long = "æ".repeat(crate::members::NAME_MAX_CHARS + 50);
+        let mut cfg = WidgetConfig::NamePicker {
+            no_repeat: true,
+            last_drawn: Some(long.clone()),
+            last_drawn_many: (0..PICK_N_MAX + 4).map(|i| format!("Elev {i}")).collect(),
+            draw_count: 99,
+            extra: Default::default(),
+        };
+        cfg.clamp();
+        let WidgetConfig::NamePicker {
+            last_drawn,
+            last_drawn_many,
+            draw_count,
+            ..
+        } = &cfg
+        else {
+            panic!("still a picker");
+        };
+        assert_eq!(*draw_count, PICK_N_MAX);
+        assert_eq!(last_drawn_many.len(), PICK_N_MAX as usize);
+        assert_eq!(
+            last_drawn.as_ref().unwrap().chars().count(),
+            crate::members::NAME_MAX_CHARS
+        );
+
+        // Every entry in the list is capped too, not just the single name.
+        let mut cfg = WidgetConfig::NamePicker {
+            no_repeat: true,
+            last_drawn: None,
+            last_drawn_many: vec![long],
+            draw_count: 0,
+            extra: Default::default(),
+        };
+        cfg.clamp();
+        let WidgetConfig::NamePicker {
+            last_drawn_many,
+            draw_count,
+            ..
+        } = &cfg
+        else {
+            panic!("still a picker");
+        };
+        assert_eq!(*draw_count, PICK_N_MIN, "zero is not a draw");
+        assert_eq!(
+            last_drawn_many[0].chars().count(),
+            crate::members::NAME_MAX_CHARS
+        );
     }
 
     /// The internally-tagged deserializer leaves the tag in the flatten map;

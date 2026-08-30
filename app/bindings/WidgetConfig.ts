@@ -26,7 +26,17 @@ import type { WorkMode } from "./WorkMode";
  * An enum-valued field this build cannot spell now costs THAT FIELD ONLY —
  * it reads as the field's default, and everything beside it survives.
  */
-export type WidgetConfig = { "kind": "text", content: string, fontScale: number, align: TextAlign, } | { "kind": "clock", face: ClockFace, showSeconds: boolean, showDate: boolean, } | { "kind": "timer", durationMs: number, warnAtMs: number, soundOn: boolean, mode: TimerMode, } | { "kind": "namepicker", noRepeat: boolean, lastDrawn: string | null, } | { "kind": "groups", mode: GroupMode, n: number, 
+export type WidgetConfig = { "kind": "text", content: string, fontScale: number, align: TextAlign, } | { "kind": "clock", face: ClockFace, showSeconds: boolean, showDate: boolean, } | { "kind": "timer", durationMs: number, warnAtMs: number, soundOn: boolean, mode: TimerMode, } | { "kind": "namepicker", noRepeat: boolean, lastDrawn: string | null, 
+/**
+ * The whole draw, in draw order. Empty in a config written before
+ * multi-draw existed — the widget falls back to `last_drawn` there,
+ * which is what keeps promise 2 across the upgrade.
+ */
+lastDrawnMany: Array<string>, 
+/**
+ * How many names the next draw asks for, 1..=[`PICK_N_MAX`].
+ */
+drawCount: number, } | { "kind": "groups", mode: GroupMode, n: number, 
 /**
  * The last split, as NAMES — restored on boot so the class walks in
  * to the same groups the projector showed yesterday.

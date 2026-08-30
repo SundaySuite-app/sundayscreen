@@ -125,7 +125,13 @@
     "roundDone": "Everyone has been drawn — the next draw starts a new round",
     "reset": "New round",
     "noRepeat": "No repeats",
-    "allAway": "Everyone is away today"
+    "allAway": "Everyone is away today",
+    "increase": "One more name",
+    "decrease": "One fewer name",
+    "drewFewer": {
+      "one": "Drew {n} — that is everyone here today",
+      "other": "Drew {n} — that is everyone here today"
+    }
   },
   "groups": {
     "modeCount": "X groups",

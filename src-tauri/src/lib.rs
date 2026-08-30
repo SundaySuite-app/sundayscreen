@@ -261,7 +261,7 @@ pub fn run() {
             commands::planner::planner_agenda_set,
             commands::planner::planner_agenda_check,
             commands::planner::planner_notes_set,
-            commands::picker::picker_draw,
+            commands::picker::picker_draw_many,
             commands::picker::picker_reset,
             commands::picker::groups_split,
             commands::picker::attendance_set,

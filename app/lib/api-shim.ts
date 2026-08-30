@@ -24,7 +24,7 @@ import type { SlotSpec } from "../bindings/SlotSpec";
 import type { WeekSlot } from "../bindings/WeekSlot";
 import type { ActiveContext } from "../bindings/ActiveContext";
 import type { ClassSnapshot } from "../bindings/ClassSnapshot";
-import type { DrawResult } from "../bindings/DrawResult";
+import type { DrawManyResult } from "../bindings/DrawManyResult";
 import type { GroupMode } from "../bindings/GroupMode";
 import type { ImportReceipt } from "../bindings/ImportReceipt";
 import type { Member } from "../bindings/Member";
@@ -382,12 +382,19 @@ const api = {
   // clock, Rust validates the shape). It decides who is marked away — mint
   // it at CALL time, never at module load: a machine left on overnight would
   // otherwise deal yesterday's absences into today's lesson.
-  pickerDraw: async (
+  //
+  // ONE command for one name and for five: the draw is a single decision, so
+  // it is a single transaction. A frontend loop over a one-name command
+  // would draw the same pupil twice whenever the round ran dry mid-loop,
+  // swallow all but the last `reshuffled`, and leave the first names
+  // recorded when a later one failed.
+  pickerDrawMany: async (
     classId: string,
     noRepeat: boolean,
+    n: number,
     today: string,
-  ): Promise<DrawResult> =>
-    write<DrawResult>("picker_draw", { classId, noRepeat, today }),
+  ): Promise<DrawManyResult> =>
+    write<DrawManyResult>("picker_draw_many", { classId, noRepeat, n, today }),
 
   pickerReset: async (classId: string): Promise<void> =>
     write<void>("picker_reset", { classId }),

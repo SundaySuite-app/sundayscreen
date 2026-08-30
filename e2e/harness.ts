@@ -695,36 +695,68 @@ export async function installFixtures(
           // The draw is DETERMINISTIC here (first undrawn wins) — randomness is
           // the real backend's unit-tested job; journeys want stable answers.
           //
-          // The ATTENDANCE semantics are mirrored exactly, though: present-only
-          // pools and the two DISTINCT refusals. A fake that dealt absent pupils
-          // would hide the very seam this feature can break at.
-          picker_draw: (args?: Record<string, unknown>) => {
+          // Everything else is mirrored EXACTLY, and deliberately so: the
+          // present-only pool, the two DISTINCT refusals, the clamp on `n`,
+          // and — the one that matters most — the reshuffle-with-exclusion
+          // when a round runs dry in the MIDDLE of a multi-name draw. A
+          // kinder fake here would let an e2e assert a semantics the app does
+          // not actually have, which is the seam-bug shape this house has
+          // been bitten by before.
+          picker_draw_many: (args?: Record<string, unknown>) => {
             const db = load();
             db.drawn ??= {};
             const classId = String(arg(args, "classId"));
             const noRepeat = !!arg(args, "noRepeat");
+            const n = Math.min(
+              Math.max(
+                Number(arg(args, "n")) || limits.PICK_N_MIN,
+                limits.PICK_N_MIN,
+              ),
+              limits.PICK_N_MAX,
+            );
             const all = db.members[classId] ?? [];
             if (all.length === 0) throw new Error(ERR_NO_MEMBERS);
             const members = present(all, arg(args, "today"));
             if (members.length === 0) throw new Error(ERR_ALL_AWAY);
-            const drawnIds = db.drawn[classId] ?? [];
-            let pool = noRepeat
-              ? members.filter((m) => !drawnIds.includes(m.id))
-              : members;
+
+            const drawnIds = noRepeat ? (db.drawn[classId] ?? []) : [];
+            let pool = members.filter((m) => !drawnIds.includes(m.id));
             let reshuffled = false;
-            if (noRepeat && pool.length === 0) {
-              pool = members;
-              db.drawn[classId] = [];
+            if (pool.length === 0 && members.length > 0) {
+              pool = [...members];
               reshuffled = true;
             }
-            const member = pool[0];
+            const openingLen = pool.length;
+
+            const chosen: typeof members = [];
+            for (let i = 0; i < n; i++) {
+              if (pool.length === 0) {
+                // The round ran dry mid-draw. Restart it — WITHOUT the
+                // pupils this very draw already took.
+                const fresh = members.filter(
+                  (m) => !chosen.some((c) => c.id === m.id),
+                );
+                if (fresh.length === 0) break;
+                pool = fresh;
+                reshuffled = true;
+              }
+              const next = pool.shift();
+              if (!next) break;
+              chosen.push(next);
+            }
+
+            const roundSize = reshuffled ? members.length : openingLen;
             let remaining = members.length;
             if (noRepeat) {
-              db.drawn[classId] = [...(db.drawn[classId] ?? []), member.id];
-              remaining = pool.length - 1;
+              if (reshuffled) db.drawn[classId] = [];
+              db.drawn[classId] = [
+                ...(db.drawn[classId] ?? []),
+                ...chosen.map((m) => m.id),
+              ];
+              remaining = Math.max(roundSize - chosen.length, 0);
             }
             save(db);
-            return { member, remaining, reshuffled };
+            return { members: chosen, remaining, reshuffled };
           },
           picker_reset: (args?: Record<string, unknown>) => {
             const db = load();

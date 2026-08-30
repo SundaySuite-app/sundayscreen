@@ -4,6 +4,11 @@ Kort versjon: **alt bor på din maskin.**
 
 - Klasselister (elevnavn), skjermoppsett og innstillinger lagres KUN lokalt,
   i en SQLite-fil under appens datamappe på maskinen.
+- Samme datamappe inneholder også automatiske sikkerhetskopier
+  (`sundayscreen.backup-1.sqlite`, `-2`, `-3` — de tre siste vellykkede
+  oppstartene) og, om en database noensinne har blitt funnet ødelagt og
+  gjenskapt, de gamle filene under et `.corrupt-<tidsstempel>`-navn. Dette
+  er fortsatt bare filer på DIN maskin — ingen av dem sendes noe sted.
 - Merker du en elev som borte, husker appen kun DAGENS dato på den eleven, og
   overskriver den neste gang. Det bygges aldri opp en fraværshistorikk — appen
   vet hvem som er her akkurat i dag, og ingenting om i går. Fraværsføring hører

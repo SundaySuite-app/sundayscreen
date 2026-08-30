@@ -15,6 +15,12 @@
 - [ ] Apple-avtalen (PLA) er fortsatt ikke akseptert for team 784GN847G4 →
       notarisering forblir av til den er det (samme som Rec/Stage/Edit);
       linjene står klare i release.yml.
+- [ ] Windows Authenticode-sertifikat (~200–400 USD/år — eierbeslutning,
+      ingen tidsfrist). `.exe.sig` som ligger ved hver utgivelse er
+      updater-signaturen (minisign, verifisert av appen selv før install) —
+      IKKE Authenticode. De to er uavhengige: uten et ekte
+      Authenticode-sertifikat viser Windows SmartScreen «Ukjent utgiver»
+      permanent, uansett hvor mange ganger appen installeres.
 
 ## Før v1.0 (F10)
 
@@ -23,7 +29,11 @@ beta-ringen (renummerert fra v0.9.0-beta.1 — ADR-008). Nedlasting:
 <https://github.com/SundaySuite-app/sundayscreen/releases/tag/v0.1.0-beta.1>
 
 ⚠️ Installerte du 0.9.0-beta.1 i mellomtiden: avinstallér og installér
-0.1.0-beta.1 manuelt — updateren tilbyr aldri et lavere versjonsnummer.
+0.1.0-beta.1 manuelt — updateren tilbyr aldri et lavere versjonsnummer (det
+gjelder enhver nedgradering, ikke bare denne). Siden R4 er den manuelle
+reinstallasjonen TRYGG: en versjonskonflikt rører aldri databasen lenger,
+appen forklarer seg selv på skjermen i stedet for å boote tomt, og en
+sikkerhetskopi finnes uansett — se docs/ROLLBACK.md.
 
 - [ ] **Riggtest Runde 3 (nyest):** seks punkter i docs/REVISJON-R3.md
       §Riggtest-punkter. Viktigst: **se trafikklyset fra åtte meter og mys** —

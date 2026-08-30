@@ -21,6 +21,9 @@ er stille. Sjekken ved boot svelger ALLE feil — offline er normaltilstanden.
    — preflighter manifestet (plattformnøkler + versjon) og promoterer ringen.
    `--pause <ring>` er kill-switchen; `--status` viser tilstanden.
 
+Skal en publisert release trekkes helt tilbake (ikke bare pauses)? Det er
+ikke dette skriptet — se docs/ROLLBACK.md.
+
 Regler (håndhevet både i skriptet og Worker-side): `-beta.N`-tags kun til
 beta-ringen, rene tags kun til stable. Windows-beta er NSIS-only (MSI takler
 ikke `-beta.N` i ProductVersion).

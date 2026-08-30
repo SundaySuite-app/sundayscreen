@@ -10,7 +10,7 @@
 //! [`open_pool`]. Conventions: TEXT UUID v7 ids, REAL epoch-ms timestamps,
 //! foreign keys enforced.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ use sqlx::{Row, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// Epoch milliseconds as f64 — matches the REAL columns and the TS `number`.
 pub fn now_ms() -> f64 {
@@ -34,16 +34,133 @@ pub fn new_id() -> String {
     Uuid::now_v7().to_string()
 }
 
+/// The connection options every pool in the app is opened with. Kept as one
+/// function so a test that simulates another build's boot (the downgrade test)
+/// connects the same way the app does, instead of drifting from it.
+fn connect_options(db_path: &Path) -> SqliteConnectOptions {
+    SqliteConnectOptions::new()
+        .filename(db_path)
+        .create_if_missing(true)
+        .foreign_keys(true)
+        // Write-ahead logging: readers no longer block the writer, so a
+        // layout save during a name draw waits for nothing. It is a property
+        // of the FILE, not the connection — an existing database is converted
+        // on the first connect and stays converted.
+        //
+        // WAL adds `sundayscreen.sqlite-wal` and `-shm` next to the database:
+        // `quarantine_database` moves them with the main file, and
+        // `backup_rotating` uses `VACUUM INTO`, which reads through the WAL
+        // rather than around it. A plain file copy would not.
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        // Wait for a lock instead of failing instantly. This restates sqlx's
+        // own default rather than changing it — written down because the
+        // value matters to us: five seconds is the ceiling on how long a boot
+        // may hang before the user is told something is wrong, and the WAL
+        // conversion above is exactly the kind of exclusive-lock moment that
+        // needs a bounded wait.
+        .busy_timeout(std::time::Duration::from_secs(5))
+}
+
 /// Open (creating if needed) the SQLite database at `db_path` and run all
 /// pending migrations. Foreign keys are enforced.
 pub async fn open_pool(db_path: &Path) -> AppResult<SqlitePool> {
-    let opts = SqliteConnectOptions::new()
-        .filename(db_path)
-        .create_if_missing(true)
-        .foreign_keys(true);
-    let pool = SqlitePool::connect_with(opts).await?;
+    let pool = SqlitePool::connect_with(connect_options(db_path)).await?;
     sqlx::migrate!().run(&pool).await?;
     Ok(pool)
+}
+
+/// The file-name suffixes SQLite keeps alongside the main database file.
+/// `-wal`/`-shm` belong to WAL mode; `-journal` is what a rollback-journal
+/// database (every install made before WAL was turned on) leaves behind after
+/// a crash. Quarantine has to move them TOGETHER: a stale sidecar left next
+/// to a freshly created database is read as that database's own log.
+const SIDECAR_SUFFIXES: [&str; 4] = ["", "-wal", "-shm", "-journal"];
+
+/// Move a database that is positively corrupt out of the way — with its
+/// sidecars — so a fresh one can be created next to it. Returns the paths
+/// actually moved.
+///
+/// The bytes are kept (renamed, never deleted) so a rescue is still possible.
+/// The ONLY caller is the boot path, and only when
+/// [`crate::error::should_quarantine`] said yes: a migration failure must
+/// never reach this function.
+pub fn quarantine_database(db_path: &Path, stamp: u64) -> Vec<PathBuf> {
+    let mut moved = Vec::new();
+    let Some(name) = db_path.file_name().and_then(|n| n.to_str()) else {
+        tracing::error!(db = %db_path.display(), "cannot quarantine: unusable file name");
+        return moved;
+    };
+    for suffix in SIDECAR_SUFFIXES {
+        let src = db_path.with_file_name(format!("{name}{suffix}"));
+        if !src.exists() {
+            continue;
+        }
+        let dst = db_path.with_file_name(format!("{name}{suffix}.corrupt-{stamp}"));
+        match std::fs::rename(&src, &dst) {
+            Ok(()) => moved.push(dst),
+            Err(e) => tracing::error!(file = %src.display(), "quarantine rename failed: {e}"),
+        }
+    }
+    moved
+}
+
+// ── Rotating startup backup ──────────────────────────────────────────────────
+
+/// How many generations of startup backup are kept beside the database.
+pub const BACKUP_SLOTS: usize = 3;
+
+/// `sundayscreen.sqlite` + `"1"` → `sundayscreen.backup-1.sqlite`.
+fn backup_path(db_path: &Path, slot: &str) -> PathBuf {
+    let stem = db_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("sundayscreen");
+    db_path.with_file_name(format!("{stem}.backup-{slot}.sqlite"))
+}
+
+/// Copy the open database aside and rotate the older copies down: `backup-1`
+/// is always the newest, `backup-3` the oldest still kept.
+///
+/// `VACUUM INTO`, never `fs::copy`. A file copy is journal-unaware — under WAL
+/// the committed truth is spread across the `.sqlite` file and its `-wal`, so
+/// copying the main file alone can yield a torn or stale database. `VACUUM
+/// INTO` asks SQLite itself for a consistent snapshot, inside a read
+/// transaction, and writes a defragmented copy.
+///
+/// Meant to be called AFTER a successful [`open_pool`], so the copy always
+/// holds a fully migrated schema — never a half-migrated one.
+///
+/// The snapshot is written to a temp file first and only rotated in once it
+/// exists: a disk that fills up mid-vacuum must not cost us the copies we
+/// already had, and `backup-1` must never be a half-written file.
+pub async fn backup_rotating(pool: &SqlitePool, db_path: &Path) -> AppResult<PathBuf> {
+    let tmp = backup_path(db_path, "tmp");
+    let tmp_str = tmp.to_str().ok_or_else(|| {
+        AppError::Internal(format!("backup path is not valid UTF-8: {}", tmp.display()))
+    })?;
+    // VACUUM INTO refuses to write onto an existing file — clear whatever a
+    // crashed earlier run left behind.
+    if tmp.exists() {
+        std::fs::remove_file(&tmp)?;
+    }
+    sqlx::query("VACUUM INTO ?1")
+        .bind(tmp_str)
+        .execute(pool)
+        .await?;
+
+    let oldest = backup_path(db_path, &BACKUP_SLOTS.to_string());
+    if oldest.exists() {
+        std::fs::remove_file(&oldest)?;
+    }
+    for slot in (1..BACKUP_SLOTS).rev() {
+        let from = backup_path(db_path, &slot.to_string());
+        if from.exists() {
+            std::fs::rename(&from, backup_path(db_path, &(slot + 1).to_string()))?;
+        }
+    }
+    let newest = backup_path(db_path, "1");
+    std::fs::rename(&tmp, &newest)?;
+    Ok(newest)
 }
 
 // ── Settings (key/value bag) ─────────────────────────────────────────────────
@@ -621,6 +738,7 @@ pub async fn replace_widgets(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::{should_quarantine, AppError};
 
     /// A pool over a temp-dir database file, fully migrated.
     async fn temp_pool() -> (SqlitePool, tempfile::TempDir) {
@@ -1126,5 +1244,246 @@ mod tests {
             get_setting(&reopened, "settings").await.unwrap().as_deref(),
             Some("{\"keep\":true}")
         );
+    }
+
+    // ── The rotating startup backup (R4 spor 1.3) ────────────────────────────
+
+    /// The class names a backup file holds, read back through a real pool —
+    /// proof the copy is a working database, not just bytes on disk.
+    async fn classes_in(path: &Path) -> Vec<String> {
+        let pool = open_pool(path)
+            .await
+            .expect("the backup opens as a database");
+        let names = list_classes(&pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        pool.close().await;
+        names
+    }
+
+    #[tokio::test]
+    async fn the_startup_backup_rotates_and_stays_readable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sundayscreen.sqlite");
+        let pool = open_pool(&path).await.unwrap();
+
+        insert_class(&pool, "7B").await.unwrap();
+        let newest = backup_rotating(&pool, &path).await.unwrap();
+        assert_eq!(newest, dir.path().join("sundayscreen.backup-1.sqlite"));
+        assert_eq!(classes_in(&newest).await, vec!["7B".to_string()]);
+
+        insert_class(&pool, "8A").await.unwrap();
+        backup_rotating(&pool, &path).await.unwrap();
+        // Newest first, and the previous generation slid down one slot.
+        assert_eq!(
+            classes_in(&backup_path(&path, "1")).await,
+            vec!["7B".to_string(), "8A".to_string()]
+        );
+        assert_eq!(
+            classes_in(&backup_path(&path, "2")).await,
+            vec!["7B".to_string()],
+            "yesterday's copy is what a rescue actually needs"
+        );
+
+        // Four boots, three kept generations — and no temp file left behind.
+        insert_class(&pool, "9C").await.unwrap();
+        backup_rotating(&pool, &path).await.unwrap();
+        backup_rotating(&pool, &path).await.unwrap();
+        assert!(backup_path(&path, "3").exists());
+        assert!(!backup_path(&path, "4").exists(), "we keep exactly 3");
+        assert!(!backup_path(&path, "tmp").exists(), "temp file cleaned up");
+    }
+
+    #[tokio::test]
+    async fn a_backup_taken_under_wal_sees_uncheckpointed_writes() {
+        // The `fs::copy` trap in one test: under WAL a just-committed row may
+        // still live only in the `-wal` file. VACUUM INTO must see it.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sundayscreen.sqlite");
+        let pool = open_pool(&path).await.unwrap();
+        insert_class(&pool, "written just now").await.unwrap();
+
+        let newest = backup_rotating(&pool, &path).await.unwrap();
+        assert_eq!(
+            classes_in(&newest).await,
+            vec!["written just now".to_string()]
+        );
+    }
+
+    /// WAL is a property of the file, and it brings sidecars — the two facts
+    /// `quarantine_database` and `backup_rotating` are built around (R4 1.6).
+    #[tokio::test]
+    async fn the_database_runs_in_wal_mode_with_its_sidecars() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sundayscreen.sqlite");
+        let pool = open_pool(&path).await.unwrap();
+        insert_class(&pool, "7B").await.unwrap();
+
+        let mode: String = sqlx::query_scalar("PRAGMA journal_mode")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(mode, "wal");
+        assert!(
+            path.with_file_name("sundayscreen.sqlite-wal").exists(),
+            "the -wal sidecar quarantine has to move with the file"
+        );
+
+        // And a second open of the same file finds it already in WAL.
+        pool.close().await;
+        let reopened = open_pool(&path).await.unwrap();
+        let mode: String = sqlx::query_scalar("PRAGMA journal_mode")
+            .fetch_one(&reopened)
+            .await
+            .unwrap();
+        assert_eq!(mode, "wal");
+        assert_eq!(list_classes(&reopened).await.unwrap().len(), 1);
+    }
+
+    // ── The downgrade, as a permanent test (R4 spor 1.4) ─────────────────────
+
+    /// Every `.corrupt-*` file next to `db_path`, whatever the suffix.
+    fn quarantined_files(dir: &Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .expect("read_dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.contains(".corrupt-"))
+            .collect()
+    }
+
+    /// THE regression this round exists for. An older build resolves only
+    /// migrations 0001..0004; the file on disk already recorded 0005. sqlx
+    /// answers `VersionMissing(5)` — and until R4 the boot path read that as
+    /// "corrupt file", renamed the whole database and booted empty.
+    ///
+    /// The file must come through untouched, and the data with it.
+    #[tokio::test]
+    async fn a_downgrade_over_0005_must_not_touch_the_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("downgrade.sqlite");
+
+        // A fully migrated database with a teacher's work in it.
+        let class_id = {
+            let pool = open_pool(&path).await.expect("current build opens it");
+            let class = insert_class(&pool, "7B").await.unwrap();
+            replace_widgets(&pool, &default_scene_id(&class.id), &[widget_row("w1", 0)])
+                .await
+                .unwrap();
+            pool.close().await;
+            class.id
+        };
+
+        // Now the older build: same connection options, a migrator that only
+        // knows 0001..0004 (the house technique, see the 0003 test above).
+        let err: AppError = {
+            let pool = SqlitePool::connect_with(connect_options(&path))
+                .await
+                .expect("the file still opens — it is a healthy database");
+            let full = sqlx::migrate!();
+            let older = sqlx::migrate::Migrator {
+                migrations: full
+                    .migrations
+                    .iter()
+                    .filter(|m| m.version <= 4)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .into(),
+                ..full
+            };
+            let err = older
+                .run(&pool)
+                .await
+                .expect_err("an older build cannot resolve migration 0005");
+            pool.close().await;
+            err.into()
+        };
+
+        assert!(
+            matches!(
+                err,
+                AppError::Migration(sqlx::migrate::MigrateError::VersionMissing(5))
+            ),
+            "a downgrade reports the missing migration, not corruption: {err}"
+        );
+        assert!(
+            !should_quarantine(&err),
+            "a downgrade must NEVER be treated as a corrupt file"
+        );
+        assert!(
+            quarantined_files(dir.path()).is_empty(),
+            "nothing may have been renamed aside: {:?}",
+            quarantined_files(dir.path())
+        );
+
+        // And the proof that matters to the teacher: reinstall the newer
+        // build and the class and its screen are still there.
+        let pool = open_pool(&path)
+            .await
+            .expect("the newer build opens it again");
+        assert_eq!(list_classes(&pool).await.unwrap().len(), 1);
+        let rows = load_widget_rows(&pool, &default_scene_id(&class_id))
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1, "the layout survived the downgrade attempt");
+        assert_eq!(rows[0].id, "w1");
+    }
+
+    /// The other half of the decision, with a REAL sqlite error rather than a
+    /// synthesised one: a file that is not a database at all must still be
+    /// quarantined, or a genuinely broken install can never boot again.
+    #[tokio::test]
+    async fn a_file_that_is_not_a_database_is_quarantined() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("garbage.sqlite");
+        std::fs::write(&path, b"this is not an SQLite database, not even close").unwrap();
+
+        let err = open_pool(&path)
+            .await
+            .expect_err("garbage bytes cannot be opened");
+        assert!(
+            should_quarantine(&err),
+            "SQLITE_NOTADB is the one case that earns a quarantine: {err}"
+        );
+    }
+
+    /// WAL leaves `-wal`/`-shm` next to the database. If quarantine moved only
+    /// the main file, the freshly created database would inherit the old log.
+    #[test]
+    fn quarantine_moves_the_sidecar_files_too() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sundayscreen.sqlite");
+        for suffix in ["", "-wal", "-shm"] {
+            std::fs::write(
+                path.with_file_name(format!("sundayscreen.sqlite{suffix}")),
+                b"x",
+            )
+            .unwrap();
+        }
+
+        let moved = quarantine_database(&path, 1_700_000_000);
+        assert_eq!(
+            moved.len(),
+            3,
+            "main file plus both WAL sidecars: {moved:?}"
+        );
+        for suffix in ["", "-wal", "-shm"] {
+            assert!(
+                !path
+                    .with_file_name(format!("sundayscreen.sqlite{suffix}"))
+                    .exists(),
+                "sundayscreen.sqlite{suffix} must have been moved aside"
+            );
+            assert!(
+                path.with_file_name(format!("sundayscreen.sqlite{suffix}.corrupt-1700000000"))
+                    .exists(),
+                "the bytes are kept for rescue"
+            );
+        }
+        // Nothing to move is not an error — a first launch has no file yet.
+        assert!(quarantine_database(&path, 1).is_empty());
     }
 }

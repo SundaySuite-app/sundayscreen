@@ -58,33 +58,62 @@ pub fn run() {
                 format!("creating app data dir: {e}")
             })?;
             let db_path = db_dir.join("sundayscreen.sqlite");
-            // A corrupt database must not be an invisible crash on a machine
-            // with no terminal (F9-funn B#9): back the file up and boot
-            // fresh. Losing layouts is bad; an app that silently never opens
-            // again is worse — and the backup keeps the bytes for rescue.
+            // Two very different failures used to share one answer here, and
+            // the wrong one won: EVERY open error moved the file aside and
+            // booted empty. Installing an older build over a newer one
+            // (`MigrateError::VersionMissing`) therefore renamed classes,
+            // pupil names, the week plan and every screen to `.corrupt-<epoch>`
+            // without a word — product promise 3, broken by the recovery
+            // path itself.
+            //
+            // Now the file is only ever touched when it is PROVEN broken
+            // (`should_quarantine`: SQLITE_CORRUPT / SQLITE_NOTADB). That
+            // case keeps the old F9-funn-B#9 behaviour — a corrupt database
+            // must not be an invisible crash on a machine with no terminal,
+            // and the renamed bytes stay behind for rescue. Everything else
+            // leaves the file exactly as it is.
+            let mut recreated = false;
             let pool = match tauri::async_runtime::block_on(db::store::open_pool(&db_path)) {
                 Ok(pool) => pool,
-                Err(first_err) => {
+                Err(first_err) if error::should_quarantine(&first_err) => {
+                    recreated = true;
                     tracing::error!(
                         db = %db_path.display(),
-                        "opening database failed — backing it up and recreating: {first_err}"
+                        "the database file is corrupt — moving it aside and recreating: {first_err}"
                     );
                     let stamp = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_secs())
                         .unwrap_or(0);
-                    for suffix in ["", "-wal", "-shm"] {
-                        let src = db_dir.join(format!("sundayscreen.sqlite{suffix}"));
-                        if src.exists() {
-                            let dst =
-                                db_dir.join(format!("sundayscreen.sqlite{suffix}.corrupt-{stamp}"));
-                            let _ = std::fs::rename(&src, &dst);
-                        }
+                    for moved in db::store::quarantine_database(&db_path, stamp) {
+                        tracing::warn!(file = %moved.display(), "kept the old bytes for rescue");
                     }
                     tauri::async_runtime::block_on(db::store::open_pool(&db_path)).map_err(|e| {
                         tracing::error!("recreating database also failed: {e}");
                         format!("opening database: {e}")
                     })?
+                }
+                Err(other) => {
+                    // The file is intact. Refusing to start is the honest
+                    // answer: running on against a schema we do not
+                    // understand would corrupt it for the newer build too
+                    // (which is why `set_ignore_missing` is NOT the fix).
+                    //
+                    // TODO(spor 1.2): let `setup` SUCCEED with a
+                    // `BootFault { kind, db_path }` in managed state instead,
+                    // so the shell can say "this database was made by a newer
+                    // SundayScreen — install version X or newer. The file is
+                    // untouched: <path>." Until then this is a hard stop with
+                    // an accurate log line, not a silent data loss.
+                    tracing::error!(
+                        db = %db_path.display(),
+                        "opening the database failed — the file was NOT modified: {other}"
+                    );
+                    return Err(format!(
+                        "opening database {} failed (file left untouched): {other}",
+                        db_path.display()
+                    )
+                    .into());
                 }
             };
 
@@ -115,6 +144,21 @@ pub fn run() {
                     update::spawn_boot_check(app.handle().clone(), loaded.update_channel);
                 }
                 Err(e) => tracing::warn!("settings load for window restore failed: {e}"),
+            }
+
+            // A rotating copy of the database that just migrated cleanly, so
+            // there is something to go back to when the worst happens. Taken
+            // AFTER the window restore so the projector picture is not held up
+            // by it, and NEVER fatal: a full disk must not stop the lesson.
+            if recreated {
+                // The database we just made is empty. Rotating it in would
+                // push the last good copy one slot closer to the bin.
+                tracing::warn!("skipping the startup backup — this database was just recreated");
+            } else {
+                match tauri::async_runtime::block_on(db::store::backup_rotating(&pool, &db_path)) {
+                    Ok(path) => tracing::info!(backup = %path.display(), "startup backup written"),
+                    Err(e) => tracing::warn!("startup backup failed (continuing anyway): {e}"),
+                }
             }
 
             app.manage(db::Db::new(pool));

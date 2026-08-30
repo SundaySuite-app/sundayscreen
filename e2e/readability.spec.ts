@@ -247,3 +247,30 @@ test("a keyboard user can see where they are — in the app and in a panel", asy
   ).toBe(true);
   await expectOurRing("on the manage panel's name box");
 });
+
+test("an enlarged timer is readable from the back of the room", async ({
+  page,
+}) => {
+  // What «Vis stort» is FOR. On the ordinary board a timer card shares the
+  // wall with five other widgets and its digits land near 80 px — fine from
+  // the second row, guesswork from the eighth. This is the number that has to
+  // move, and it is the one thing a `transform: scale()` implementation would
+  // have left frozen at the small card's `cq` basis.
+  await installFixtures(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+  await addWidget(page, "Tidtaker");
+
+  const timer = page.locator('[data-widget-kind="timer"]');
+  const face = timer.getByText("05:00");
+  const before = await fontSizePx(face);
+
+  await timer.hover();
+  await timer.getByRole("button", { name: "Vis stort" }).click();
+
+  // A FLOOR, not a pin: the formula is `min(40cqmin, 20cqw)` against a
+  // 1232×612 box, which lands near 245 px today. 200 is where the claim
+  // stops being true.
+  await expect.poll(() => fontSizePx(face)).toBeGreaterThanOrEqual(200);
+  expect(await fontSizePx(face)).toBeGreaterThan(before * 2);
+});

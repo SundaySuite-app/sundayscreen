@@ -226,6 +226,61 @@ export function overlaps(a: NormRect, b: NormRect): boolean {
   );
 }
 
+// ── Focus mode ──────────────────────────────────────────────────────────────
+
+/** The air left around a focused card at the top and the sides. Deliberately
+ *  thin: the whole point of «Vis stort» is the back row, and every pixel of
+ *  margin is a pixel off the digits. The BOTTOM keeps `CHROME_CLEARANCE_PX`
+ *  instead, so the toolbar and the snackbar still have their band. */
+export const FOCUS_MARGIN_PX = 24;
+
+/** The layer a focused card sits on: ONE above `--z-widget-active` (40) in
+ *  app/styles/tokens.css, which is what the snap guides and the focus scrim
+ *  use — mirrored by hand for the same reason `CHROME_CLEARANCE_PX` is.
+ *  Never written to disk: focus is a VIEW, so `bringToFront` (which persists
+ *  z) is deliberately not involved. */
+export const FOCUS_Z = 41;
+
+/**
+ * The box a focused widget fills: the whole surface less a thin margin, and
+ * less the chrome band at the bottom.
+ *
+ * The signature is `(surface)` ALONE — deliberately NOT aspect-preserving.
+ * Honouring the card's own proportions would make «Vis stort» a no-op for
+ * exactly the shapes that need it most: a 1728×130 text banner goes from
+ * 34 px type to 37 px if its aspect is kept, and to 187 px if it is not.
+ * Widgets whose CONTENT has a fixed shape solve that themselves (the traffic
+ * light's housing carries its own `aspect-ratio`).
+ *
+ * On a surface too small for the full margins they shrink to fractions of
+ * themselves rather than going negative, so the rect is always inside the
+ * surface and always at least half of it. A zero-sized surface (pre-layout)
+ * yields a zero rect rather than NaN.
+ */
+export function focusRect(surface: Size): PxRect {
+  if (surface.w <= 0 || surface.h <= 0) return { x: 0, y: 0, w: 0, h: 0 };
+  // At most half of each axis may go to margins; past that they scale down
+  // TOGETHER, so the inset keeps its shape instead of collapsing one edge.
+  const kx = marginScale(FOCUS_MARGIN_PX * 2, surface.w);
+  const ky = marginScale(FOCUS_MARGIN_PX + CHROME_CLEARANCE_PX, surface.h);
+  const side = FOCUS_MARGIN_PX * kx;
+  const top = FOCUS_MARGIN_PX * ky;
+  const bottom = CHROME_CLEARANCE_PX * ky;
+  return {
+    x: side,
+    y: top,
+    w: surface.w - side * 2,
+    h: surface.h - top - bottom,
+  };
+}
+
+/** How much of a wanted margin budget fits along an axis while leaving the
+ *  card at least half of it. */
+function marginScale(wanted: number, available: number): number {
+  const budget = available / 2;
+  return wanted <= budget ? 1 : budget / wanted;
+}
+
 function clamp01(v: number, max: number): number {
   return Math.min(Math.max(v, 0), Math.max(max, 0));
 }

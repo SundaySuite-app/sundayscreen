@@ -6,7 +6,12 @@
 import { signal } from "@preact/signals";
 
 import type { WidgetInstance } from "../bindings/WidgetInstance";
-import { bringToFront, commitWidgetRect, widgets } from "../state/layout";
+import {
+  bringToFront,
+  commitWidgetRect,
+  focusedWidgetId,
+  widgets,
+} from "../state/layout";
 import { settings } from "../state/settings";
 import { surfaceSize } from "../state/surface";
 import { fromNorm, toNorm, type PxRect } from "./coords-core";
@@ -108,8 +113,22 @@ function beginTracking(
   window.addEventListener("pointercancel", onCancel);
 }
 
+/**
+ * Is the board frozen for arranging? While ONE card is shown large, no card
+ * moves or scales — not the big one, and not the cards under the scrim.
+ *
+ * FIRST in both entry points, ahead of `bringToFront`: raising is a WRITE (z
+ * is persisted), and the enlarged card's own rect is a view, not its stored
+ * one. Dragging it would collapse it back to normal size under the finger and
+ * commit a position the teacher never saw — promise 2, broken silently.
+ */
+function frozenForFocus(): boolean {
+  return focusedWidgetId.peek() !== null;
+}
+
 /** Pointerdown on the widget body: select, raise, and maybe drag. */
 export function startMove(e: PointerEvent, widget: WidgetInstance): void {
+  if (frozenForFocus()) return;
   if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
   bringToFront(widget.id);
   const surface = surfaceSize.peek();
@@ -129,6 +148,7 @@ export function startMove(e: PointerEvent, widget: WidgetInstance): void {
  *  set, same snap setting — scaling a card lines it up with its neighbours
  *  the way moving one does. */
 export function startResize(e: PointerEvent, widget: WidgetInstance): void {
+  if (frozenForFocus()) return;
   e.stopPropagation();
   bringToFront(widget.id);
   const surface = surfaceSize.peek();

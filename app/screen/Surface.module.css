@@ -60,6 +60,20 @@
   filter: brightness(0.94);
 }
 
+/* The scrim under an enlarged card: it dims the board AND it is the click
+   target that puts the card back. Same layer as the snap guides
+   (--z-widget-active, 40); the focused card is the one thing above it, at
+   FOCUS_Z (41) in coords-core.ts. */
+.focusScrim {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  background: var(--scrim);
+  cursor: pointer;
+  z-index: var(--z-widget-active);
+}
+
 .guideV,
 .guideH {
   position: absolute;

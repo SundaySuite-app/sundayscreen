@@ -179,6 +179,12 @@ export const ICON_PATHS = {
     "M8 4.5V9h7V4.5",
     "M7.5 19.5v-5.75h9v5.75",
   ],
+  // Two DIAGONAL arrows, deliberately not the four corner brackets above:
+  // `fullscreen`/`fullscreen-exit` mean the WINDOW, and «Vis stort» is one
+  // card growing inside a board that is already fullscreen. Two controls that
+  // do different things must not wear the same glyph on the same screen.
+  expand: ["M14.5 9.5L20 4", "M15 4h5v5", "M9.5 14.5L4 20", "M9 20H4v-5"],
+  collapse: ["M14 10L20 4", "M20 10h-6V4", "M10 14L4 20", "M4 14h6v6"],
   copy: [
     "M6 8h8a1.5 1.5 0 0 1 1.5 1.5v9.5A1.5 1.5 0 0 1 14 20.5H6A1.5 1.5 0 0 1 4.5 19V9.5A1.5 1.5 0 0 1 6 8z",
     "M8.5 8V5.5A1.5 1.5 0 0 1 10 4h8a1.5 1.5 0 0 1 1.5 1.5V14a1.5 1.5 0 0 1-1.5 1.5h-2.5",

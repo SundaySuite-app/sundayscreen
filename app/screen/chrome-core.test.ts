@@ -36,6 +36,7 @@ describe("escapeTarget", () => {
     addMenuOpen: true,
     menuOpen: true,
     overlayOpen: true,
+    focused: true,
     fullscreen: true,
   };
 
@@ -52,14 +53,43 @@ describe("escapeTarget", () => {
         menuOpen: false,
         overlayOpen: false,
       }),
+    ).toBe("focus");
+    expect(
+      escapeTarget({
+        ...all,
+        addMenuOpen: false,
+        menuOpen: false,
+        overlayOpen: false,
+        focused: false,
+      }),
     ).toBe("fullscreen");
     expect(
       escapeTarget({
         addMenuOpen: false,
         menuOpen: false,
         overlayOpen: false,
+        focused: false,
         fullscreen: false,
       }),
     ).toBeNull();
+  });
+
+  it("an enlarged card is dismissed AFTER any panel or menu over it", () => {
+    // The rung order is the whole decision: a menu drawn on top of the big
+    // card must go first, or Escape shrinks the card and leaves the menu.
+    expect(escapeTarget({ ...all, addMenuOpen: false, menuOpen: false })).toBe(
+      "overlay",
+    );
+    // …and it goes BEFORE fullscreen, so «Vis stort» never costs the
+    // projector view.
+    expect(
+      escapeTarget({
+        addMenuOpen: false,
+        menuOpen: false,
+        overlayOpen: false,
+        focused: true,
+        fullscreen: true,
+      }),
+    ).toBe("focus");
   });
 });

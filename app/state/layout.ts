@@ -14,7 +14,7 @@
 //   - a FAILED save is VISIBLE (funn U#1): the sticky `saveError` chip, not
 //     a console line.
 
-import { signal } from "@preact/signals";
+import { batch, computed, signal } from "@preact/signals";
 
 import type { Class } from "../bindings/Class";
 import type { ClassSnapshot } from "../bindings/ClassSnapshot";
@@ -33,6 +33,37 @@ export const activeClass = signal<Class | null>(null);
 export const activeScene = signal<Scene | null>(null);
 export const widgets = signal<WidgetInstance[]>([]);
 export const selectedWidgetId = signal<string | null>(null);
+
+/**
+ * The one widget shown LARGE, or null. A view state, never a stored one: the
+ * persister writes `widgets.peek()` and nothing else, so this field cannot
+ * reach the disk however the board is edited while it is set — which is what
+ * makes "a restart comes back to the ordinary board" true by construction
+ * rather than by remembering to clear it.
+ */
+export const focusedWidgetId = signal<string | null>(null);
+
+/** The focused widget itself, CROSSED against the live list. A stale id — a
+ *  card removed under it, a board swapped out from under it — can then
+ *  neither draw a card nor swallow an Escape press. */
+export const focusedWidget = computed(
+  () => widgets.value.find((w) => w.id === focusedWidgetId.value) ?? null,
+);
+
+/** Show one widget large. The selection is dropped in the same batch: the
+ *  cards UNDER the scrim would otherwise keep their gold border and their
+ *  revealed hover controls, visible through it and reachable by name. */
+export function focusWidget(id: string): void {
+  batch(() => {
+    focusedWidgetId.value = id;
+    selectedWidgetId.value = null;
+  });
+}
+
+/** Back to the board. */
+export function clearFocus(): void {
+  focusedWidgetId.value = null;
+}
 
 /** Did the stored layout actually LOAD? While false, every save is refused —
  *  a replace-all against a layout we never read would wipe it. */
@@ -59,6 +90,10 @@ export async function initLayout(): Promise<void> {
       activeSceneId: ctx.scene.id,
     };
   }
+  // BEFORE the try, so the failing branch clears it too: `initLayout` is also
+  // the deleteClass path, and a focus left standing across a re-boot of the
+  // store would point at a card from a board that no longer exists.
+  focusedWidgetId.value = null;
   try {
     widgets.value = await window.api.layoutLoad(ctx.scene.id);
     layoutHydrated.value = true;
@@ -82,6 +117,10 @@ export function adoptSnapshot(snap: ClassSnapshot): void {
   widgets.value = snap.widgets;
   layoutHydrated.value = true;
   selectedWidgetId.value = null;
+  // Every board swap runs through here — the class menu, the screen library,
+  // the planner's auto-switch and the suggestion banner alike — so this ONE
+  // line is what keeps a lesson from starting inside the last one's blow-up.
+  focusedWidgetId.value = null;
   clearUndo();
 }
 
@@ -169,6 +208,7 @@ export function removeWidget(id: string): void {
     .sort((a, b) => a.z - b.z)
     .map((w, i) => ({ ...w, z: i }));
   if (selectedWidgetId.value === id) selectedWidgetId.value = null;
+  if (focusedWidgetId.value === id) focusedWidgetId.value = null;
   if (removed) {
     undoSlot.value = { widget: removed };
     if (undoTimer !== undefined) clearTimeout(undoTimer);

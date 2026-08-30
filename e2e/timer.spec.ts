@@ -330,3 +330,33 @@ test("the clock shows the mocked time, digital and analog", async ({
   await clock.getByRole("button", { name: "Dato" }).click();
   await expect(clock.getByText(/august/)).toBeVisible();
 });
+
+test("a running countdown survives «Vis stort» and the way back", async ({
+  page,
+}) => {
+  // THE proof that focus is ONE swapped rect and not a re-mount. The running
+  // state lives in the widget's own `useState` plus a local `setInterval`
+  // (ADR-003: it is deliberately ephemeral), so a component that unmounted
+  // and came back would show the configured 05:00 again — in the middle of a
+  // test, in front of the class, with nothing anywhere going red.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+
+  await addWidget(page, "Tidtaker");
+  const timer = page.locator('[data-widget-kind="timer"]');
+  await timer.getByRole("button", { name: "Start" }).click();
+  await page.clock.fastForward(60_000);
+  await expect(timer.getByText("04:00")).toBeVisible();
+
+  await timer.hover();
+  await timer.getByRole("button", { name: "Vis stort" }).click();
+  await page.clock.fastForward(60_000);
+  await expect(timer.getByText("03:00")).toBeVisible();
+
+  // …and back to the board, still the same countdown running.
+  await timer.getByRole("button", { name: "Tilbake til tavla" }).click();
+  await page.clock.fastForward(60_000);
+  await expect(timer.getByText("02:00")).toBeVisible();
+  await expect(timer.getByRole("button", { name: "Pause" })).toBeVisible();
+});

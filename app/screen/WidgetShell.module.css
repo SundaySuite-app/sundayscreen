@@ -15,7 +15,8 @@
 }
 
 .delete,
-.duplicate {
+.duplicate,
+.focus {
   position: absolute;
   top: var(--sp-2);
   width: 36px;
@@ -51,18 +52,50 @@
   place-items: center;
 }
 
+/* Third from the corner: «Fjern», «Dupliser», then this one. */
+.focus {
+  right: calc(var(--sp-2) + 2 * 36px + 2 * var(--sp-1));
+  display: grid;
+  place-items: center;
+}
+
+/* A THIRD button changed the arithmetic of the top edge: 8 + 3×36 + 2×4 is
+   124 px, and the traffic light's floor is 120 px wide — the new control
+   would have been sliced by the card's own `overflow: hidden` at exactly the
+   size a teacher shrinks it to when it shares the board. On the narrowest
+   cards the gaps close instead; three buttons that touch read fine, a
+   button with its left third cut off does not. (`.shell` is
+   `container-type: size`, so this queries the card itself.) */
+@container (max-width: 130px) {
+  .duplicate {
+    right: calc(var(--sp-2) + 36px);
+  }
+
+  .focus {
+    right: calc(var(--sp-2) + 2 * 36px);
+  }
+}
+
 .shell:hover .delete,
 .shell:focus-within .delete,
 .shell[data-selected] .delete,
 .shell:hover .duplicate,
 .shell:focus-within .duplicate,
-.shell[data-selected] .duplicate {
+.shell[data-selected] .duplicate,
+.shell:hover .focus,
+.shell:focus-within .focus,
+.shell[data-selected] .focus {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
 }
 
-.duplicate:hover {
+/* No separate `[aria-pressed="true"]` tint: the GLYPH and the label are the
+   state (arrows out ⇄ arrows in, «Vis stort» ⇄ «Tilbake til tavla»), and the
+   gold on/off grammar is a whole-toolbar question deliberately left for after
+   the projector rig test. */
+.duplicate:hover,
+.focus:hover {
   color: var(--ink);
   border-color: var(--gold-line);
 }
@@ -76,6 +109,41 @@
 .shell[data-dragging] {
   box-shadow: var(--shadow-widget-active);
   cursor: grabbing;
+}
+
+/* ── «Vis stort» ─────────────────────────────────────────────────────────
+   The growth is animated, the return is not — and the rule lives on
+   `[data-focused]` for exactly that reason. On `.shell` it would also
+   animate `left/top/width/height` when the WINDOW changes size, and every
+   card on the board would trail the edge like a rubber band on a projector
+   swap. */
+.shell[data-focused] {
+  transition:
+    left var(--t-slow) ease,
+    top var(--t-slow) ease,
+    width var(--t-slow) ease,
+    height var(--t-slow) ease;
+}
+
+/* The app's first movement of anything, so it is also the first place this
+   has to be asked. */
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-focused] {
+    transition: none;
+  }
+}
+
+/* In focus the card is a VIEW, not an object being arranged: the three
+   controls that would move, copy or destroy it step aside.
+   `display: none` here on purpose, against the U#9 rule that hidden must
+   mean unhittable-but-present: the COMMAND does not exist in this mode, so
+   there is nothing for a screen reader to find. Delete is the one that
+   matters — `undoRemove` restores the instance, not the `TimerState`, so
+   deleting a card mid-countdown is unrecoverable however fast the Undo. */
+.shell[data-focused] .resize,
+.shell[data-focused] .delete,
+.shell[data-focused] .duplicate {
+  display: none;
 }
 
 /* The SE resize handle: a generous 44px touch target whose visible part is a
@@ -159,6 +227,10 @@
     visibility 120ms ease;
 }
 
+/* Unchanged in focus, deliberately: «ett minutt til» during a test IS the
+   focus scenario, so the row must still be one hover away — and pinning it
+   permanently visible would print a button bar across the enlarged content
+   the whole class is reading. */
 .shell:hover [data-settings-row],
 .shell:focus-within [data-settings-row],
 .shell[data-selected] [data-settings-row] {

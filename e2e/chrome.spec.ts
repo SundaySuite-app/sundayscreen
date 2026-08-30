@@ -377,3 +377,104 @@ test("the toolbar stays ONE row at 1280×800 with every control", async ({
   await expect(page.getByRole("button", { name: "Bytt skjerm" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Bytt klasse" })).toBeVisible();
 });
+
+// ── «Vis stort» against the chrome ──────────────────────────────────────────
+//
+// An enlarged card is a VIEW of one widget, not a mode the app is in. Three
+// consequences, and each of them is a thing that could quietly have gone the
+// other way.
+
+test("a class switch drops the enlarged card", async ({ page }) => {
+  // The twin of «a class switch drops the pending undo». Every board swap —
+  // the class menu, the screen library, the planner's own auto-switch —
+  // lands in `adoptSnapshot`, and the focus is cleared THERE, once.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+  await page.getByPlaceholder("Ny klasse …").fill("8A");
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
+  await page.getByRole("button", { name: "Lukk" }).click();
+  // Creating a class lands on it — come back to the board with the card on
+  // it, exactly like the undo twin does.
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "7B" }).click();
+
+  const text = page.locator('[data-widget-kind="text"]');
+  await expect(text).toHaveCount(1);
+  const small = (await text.boundingBox())!;
+  await text.hover();
+  await text.getByRole("button", { name: "Vis stort" }).click();
+  const scrim = page.getByRole("button", { name: "Avslutt stor visning" });
+  await expect(scrim).toBeVisible();
+
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "8A" }).click();
+  await expect(scrim).toHaveCount(0);
+
+  // And back: 7B's card is its ordinary self. This is the half that proves
+  // the ID was cleared rather than merely out of sight — a focus that only
+  // LOOKED gone because 8A's board was empty would blow the card up again
+  // the moment its own board came back.
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "7B" }).click();
+  await expect(text).toHaveCount(1);
+  await expect(scrim).toHaveCount(0);
+  await expect
+    .poll(async () => Math.round((await text.boundingBox())!.width))
+    .toBe(Math.round(small.width));
+});
+
+test("the toolbar still slips away while a card is enlarged", async ({
+  page,
+}) => {
+  // Deliberately NOT part of `anyOverlayOpen`: a test on the board is
+  // precisely when the teacher stops touching the machine, and the chrome
+  // must still get out of the class's way. The pointer stays up on the card,
+  // well clear of the bottom reveal zone.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  const text = page.locator('[data-widget-kind="text"]');
+  await text.hover();
+  await text.getByRole("button", { name: "Vis stort" }).click();
+  await expect(
+    page.getByRole("button", { name: "Avslutt stor visning" }),
+  ).toBeVisible();
+
+  await page.clock.fastForward(6_000);
+  await expect(page.locator("footer")).toHaveAttribute("data-hidden", "true");
+});
+
+test("an enlarged card does not survive a restart", async ({ page }) => {
+  // Promise 2 says a restart mid-lesson brings the board back EXACTLY — and
+  // «exactly» is the stored board, not a view someone left switched on. The
+  // signal is never persisted (the writer only ever sends `widgets`), so
+  // this holds by construction; the journey is what keeps it that way.
+  await installFixtures(page);
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  const text = page.locator('[data-widget-kind="text"]');
+  const small = (await text.boundingBox())!;
+  await text.hover();
+  await text.getByRole("button", { name: "Vis stort" }).click();
+  await expect(
+    page.getByRole("button", { name: "Avslutt stor visning" }),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Avslutt stor visning" }),
+  ).toHaveCount(0);
+  const restored = (await page
+    .locator('[data-widget-kind="text"]')
+    .boundingBox())!;
+  expect(Math.abs(restored.width - small.width)).toBeLessThan(2);
+  expect(Math.abs(restored.x - small.x)).toBeLessThan(2);
+});

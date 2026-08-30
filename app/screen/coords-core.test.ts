@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  FOCUS_MARGIN_PX,
+  FOCUS_Z,
   REFERENCE_SURFACE,
+  focusRect,
   fromNorm,
   offsetRect,
   overlaps,
@@ -200,6 +203,70 @@ describe("offsetRect", () => {
   it("an unmeasured surface returns the rect untouched, never NaN", () => {
     const src = { x: 0.2, y: 0.2, w: 0.3, h: 0.3 };
     expect(offsetRect(src, { w: 0, h: 0 })).toEqual(src);
+  });
+});
+
+describe("focusRect", () => {
+  it("fills the surface but for a thin margin — and the chrome band", () => {
+    // 24 px of air at the top and the sides; 84 px at the bottom, which is
+    // --chrome-clearance: the toolbar and the snackbar keep their room.
+    expect(focusRect({ w: 1280, h: 720 })).toEqual({
+      x: 24,
+      y: 24,
+      w: 1232,
+      h: 612,
+    });
+  });
+
+  it("is a function of the SURFACE alone — the same box for every card", () => {
+    // The signature is the decision: no card rect goes in, so nothing here
+    // can preserve a card's aspect. A 1728×130 banner that kept its own
+    // proportions would gain three pixels of type; the whole box gives it
+    // 187 px. Content with a fixed shape (the traffic light) centres itself.
+    const r = focusRect({ w: 1920, h: 1080 });
+    expect(r).toEqual({ x: 24, y: 24, w: 1872, h: 972 });
+    expect(r.w).toBe(1920 - 2 * FOCUS_MARGIN_PX);
+  });
+
+  it("shrinks the margins to fractions rather than going negative", () => {
+    // 24+84 does not fit in a 100 px tall surface. The card must still be a
+    // card: inside the surface, and at least half of each axis.
+    for (const surface of [
+      { w: 100, h: 100 },
+      { w: 40, h: 40 },
+      { w: 1, h: 1 },
+      { w: 1280, h: 90 },
+    ]) {
+      const r = focusRect(surface);
+      const label = JSON.stringify(surface);
+      expect(r.x, label).toBeGreaterThanOrEqual(0);
+      expect(r.y, label).toBeGreaterThanOrEqual(0);
+      expect(r.w, label).toBeGreaterThanOrEqual(surface.w / 2);
+      expect(r.h, label).toBeGreaterThanOrEqual(surface.h / 2);
+      expect(r.x + r.w, label).toBeLessThanOrEqual(surface.w);
+      expect(r.y + r.h, label).toBeLessThanOrEqual(surface.h);
+    }
+  });
+
+  it("keeps the bottom band bigger than the top one even when squeezed", () => {
+    // The two margins scale TOGETHER, so the shape of the inset survives: a
+    // squeezed rect that lost the bottom band first would sit under the
+    // toolbar on exactly the small projectors that need the mode most.
+    const surface = { w: 1024, h: 120 };
+    const r = focusRect(surface);
+    expect(surface.h - (r.y + r.h)).toBeGreaterThan(r.y);
+  });
+
+  it("an unmeasured surface yields a zero rect, never NaN", () => {
+    const r = focusRect({ w: 0, h: 0 });
+    expect(r).toEqual({ x: 0, y: 0, w: 0, h: 0 });
+    for (const v of Object.values(r)) expect(Number.isNaN(v)).toBe(false);
+  });
+
+  it("sits ONE layer above the snap guides", () => {
+    // --z-widget-active is 40 in tokens.css; the scrim uses that token and
+    // the focused card must be the one thing above it.
+    expect(FOCUS_Z).toBe(41);
   });
 });
 

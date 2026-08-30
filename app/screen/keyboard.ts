@@ -1,11 +1,17 @@
 // Global keys: F11 toggles fullscreen, Cmd/Ctrl+Z takes back the deletion the
 // snackbar is offering, and Escape peels ONE layer at a time (text field →
-// class menu → an overlay panel → fullscreen). Installed once from main.tsx.
+// class menu → an overlay panel → an enlarged widget → fullscreen). Installed
+// once from main.tsx.
 
 import { attendancePanelOpen } from "../state/attendance";
 import { classMenuOpen, managePanelOpen } from "../state/classes";
 import { addMenuOpen } from "../state/chrome";
-import { undoRemove, undoSlot } from "../state/layout";
+import {
+  clearFocus,
+  focusedWidget,
+  undoRemove,
+  undoSlot,
+} from "../state/layout";
 import { sceneMenuOpen } from "../state/scenes";
 import { plannerPanelOpen } from "../state/planner";
 import { chromeActivity, fullscreen, toggleFullscreen } from "../state/chrome";
@@ -56,21 +62,24 @@ export function installKeyboard(): () => void {
       return;
     }
 
-    switch (
-      escapeTarget({
-        addMenuOpen: addMenuOpen.peek(),
-        menuOpen: classMenuOpen.peek() || sceneMenuOpen.peek(),
-        // EVERY overlay belongs in here. An overlay the chain does not know
-        // about reads as "nothing is open", and Escape then leaves
-        // FULLSCREEN — the projector view goes away while the panel the
-        // teacher meant to dismiss stays on the board.
-        overlayOpen:
-          managePanelOpen.peek() ||
-          plannerPanelOpen.peek() ||
-          attendancePanelOpen.peek(),
-        fullscreen: fullscreen.peek(),
-      })
-    ) {
+    const layer = escapeTarget({
+      addMenuOpen: addMenuOpen.peek(),
+      menuOpen: classMenuOpen.peek() || sceneMenuOpen.peek(),
+      // EVERY overlay belongs in here. An overlay the chain does not know
+      // about reads as "nothing is open", and Escape then leaves
+      // FULLSCREEN — the projector view goes away while the panel the
+      // teacher meant to dismiss stays on the board.
+      overlayOpen:
+        managePanelOpen.peek() ||
+        plannerPanelOpen.peek() ||
+        attendancePanelOpen.peek(),
+      // The CROSSED signal, not the raw id: a focus id left pointing at a
+      // card that is no longer on the board would swallow this press and
+      // do nothing visible — Escape would simply stop working once.
+      focused: focusedWidget.peek() !== null,
+      fullscreen: fullscreen.peek(),
+    });
+    switch (layer) {
       case "addmenu":
         addMenuOpen.value = false;
         break;
@@ -83,11 +92,23 @@ export function installKeyboard(): () => void {
         plannerPanelOpen.value = false;
         attendancePanelOpen.value = false;
         break;
+      case "focus":
+        clearFocus();
+        break;
       case "fullscreen":
         void toggleFullscreen();
         break;
       case null:
         break;
+      default: {
+        // A rung added to `escapeTarget` and FORGOTTEN here would make Escape
+        // do nothing at all on that state — not even leave fullscreen — and
+        // nothing would go red. This line is what turns that silence into a
+        // compile error: `layer` only narrows to `never` while every member
+        // of `EscapeLayer` is handled above.
+        const _unhandled: never = layer;
+        break;
+      }
     }
   };
   window.addEventListener("keydown", onKeyDown);

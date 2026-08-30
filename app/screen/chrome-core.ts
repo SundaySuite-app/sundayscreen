@@ -30,19 +30,28 @@ export function shouldHide(
 }
 
 /** What one Escape press closes, in order: the add menu, then the class
- *  menu, then the manage panel, then fullscreen — one layer per press,
- *  innermost first. */
-export type EscapeLayer = "addmenu" | "menu" | "overlay" | "fullscreen" | null;
+ *  menu, then the manage panel, then the enlarged widget, then fullscreen —
+ *  one layer per press, innermost first.
+ *
+ *  «focus» sits between the overlays and fullscreen, not innermost. A menu or
+ *  a panel is drawn ON TOP of an enlarged card, so an inner focus rung would
+ *  shrink the card back while the thing the teacher was actually dismissing
+ *  stayed on the board — the mirror image of the missing-overlay bug that put
+ *  `overlayOpen` in this chain in the first place. */
+export type EscapeLayer =
+  "addmenu" | "menu" | "overlay" | "focus" | "fullscreen" | null;
 
 export function escapeTarget(state: {
   addMenuOpen: boolean;
   menuOpen: boolean;
   overlayOpen: boolean;
+  focused: boolean;
   fullscreen: boolean;
 }): EscapeLayer {
   if (state.addMenuOpen) return "addmenu";
   if (state.menuOpen) return "menu";
   if (state.overlayOpen) return "overlay";
+  if (state.focused) return "focus";
   if (state.fullscreen) return "fullscreen";
   return null;
 }

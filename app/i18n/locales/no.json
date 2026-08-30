@@ -43,12 +43,15 @@
     },
     "duplicate": "Dupliser",
     "resize": "Endre størrelse",
-    "noNames": "Legg inn navn i klassen først"
+    "noNames": "Legg inn navn i klassen først",
+    "focus": "Vis stort",
+    "focusExit": "Tilbake til tavla"
   },
   "board": {
     "emptyTitle": "Tavla er tom",
     "emptyHint": "Verktøylinja ligger langs nederste kant.",
-    "emptyAction": "Velg et verktøy"
+    "emptyAction": "Velg et verktøy",
+    "focusExit": "Avslutt stor visning"
   },
   "undo": {
     "removed": "Widget fjernet",
@@ -309,5 +312,35 @@
     "alignCenter": "Midtstilt",
     "smaller": "Mindre tekst",
     "bigger": "Større tekst"
+  },
+  "transfer": {
+    "title": "Flytt oppsettet",
+    "note": "Eksport lager én fil med klassene dine, elevnavnene i klartekst, skjermene og timeoppsettet — aldri fraværsmarkeringer. Import legger alltid til som NYE klasser og skjermer; ingenting du har fra før blir endret eller overskrevet. Timeoppsettet importeres bare hvis maskinen ikke har et fra før.",
+    "export": "Eksporter oppsett …",
+    "import": "Importer oppsett …",
+    "exportDialog": "Lagre oppsettet som fil",
+    "importDialog": "Velg en SundayScreen-oppsettfil",
+    "fileStem": "sundayscreen-oppsett",
+    "exported": "Lagret: {path}",
+    "imported": "Importert: {what}.",
+    "classCount": {
+      "one": "{n} klasse",
+      "other": "{n} klasser"
+    },
+    "sceneCount": {
+      "one": "{n} skjerm",
+      "other": "{n} skjermer"
+    },
+    "nameCount": {
+      "one": "{n} navn",
+      "other": "{n} navn"
+    },
+    "plannerImported": "Timeoppsettet og ukeplanen kom med.",
+    "plannerSkipped": "Timeoppsettet fantes fra før — ukeplanen ble ikke importert.",
+    "notOurFile": "Dette ser ikke ut som en SundayScreen-oppsettfil. Ingenting ble endret.",
+    "tooNew": "Fila er laget med SundayScreen {v}. Oppdater appen for å lese den. Ingenting ble endret.",
+    "tooNewUnknown": "Fila er laget med en nyere SundayScreen. Oppdater appen for å lese den. Ingenting ble endret.",
+    "tooLarge": "Fila er for stor til å importeres. Ingenting ble endret.",
+    "unreadable": "Fila kunne ikke leses. Ingenting ble endret."
   }
 }

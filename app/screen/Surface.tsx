@@ -7,7 +7,13 @@ import { useEffect, useRef } from "preact/hooks";
 
 import { t } from "../i18n";
 import { addMenuOpen, chromeActivity } from "../state/chrome";
-import { layoutHydrated, selectedWidgetId, widgets } from "../state/layout";
+import {
+  clearFocus,
+  focusedWidget,
+  layoutHydrated,
+  selectedWidgetId,
+  widgets,
+} from "../state/layout";
 import { surfaceSize } from "../state/surface";
 import styles from "./Surface.module.css";
 import { activeDrag } from "./useDrag";
@@ -66,6 +72,23 @@ export function Surface() {
             </button>
           </div>
         </div>
+      )}
+      {/* The way OUT of «Vis stort», and the reason the board behind reads as
+          set aside rather than merely covered.
+          It is a control, not decoration: with dragging frozen, a click on a
+          card behind the enlarged one does nothing at all, so without this
+          the only exits would be Escape and one small button. It lives INSIDE
+          `.surface` on purpose — a sibling of the shell would lie over the
+          toolbar, the suggestion banner and the undo snackbar, and the
+          teacher would lose the class switcher to a view mode. No transform
+          and no backdrop-filter: either one makes this a containing block for
+          the fixed chrome inside it. */}
+      {focusedWidget.value && (
+        <button
+          class={styles.focusScrim}
+          aria-label={t("board.focusExit")}
+          onClick={clearFocus}
+        />
       )}
       {widgets.value.map((w) => (
         <WidgetShell key={w.id} widget={w} />

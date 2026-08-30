@@ -43,12 +43,15 @@
     },
     "duplicate": "Duplicate",
     "resize": "Resize",
-    "noNames": "Add names to the class first"
+    "noNames": "Add names to the class first",
+    "focus": "Show large",
+    "focusExit": "Back to the board"
   },
   "board": {
     "emptyTitle": "The board is empty",
     "emptyHint": "The toolbar sits along the bottom edge.",
-    "emptyAction": "Choose a tool"
+    "emptyAction": "Choose a tool",
+    "focusExit": "Exit large view"
   },
   "undo": {
     "removed": "Widget removed",
@@ -309,5 +312,35 @@
     "alignCenter": "Centred",
     "smaller": "Smaller text",
     "bigger": "Larger text"
+  },
+  "transfer": {
+    "title": "Move the setup",
+    "note": "Exporting makes one file with your classes, the pupils' names in plain text, your screens and your school day — never absence marks. Importing always ADDS new classes and screens; nothing you already have is changed or overwritten. The school day is only imported when this machine has none.",
+    "export": "Export setup …",
+    "import": "Import setup …",
+    "exportDialog": "Save the setup as a file",
+    "importDialog": "Choose a SundayScreen setup file",
+    "fileStem": "sundayscreen-setup",
+    "exported": "Saved: {path}",
+    "imported": "Imported: {what}.",
+    "classCount": {
+      "one": "{n} class",
+      "other": "{n} classes"
+    },
+    "sceneCount": {
+      "one": "{n} screen",
+      "other": "{n} screens"
+    },
+    "nameCount": {
+      "one": "{n} name",
+      "other": "{n} names"
+    },
+    "plannerImported": "The school day and the week plan came along.",
+    "plannerSkipped": "This machine already had a school day — the week plan was not imported.",
+    "notOurFile": "This does not look like a SundayScreen setup file. Nothing was changed.",
+    "tooNew": "The file was made with SundayScreen {v}. Update the app to read it. Nothing was changed.",
+    "tooNewUnknown": "The file was made with a newer SundayScreen. Update the app to read it. Nothing was changed.",
+    "tooLarge": "The file is too large to import. Nothing was changed.",
+    "unreadable": "The file could not be read. Nothing was changed."
   }
 }

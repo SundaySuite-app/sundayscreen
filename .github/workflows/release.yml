@@ -83,6 +83,32 @@ jobs:
         shell: bash
         run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
 
+      # ── Releasenotatet, HENTET FRA REPOET ──────────────────────────────
+      # `releaseBody` blir `notes`-feltet i `latest.json`, og det feltet er
+      # teksten læreren leser når appen tilbyr en ny versjon. tauri-action
+      # skriver det ved BYGGETID, så en tekst noen skriver på GitHub etterpå
+      # nås aldri av manifestet — og dermed aldri av brukeren.
+      #
+      # Her var `releaseBody` ikke satt i det hele tatt, så feltet ble en TOM
+      # STRENG: v0.3.0-beta.1, v0.4.0-beta.1 og v0.4.0-beta.2 har alle
+      # `"notes": ""`. Ingen har noen gang fått vite hva en oppdatering
+      # inneholdt.
+      #
+      # Notatet bor derfor i `docs/release-notes/<tagg>.md` og blir reviewet i
+      # samme PR som versjonsbumpen. Skriptet AVBRYTER jobben hvis fila mangler,
+      # er tom eller står med en plassholder: en stille tilbakefall-tekst er
+      # nøyaktig feilen vi fikser, bare vanskeligere å oppdage.
+      #
+      # Den egentlige vakten ligger i CI, på PR, og stopper slippet før noen har
+      # begynt å bygge. Dette steget er den andre låsen på samme dør — den som
+      # fortsatt holder når en tagg dyttes fra en gammel commit.
+      - name: Hent releasenotatet for taggen
+        id: notat
+        shell: bash
+        run: node scripts/release-notes.mjs --emit "$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ github.ref_name }}
+
       - name: Build and draft the release
         uses: tauri-apps/tauri-action@v1
         env:
@@ -101,6 +127,12 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "SundayScreen ${{ github.ref_name }}"
+          # Fra `docs/release-notes/<tagg>.md`, ikke fra denne fila. Se steget
+          # over for hvorfor. Vil du ha den lange versjonen med bilder og
+          # tabeller på selve utgivelsessiden, rediger utgivelsesteksten på
+          # GitHub etterpå — `latest.json` er da allerede lastet opp med
+          # notatet herfra.
+          releaseBody: ${{ steps.notat.outputs.notes }}
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-beta.') }}
           # `uploadUpdaterJson`, NOT `includeUpdaterJson` — the wrong name is

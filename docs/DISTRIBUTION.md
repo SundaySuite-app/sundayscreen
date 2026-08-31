@@ -13,11 +13,15 @@ er stille. Sjekken ved boot svelger ALLE feil — offline er normaltilstanden.
 
 1. Bump versjon i **tre** filer (version-sync-gaten vokter): `package.json`,
    `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
-2. `git tag vX.Y.Z[-beta.N] && git push --tags` → release.yml bygger signert
+2. Skriv `docs/release-notes/vX.Y.Z[-beta.N].md` — teksten læreren leser når
+   appen tilbyr oppdateringen. Den blir `notes` i `latest.json`. CI avviser
+   PR-en uten den, og release.yml avviser taggen. Se
+   [release-notes/README.md](release-notes/README.md).
+3. `git tag vX.Y.Z[-beta.N] && git push --tags` → release.yml bygger signert
    macOS (aarch64 DMG) + Windows (NSIS; stable-tags også MSI) og lager et
    **utkast** til GitHub-release med `latest.json`.
-3. Publiser utkastet manuelt på GitHub.
-4. `node scripts/promote-release.mjs beta v0.9.0-beta.1` (eller `stable v1.0.0`)
+4. Publiser utkastet manuelt på GitHub.
+5. `node scripts/promote-release.mjs beta v0.9.0-beta.1` (eller `stable v1.0.0`)
    — preflighter manifestet (plattformnøkler + versjon) og promoterer ringen.
    `--pause <ring>` er kill-switchen; `--status` viser tilstanden.
 

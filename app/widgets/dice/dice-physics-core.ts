@@ -25,6 +25,32 @@
 // buys a clean invariant — speed never increases — which is the cheapest way
 // to catch a sign error in the bounce. Gravity would inject energy and make
 // "did the physics stay sane?" a much softer question.
+//
+// ## The die also TUMBLES now (R5)
+//
+// The flight above is unchanged — it is still the same four random draws per
+// die, in the same order, producing the same pixels. What is new is an
+// OPTIONAL orientation track alongside it: give the spec a `target` quaternion
+// per die and every frame gains a `q`, tumbling about a seeded axis and slerped
+// onto the target over the last `ORIENT_LANDING_FRACTION` of the flight.
+//
+// Two landing windows, on purpose. The orientation settles at 30 % and the
+// position at 25 %, so the class reads the NUMBER a beat before the die stops
+// moving — the eye wants the answer first and the choreography second.
+//
+// Without `target` there is no `q` on the frame at all and not one number in
+// this file changes: the tumble's own random draws are APPENDED to each die's
+// seed stream rather than inserted, so every existing trajectory survives to
+// the last bit.
+
+import {
+  qAxisAngle,
+  qMul,
+  qNormalize,
+  qSlerp,
+  QUAT_IDENTITY,
+  type Quat,
+} from "./die-orient-core";
 
 /** The box the dice must stay inside — the widget card's own content area. */
 export interface ThrowBox {
@@ -48,19 +74,31 @@ export interface ThrowSpec {
   durationMs: number;
   /** One seed per die. Same seeds ⇒ same throw, always. */
   seed: readonly number[];
+  /** Each die's orientation when the throw begins — where the teacher last
+   *  left it. Missing entries start square to the class. */
+  start?: readonly Quat[];
+  /** Each die's orientation at REST: the face the roll must end up showing.
+   *  Omit the whole field and the throw has no orientation track at all. */
+  target?: readonly Quat[];
 }
 
 export interface DieFrame {
   /** Offset from the die's resting slot, in px — straight into `translate()`. */
   dx: number;
   dy: number;
-  /** Rotation in degrees. */
+  /** Rotation in degrees. Since R5 this is the die's TUMBLE angle about its
+   *  seeded axis rather than a flat CSS spin — the same number, computed the
+   *  same way, read by the 3D renderer instead of a `rotate()`. */
   rot: number;
   /** The SIMULATION's speed at this step, px/ms — before the landing blend,
    *  which is steering rather than physics. Nothing renders it; it is here so
    *  the monotone-decay invariant is observable from a test instead of being
    *  an unverifiable claim in a comment. */
   speed: number;
+  /** The die's orientation this frame. ABSENT — not identity, not null —
+   *  when the spec carried no `target`, so a renderer that does not ask for
+   *  orientation cannot accidentally receive one. */
+  q?: Quat;
 }
 
 /** Frames are `THROW_STEP_MS` apart. Fixed, so a frame index is a pure
@@ -69,6 +107,15 @@ export const THROW_STEP_MS = 8;
 
 /** How much of the flight is spent being steered home. */
 export const LANDING_FRACTION = 0.25;
+
+/** How much of the flight is spent being steered onto the ANSWER — a separate
+ *  constant from `LANDING_FRACTION`, and deliberately larger. The number is
+ *  what the class is waiting for, so it settles first and the die coasts the
+ *  last quarter into its slot with the answer already readable. */
+export const ORIENT_LANDING_FRACTION = 0.3;
+
+/** Degrees → radians, for turning the tumble angle into a rotation. */
+const DEG = Math.PI / 180;
 
 /** Wall damping — a die comes off the edge with 70 % of the speed it hit at. */
 const RESTITUTION = 0.7;
@@ -218,7 +265,21 @@ export function simulateThrow(spec: ThrowSpec): DieFrame[][] {
     const speed = duration > 0 ? (span * spans) / duration : 0;
     const spinSign = rand() < 0.5 ? -1 : 1;
     const spinScale = 0.6 + rand() * 0.8;
+    // ⚠️ APPENDED, never inserted. The four draws above ARE the trajectory;
+    // taking the tumble axis before any of them would shift every die in
+    // every existing throw by a few pixels — a change no test would name and
+    // every screenshot would show. Two draws, uniform on the sphere.
+    const spinAzimuth = rand() * Math.PI * 2;
+    const spinZ = rand() * 2 - 1;
+    const spinRing = Math.sqrt(Math.max(0, 1 - spinZ * spinZ));
     return {
+      axis: {
+        x: spinRing * Math.cos(spinAzimuth),
+        y: spinRing * Math.sin(spinAzimuth),
+        z: spinZ,
+      },
+      start: spec.start?.[i] ?? QUAT_IDENTITY,
+      target: spec.target?.[i],
       x: {
         pos: clamp(home.x, travelX.min, travelX.max),
         vel: Math.cos(angle) * speed,
@@ -236,6 +297,7 @@ export function simulateThrow(spec: ThrowSpec): DieFrame[][] {
   });
 
   const landStart = 1 - LANDING_FRACTION;
+  const orientStart = 1 - ORIENT_LANDING_FRACTION;
   const frames: DieFrame[][] = [];
 
   for (let i = 0; i <= steps; i++) {
@@ -257,13 +319,31 @@ export function simulateThrow(spec: ThrowSpec): DieFrame[][] {
       progress <= landStart ? 0 : (progress - landStart) / LANDING_FRACTION,
     );
     const free = 1 - blend;
+    const homing = smoothstep(
+      progress <= orientStart
+        ? 0
+        : (progress - orientStart) / ORIENT_LANDING_FRACTION,
+    );
     frames.push(
-      dice.map((die) => ({
-        dx: zeroed((die.x.pos - die.home.x) * free),
-        dy: zeroed((die.y.pos - die.home.y) * free),
-        rot: zeroed(die.rot * free),
-        speed: Math.hypot(die.x.vel, die.y.vel),
-      })),
+      dice.map((die) => {
+        const frame: DieFrame = {
+          dx: zeroed((die.x.pos - die.home.x) * free),
+          dy: zeroed((die.y.pos - die.home.y) * free),
+          rot: zeroed(die.rot * free),
+          speed: Math.hypot(die.x.vel, die.y.vel),
+        };
+        if (die.target) {
+          // The tumble reads the RAW accumulator, not the frame's steered
+          // `rot`: the slerp has to leave from a place that is still turning
+          // forwards, or the die visibly un-tumbles and re-turns in the last
+          // quarter — two blends pulling on the same rotation.
+          const tumbled = qNormalize(
+            qMul(qAxisAngle(die.axis, die.rot * DEG), die.start),
+          );
+          frame.q = qSlerp(tumbled, die.target, homing);
+        }
+        return frame;
+      }),
     );
   }
 

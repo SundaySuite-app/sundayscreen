@@ -174,6 +174,18 @@ pub enum BootFaultKind {
     RescueFailed,
 }
 
+/// What [`BootFault::db_path`] holds when there is no path to name.
+///
+/// One failure reaches the boot before any path exists: the OS could not say
+/// where the app-data directory IS (`app_data_dir()`), so there is no file to
+/// point at. EMPTY rather than a marker word, and the choice is deliberate: a
+/// marker would be a SENTENCE the teacher reads, and sentences come from the
+/// catalogue the app is running, never compiled into the backend — the same
+/// rule `class_ensure_active(default_name)` and the transfer dialog titles
+/// follow. An empty path makes the shell's line end at its colon; a
+/// backend-authored "(unknown)" would end it in the wrong language.
+pub const UNKNOWN_DB_PATH: &str = "";
+
 /// What the boot has to tell the teacher, held in managed state and read once
 /// by the shell (`boot_fault`).
 ///
@@ -225,6 +237,20 @@ impl BootFault {
             kind,
             db_path: db_path.display().to_string(),
             schema_version,
+        }
+    }
+
+    /// The boot never got as far as an open: the app-data directory could not
+    /// be resolved or could not be created (`db::store::resolve_db_path`).
+    ///
+    /// [`BootFaultKind::Unreadable`] is exactly right for it — nothing about
+    /// the file's CONTENTS is claimed, and nothing was touched. Pass
+    /// `Path::new(`[`UNKNOWN_DB_PATH`]`)` when there is no path to name.
+    pub fn unreadable(db_path: &Path) -> Self {
+        BootFault {
+            kind: BootFaultKind::Unreadable,
+            db_path: db_path.display().to_string(),
+            schema_version: None,
         }
     }
 

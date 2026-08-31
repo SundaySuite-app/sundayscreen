@@ -126,6 +126,14 @@ annen maskin uten sky og uten konto. Valgene som er låst:
   nøkler ignorert. `SCHEMA_VERSION` flyttes KUN ved brudd, aldri for et nytt
   felt — suite-presedensen er SundaySyncs `SCHEMA_VERSION: u32 = 1`.
   `appVersion` er ren diagnostikk og aldri en beslutningsakse.
+- **Ett unntak fra toleransen: `TransferPeriod.kind`** (R4). Alle andre
+  enum-felter i krateret er `lenient` — en stavemåte vi ikke kan lese koster
+  feltet, ikke blobben. Her koster den HELE fila, med vilje: fallbacken er
+  `Lesson`, og en time er noe appen HANDLER på (banner, forslag om å bytte
+  klasse og skjerm, auto-bytte, pille på tavla). En fremtidig `"assembly"`
+  som stille blir en time, setter en oppdiktet time på projektoren foran en
+  klasse. Fraværende felt defaulter fortsatt — det er den gamle fila, ikke en
+  ny verdi.
 - **Import legger ALLTID til.** Nye klasser, nye skjermer, nye ider. Ingenting
   slås sammen, overskrives eller slettes, og `app_setting` røres ikke i det
   hele tatt — importerer man midt i en time, endrer ingenting seg på tavla.
@@ -138,29 +146,94 @@ annen maskin uten sky og uten konto. Valgene som er låst:
   stille DOBBEL skoledag (`resolve_day` itererer alle øktrader, og editorens
   `periods_overlap`-gate omgås av en direkte INSERT). Derfor importeres
   planleggerdelen KUN inn i en TOM `period`-tabell; ellers hoppes den over,
-  og kvitteringen SIER det.
+  og kvitteringen SIER det. R4 la til at ukeplanens EGEN integritet valideres
+  før første INSERT: en celle som peker på en økt fila ikke inneholder ble
+  hoppet over med `continue` mens kvitteringen sa «Importert», og to celler
+  på samme `(ukedag, økt)` traff `UNIQUE` midt i transaksjonen og ble en
+  generisk feil. Begge er samme faktum — fila kan ikke leses — og får samme
+  setning.
 - **Grensene avviser, de trunkerer ikke.** `members::reconcile` kapper en
   limt liste med `take(MEMBERS_MAX)` — riktig for et tekstfelt læreren ser,
   feil for en fil hun ikke ser. En import forbi en grense refuseres helt, før
-  første INSERT (løfte 4).
+  første INSERT (løfte 4). Fra R4 kjører SAMME `check_limits` på EKSPORTEN,
+  før fildialogen åpnes: eksporten validerte ingenting, og de to halvdelene
+  er ikke enige av seg selv (et ukeplan-fag har ingen lengdegate på vei inn,
+  men en grense på vei ut). Ellers skriver vi en fil som ser perfekt ut og
+  avvises HELT på den andre maskinen — der ingenting kan gjøres med det.
+  Bruddet reiser som `AppError::Validation` og navngir hva som er for langt;
+  `ImportOutcome` er en KVITTERING for en fil man har valgt, og her finnes
+  det ingen fil ennå.
 - **Widgets reiser som RÅ `kind`/`config`-strenger.** Toleransen for en ukjent
   `kind` bor i `commands/layout.rs`, ikke i lagret — så en fil fra en NYERE
   SundayScreen bærer sine ukjente kort uendret gjennom en import, akkurat som
   en nedgradering bærer dem gjennom en lagring (løfte 3). To separate felter,
   fordi kolonnen er to felter: slått sammen blir «ukjent kind» og «korrupt
   config» det samme.
-- **Fila inneholder ALDRI `absent_on`.** Betalt strukturelt, ikke ved å huske
-  å filtrere: `TransferClass::members` er `Vec<String>`. ADR-010 og PRIVACY.md
-  lover at det ikke finnes fraværshistorikk noe sted, og en fil på en
-  minnepenn ville vært nettopp det. Heller ikke `draw_state`,
+- **…men navnefeltene løftes ut av configen på vei ut** (R4,
+  `commands/transfer.rs::without_names`): `lastDrawn`/`lastDrawnMany` for
+  navnetrekkeren og `lastResult` for gruppegeneratoren. Kirurgi på JSON-en —
+  parse til `Value`, fjern nøyaktig de nøklene, la ALT annet stå ordrett,
+  inkludert felter en nyere versjon har skrevet. Ikke en rundtur gjennom
+  `WidgetConfig`, som ville mistet nettopp de ukjente kortene. Kinds vi ikke
+  kjenner røres ALDRI: vi vet ikke hvilke av deres felter som er navn, og å
+  gjette på en ukjent form er akkurat det denne funksjonen nekter å gjøre med
+  en kjent.
+- **Fila inneholder ALDRI `absent_on` — og ikke dagens gruppedeling.** Det
+  første er betalt strukturelt: `TransferClass::members` er `Vec<String>`, så
+  kolonnen har ingen steder å reise. Det andre er kirurgien over, og den er
+  minst like viktig: `lastResult` deles ut fra de TILSTEDEVÆRENDE (ADR-010),
+  så en lagret gruppeliste er en oppteling av hvem som var i rommet den
+  dagen — nøyaktig den fraværshistorikken ADR-010 og PRIVACY.md sier ikke
+  finnes noe sted, på en minnepenn. Heller ikke `draw_state`,
   `date_override`/`agenda_item`/`day_note` (dato-nøklede — fjorårets fil ville
   importert agendaer på passerte datoer, og de to siste har ingen UNIQUE) og
   ikke `app_setting`.
 - **Fildialogen er ren Rust.** `tauri-plugin-dialog` registreres i `lib.rs` og
   kalles bare fra `commands/transfer.rs`; all fil-I/O er `std::fs` i Rust.
   `capabilities/default.json` er URØRT — Tauris ACL styrer IPC FRA webviewet,
-  og webviewet ser aldri pluginen. Presedensen er appens egen updater, som
-  har gått i produksjon uten capability-oppføring av samme grunn. Ingen
-  npm-pakke; CSP-en er urørt. Dialogtitlene sendes INN som argumenter, slik
-  `class_ensure_active(default_name)` gjør: en setning læreren leser skal
-  aldri være kompilert inn i backenden.
+  og uten en `dialog:`-oppføring er pluginens tre kommandoer
+  (`plugin:dialog|open`, `|save`, `|message`) NEKTET derfra. Presedensen er
+  appens egen updater, som har gått i produksjon uten capability-oppføring av
+  samme grunn. Ingen npm-pakke; CSP-en er urørt. Dialogtitlene sendes INN som
+  argumenter, slik `class_ensure_active(default_name)` gjør: en setning
+  læreren leser skal aldri være kompilert inn i backenden.
+
+  Presisert i R4: formuleringen «webviewet ser aldri pluginen» var FEIL, selv
+  om konklusjonen holder. `tauri_plugin_dialog::init()` injiserer et
+  init-skript (`init-iife.js`) i hver side og BYTTER UT to globale:
+  `window.alert` → `plugin:dialog|message` og `window.confirm` →
+  `plugin:dialog|confirm`. Begge kall avvises — det første på ACL-en, det
+  andre fordi `confirm` ikke engang er en registrert kommando — men
+  utbyttingen er reell, og den har en felle verdt å skrive ned: den
+  injiserte `window.confirm` er ASYNK. Den returnerer et Promise, og et
+  Promise er alltid sant, så `if (confirm("…"))` ville tatt ja-grenen hver
+  gang. Appen kaller ingen av dem (verifisert i `app/`), og det er DET —
+  sammen med ACL-en — som holder sikkerhetsposituren, ikke at pluginen er
+  usynlig.
+
+## ADR-013 — Kvarantene er kun for BEVIST ødelagte filer, også når det koster oss (2026-08-31)
+
+`should_quarantine` (`src-tauri/src/error.rs`) flytter databasefila til side
+KUN ved primærkode `SQLITE_CORRUPT` (11) eller `SQLITE_NOTADB` (26), og de når
+oss gjennom to dører: `Database` og `Migration(Execute(..))` — sqlx' egen
+bokføring av `_sqlx_migrations`.
+
+Den tredje døra, `Migration(ExecuteMigration(err, n))` — «mens migrasjon n
+kjørte» — er BEVISST utelatt, også når feilen bærer en korrupsjonskode. Det er
+VÅR SQL som feiler; retten til å døpe om en lærers klasselister skal ikke
+følge av en bug hos oss.
+
+Konsekvensen skal stå skrevet, for den er ikke gratis: er fila FAKTISK ødelagt
+på en måte som først merkes mens en fremtidig migrasjon kjører, blir den aldri
+satt i kvarantene. Appen booter degradert med `schemaUpdateStopped` hver
+eneste gang, for alltid, til noen fjerner eller redder fila for hånd.
+Symptomet er «Skjemaoppdateringen stoppet. Fila er urørt: …» som ikke går bort
+av seg selv.
+
+I dag er dette utelukkende teoretisk: siste migrasjon er 0005, en fersk
+installasjon kjører alle på en tom fil, og en eksisterende installasjon har
+ingen ventende migrasjon å snuble i. Første gang vi legger til 0006 blir det
+en reell mulighet. Da er avveiningen fortsatt den samme — permanent degradert
+boot med en forklaring på skjermen er bedre enn en automatisk omdøping som
+kan ha vært vår egen feil — men den skal tas med åpne øyne, og
+utrullingssjekken av 0006 bør inkludere hva en ekte korrupt fil gjør.

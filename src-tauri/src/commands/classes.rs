@@ -5,7 +5,7 @@
 use serde::Serialize;
 use sqlx::SqlitePool;
 use sundayscreen_core::layout::WidgetInstance;
-use sundayscreen_core::members::reconcile;
+use sundayscreen_core::members::{reconcile, CLASS_NAME_MAX_CHARS};
 use tauri::State;
 use ts_rs::TS;
 
@@ -15,8 +15,10 @@ use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::settings;
 
-/// Longest class name we accept.
-const NAME_MAX_CHARS: usize = 80;
+// The longest class name we accept is `members::CLASS_NAME_MAX_CHARS` — one
+// declaration, shared with `commands::scenes` and with the transfer file's
+// own limit check. It was a local `80` here until R4, and the export could
+// therefore have written a name the import refused.
 
 /// Everything the frontend needs after a class/scene switch, read in one
 /// command so the swap is atomic from the shell's point of view.
@@ -45,7 +47,7 @@ fn valid_class_name(raw: &str) -> AppResult<String> {
     if name.is_empty() {
         return Err(AppError::Validation("class name must not be empty".into()));
     }
-    Ok(name.chars().take(NAME_MAX_CHARS).collect())
+    Ok(name.chars().take(CLASS_NAME_MAX_CHARS).collect())
 }
 
 pub(crate) async fn require_class(pool: &SqlitePool, id: &str) -> AppResult<ClassRow> {

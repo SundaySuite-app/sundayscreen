@@ -10,7 +10,13 @@ Kort versjon: **alt bor på din maskin.**
   (`sundayscreen.backup-1.sqlite`, `-2`, `-3` — de tre siste vellykkede
   oppstartene) og, om en database noensinne har blitt funnet ødelagt og
   gjenskapt, de gamle filene under et `.corrupt-<tidsstempel>`-navn. Dette
-  er fortsatt bare filer på DIN maskin — ingen av dem sendes noe sted.
+  er fortsatt bare filer på DIN maskin — ingen av dem sendes noe sted. Vær
+  klar over én ting: en sikkerhetskopi er et fullstendig øyeblikksbilde av
+  databasen slik den så ut da appen startet, og den inneholder derfor også
+  fraværsmarkeringene som sto den dagen. Løftet under om at det aldri bygges
+  opp fraværshistorikk gjelder databasen appen leser og skriver; kopiene er
+  øyeblikksbilder med kort levetid — tre generasjoner, så er den eldste
+  borte.
 - Merker du en elev som borte, husker appen kun DAGENS dato på den eleven, og
   overskriver den neste gang. Det bygges aldri opp en fraværshistorikk — appen
   vet hvem som er her akkurat i dag, og ingenting om i går. Fraværsføring hører
@@ -21,8 +27,12 @@ Kort versjon: **alt bor på din maskin.**
   skal ligge — appen sender den ingen steder, og det finnes ingen automatisk
   eller planlagt eksport. Fila inneholder **elevnavnene i klartekst**, så den
   hører hjemme samme sted som resten av klasselistene dine. Den inneholder
-  ALDRI fraværsmarkeringer (se punktet over) og heller ikke dagens
-  trekningsrunde, agendaer eller dagsnotater.
+  ALDRI fraværsmarkeringer (se punktet over), og heller ikke dagens
+  trekningsrunde, dagens gruppedeling, agendaer eller dagsnotater —
+  navnetrekkerens og gruppegeneratorens siste resultat fjernes fra fila når
+  den skrives. Gruppedelingen er nevnt for seg fordi den er den mest
+  følsomme av dem: den deles alltid ut fra de som er TIL STEDE, så en lagret
+  gruppeliste er i praksis en oppteling av hvem som var i rommet den dagen.
 - Appen sender ingen telemetri, ingen analyser, ingen krasjrapporter.
 - Det eneste nettkallet appen noensinne gjør, er å spørre
   `updates.sundaysuite.app` om det finnes en ny versjon. Kallet inneholder

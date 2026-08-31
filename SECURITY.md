@@ -132,9 +132,19 @@ So a future auditor doesn't have to re-derive these from scratch:
   `SQLITE_NOTADB`; every other open failure — including one an attacker
   might try to induce by feeding the app a malformed file — leaves the
   original bytes untouched and surfaces an on-screen explanation instead of
-  silently discarding data. A rotating backup
-  (`sundayscreen.backup-{1,2,3}.sqlite`, written via `VACUUM INTO` after
-  every clean boot) exists independently of that decision.
+  silently discarding data. What makes a downgrade survivable is that
+  untouched FILE — not the backups, which are taken after a successful
+  migration and therefore carry the newer schema.
+- **A rotating backup that cannot erase itself.**
+  `sundayscreen.backup-{1,2,3}.sqlite`, written via `VACUUM INTO` after a
+  clean boot, independently of the quarantine decision — with one rule:
+  **an empty database is never copied** (`backup_rotating`,
+  `src-tauri/src/db/store.rs`). Without it the boot after a quarantine
+  rotated the freshly emptied database into `backup-1` and pushed the last
+  good copy a slot closer to the bin; three restarts erased all three
+  generations, while the on-screen explanation still named `backup-1` to the
+  teacher as the file to go and get. The copies now stand until there is
+  real data to replace them with.
 
 ## Known gaps / accepted risks
 

@@ -4,11 +4,21 @@
 //!
 //! `tauri-plugin-dialog` is registered in `lib.rs` and used ONLY from here:
 //! the file dialog is opened in Rust, the bytes are read and written with
-//! `std::fs` in Rust, and the webview never learns that a filesystem exists.
-//! `capabilities/default.json` is therefore untouched — Tauri's ACL governs
-//! IPC FROM the webview, and nothing here is reachable that way. The
-//! precedent is the app's own updater, which has shipped in production with
-//! no capability entry for exactly the same reason.
+//! `std::fs` in Rust, and no path, byte or dialog result is ever handed to
+//! the webview. `capabilities/default.json` is untouched, which is what makes
+//! the plugin's own three commands (`plugin:dialog|open`, `|save`,
+//! `|message`) ACL-DENIED from the webview — Tauri's ACL governs IPC FROM the
+//! page, and nothing was granted. The precedent is the app's own updater,
+//! which has shipped in production with no capability entry for the same
+//! reason.
+//!
+//! What is NOT true — and was written here as though it were — is that the
+//! webview cannot see the plugin at all. `init()` injects a script into every
+//! page that REPLACES `window.alert` and `window.confirm` with IPC calls
+//! (`lib.rs` carries the details, including that the replaced `confirm` is
+//! async and therefore always truthy). The calls are rejected and this app
+//! calls neither global, so the posture holds — but it holds because of the
+//! ACL and because of what `app/` does, not because the plugin is invisible.
 //!
 //! The two dialogs' TITLES come in as arguments, translated by the frontend
 //! — the same rule `class_ensure_active(default_name)` follows: what a
@@ -19,8 +29,9 @@
 //!
 //! Classes, their name lists, every screen (class defaults included — those
 //! are deliberately absent from `list_global_scenes`) and every widget, plus
-//! the school day. Widgets travel as the RAW `kind`/`config` strings; see
-//! `sundayscreen_core::transfer` for what is deliberately NOT in the file
+//! the school day. Widgets travel as the RAW `kind`/`config` strings, minus
+//! the fields that hold pupil names rather than settings (`without_names`);
+//! see `sundayscreen_core::transfer` for what is deliberately NOT in the file
 //! (`absent_on` above all).
 //!
 //! One transaction so the file is a SNAPSHOT: read query-by-query off the
@@ -53,14 +64,79 @@ const FILTER_EXTENSIONS: [&str; 1] = ["json"];
 /// file with the right extension, not a limit on teaching.
 const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 
+/// Config fields that hold pupil NAMES rather than settings, per widget kind.
+///
+/// These are yesterday's screen, not a setup: `lastDrawn`/`lastDrawnMany` is
+/// the round the teacher drew in the last lesson, and `lastResult` is the
+/// group split — dealt from the PRESENT pool, which makes it a record of who
+/// was in the room that day. A file on a memory stick carrying that is the
+/// attendance history ADR-010 and PRIVACY.md promise does not exist anywhere,
+/// wearing a different name. It also has no value on the other machine: the
+/// names in it belong to a class list that has just been re-minted.
+///
+/// Camel-case, because these are the keys as SERIALISED (`rename_all_fields =
+/// "camelCase"` on `WidgetConfig`) — this operates on the stored JSON text,
+/// never on the Rust type.
+const NAME_BEARING_CONFIG_FIELDS: [(&str, &[&str]); 2] = [
+    ("namepicker", &["lastDrawn", "lastDrawnMany"]),
+    ("groups", &["lastResult"]),
+];
+
+/// Remove the name-bearing fields from ONE widget's stored config, and change
+/// nothing else about it.
+///
+/// Surgery on the JSON, deliberately not a round trip through `WidgetConfig`:
+/// a typed re-serialise would drop every kind this build does not know and
+/// re-write the ones it does in this build's shape, which is exactly the loss
+/// promise 3 exists to prevent. So: parse to a `Value`, remove those keys by
+/// name, leave every other key — including fields a NEWER SundayScreen wrote
+/// (ADR-007's `extra`) — byte-for-byte as they were.
+///
+/// A kind not in [`NAME_BEARING_CONFIG_FIELDS`] is never touched at all. That
+/// includes kinds from the future: we cannot know which of their fields hold
+/// names, and guessing at an unknown shape would be the very thing this
+/// function refuses to do to a known one.
+///
+/// The one case with no good answer is a KNOWN name-bearing kind whose config
+/// is not a JSON object — hand-edited, since everything this app writes is.
+/// It is answered with the bare `{"kind":"…"}` marker: there is nothing in an
+/// unparseable blob for the other machine to restore (`row_to_instance`
+/// answers `default_for(kind)` for it anyway), and returning it verbatim
+/// would be a leak through the one door this function exists to close.
+fn without_names(kind: &str, config: String) -> String {
+    let Some((_, fields)) = NAME_BEARING_CONFIG_FIELDS.iter().find(|(k, _)| *k == kind) else {
+        return config;
+    };
+    let stripped = serde_json::from_str::<serde_json::Value>(&config)
+        .ok()
+        .and_then(|mut value| {
+            let obj = value.as_object_mut()?;
+            for field in *fields {
+                obj.remove(*field);
+            }
+            serde_json::to_string(&value).ok()
+        });
+    match stripped {
+        Some(json) => json,
+        None => {
+            tracing::warn!(
+                kind,
+                "a stored widget config could not be read as JSON — exporting the kind alone"
+            );
+            format!(r#"{{"kind":"{kind}"}}"#)
+        }
+    }
+}
+
 fn to_transfer_widgets(rows: Vec<WidgetRow>) -> Vec<TransferWidget> {
     rows.into_iter()
         .map(|r| TransferWidget {
-            // RAW, both of them. Deserializing to `WidgetConfig` here would
-            // drop every widget kind this build does not know — the exact
-            // data promise 3 exists to protect.
+            // RAW, both of them — apart from the name-bearing fields
+            // `without_names` lifts out. Deserializing to `WidgetConfig` here
+            // would drop every widget kind this build does not know, which is
+            // the exact data promise 3 exists to protect.
+            config: without_names(&r.kind, r.config),
             kind: r.kind,
-            config: r.config,
             x: r.x,
             y: r.y,
             w: r.w,
@@ -70,8 +146,25 @@ fn to_transfer_widgets(rows: Vec<WidgetRow>) -> Vec<TransferWidget> {
         .collect()
 }
 
-/// Read the whole setup into a transfer payload. Public for the tests and
-/// for the command below; there is no other caller.
+/// Read the whole setup into a transfer payload — and refuse to build one the
+/// IMPORT would throw away.
+///
+/// The export validated nothing until R4, and the two halves do not agree by
+/// construction: a week plan's `subject` has no length gate on the way in
+/// (`planner_slot_set` writes what it is given), while `check_limits` caps it
+/// at `LABEL_MAX_CHARS`. One long subject therefore produced a file that
+/// looked perfectly written, travelled to the other machine, and was refused
+/// WHOLE there — the teacher losing her whole setup to a receipt about a size
+/// limit, on the machine where nothing could be done about it.
+///
+/// So the same `check_limits` runs HERE, before the dialog is even opened,
+/// and a breach REJECTS (promise 4: a write that cannot be done in full does
+/// not pretend). The refusal travels as [`AppError::Validation`] rather than
+/// through the `ImportOutcome` vocabulary: that enum is an import RECEIPT, an
+/// answer to "what happened to the file I picked", and there is no file yet.
+/// The message carries [`transfer::LimitBreach`]'s own text, which names WHAT
+/// was too long and by how much — the export's counterpart to naming the
+/// path.
 pub async fn export_payload(
     pool: &SqlitePool,
     app_version: &str,
@@ -139,6 +232,13 @@ pub async fn export_payload(
         .collect();
 
     tx.commit().await?;
+
+    if let Err(breach) = transfer::check_limits(&file) {
+        tracing::warn!("setup export refused — {breach}");
+        return Err(AppError::Validation(format!(
+            "the setup cannot be written to a file — {breach}"
+        )));
+    }
     Ok(file)
 }
 
@@ -401,6 +501,146 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_export_never_carries_the_days_draw_or_group_split() {
+        // The absence mark's sister leak, and the worse one: `lastResult` is
+        // dealt from the PRESENT pool, so a group split IS a record of who was
+        // in the room that day — the attendance history ADR-010 says exists
+        // nowhere, on a memory stick. `lastDrawn`/`lastDrawnMany` are the same
+        // kind of thing at smaller scale.
+        let (pool, _d) = temp_pool().await;
+        let class = store::insert_class(&pool, "7B").await.unwrap();
+        let scene = store::default_scene_id(&class.id);
+        store::replace_widgets(
+            &pool,
+            &scene,
+            &[
+                raw_widget(
+                    "w1",
+                    "namepicker",
+                    r#"{"kind":"namepicker","noRepeat":false,"lastDrawn":"Kari",
+                        "lastDrawnMany":["Kari","Ola"],"drawCount":2,"futureField":7}"#,
+                    0,
+                ),
+                raw_widget(
+                    "w2",
+                    "groups",
+                    r#"{"kind":"groups","mode":"count","n":3,
+                        "lastResult":[["Nils"],["Ida","Sara"]],"futureField":"keep"}"#,
+                    1,
+                ),
+                // A kind from a NEWER build, carrying something that LOOKS
+                // like the same field. We cannot know its shape, so we do not
+                // touch it — promise 3 outranks a guess.
+                raw_widget(
+                    "w3",
+                    "seatingplan",
+                    r#"{"kind":"seatingplan","lastResult":["Petter"]}"#,
+                    2,
+                ),
+            ],
+        )
+        .await
+        .unwrap();
+
+        let payload = payload_of(&pool).await;
+        let json = serde_json::to_string(&payload).unwrap();
+        for name in ["Kari", "Ola", "Nils", "Ida", "Sara"] {
+            assert!(!json.contains(name), "{name} must not travel: {json}");
+        }
+        for gone in ["lastDrawn", "lastDrawnMany"] {
+            assert!(!json.contains(gone), "the field goes with it: {json}");
+        }
+
+        // …and NOTHING else moved. The settings around the names survive, and
+        // so does a field this build has never heard of (ADR-007's `extra`).
+        let widgets = &payload.classes[0].default_scene.as_ref().unwrap().widgets;
+        let picker: serde_json::Value = serde_json::from_str(&widgets[0].config).unwrap();
+        assert_eq!(picker["noRepeat"], serde_json::json!(false));
+        assert_eq!(picker["drawCount"], serde_json::json!(2));
+        assert_eq!(picker["futureField"], serde_json::json!(7));
+        assert_eq!(picker["kind"], serde_json::json!("namepicker"));
+
+        let groups: serde_json::Value = serde_json::from_str(&widgets[1].config).unwrap();
+        assert_eq!(groups["n"], serde_json::json!(3));
+        assert_eq!(groups["mode"], serde_json::json!("count"));
+        assert_eq!(groups["futureField"], serde_json::json!("keep"));
+        assert!(groups.get("lastResult").is_none());
+
+        // The unknown kind is byte-for-byte what was stored.
+        assert_eq!(
+            widgets[2].config, r#"{"kind":"seatingplan","lastResult":["Petter"]}"#,
+            "an unknown kind is never operated on"
+        );
+        assert!(
+            json.contains("Petter"),
+            "…which means its content travels, exactly as promise 3 requires"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_config_that_is_not_json_leaks_nothing_on_the_way_out() {
+        // Only reachable by hand-editing the database — everything the app
+        // writes is serde output. It must still not be a hole.
+        let (pool, _d) = temp_pool().await;
+        let class = store::insert_class(&pool, "7B").await.unwrap();
+        store::replace_widgets(
+            &pool,
+            &store::default_scene_id(&class.id),
+            &[raw_widget(
+                "w1",
+                "namepicker",
+                "not json at all — Kari, Ola",
+                0,
+            )],
+        )
+        .await
+        .unwrap();
+
+        let json = serde_json::to_string(&payload_of(&pool).await).unwrap();
+        assert!(!json.contains("Kari"), "no leak through the broken door");
+        assert!(json.contains("namepicker"), "the kind still travels");
+    }
+
+    #[tokio::test]
+    async fn an_export_the_import_would_refuse_fails_here_instead() {
+        // `planner_slot_set` has no length gate on `subject`; `check_limits`
+        // caps it at LABEL_MAX_CHARS. Without the export-side check the file
+        // is written happily and refused WHOLE on the other machine — where
+        // nothing can be done about it.
+        let (pool, _d) = temp_pool().await;
+        let periods = planner_cmd::periods_set_for(
+            &pool,
+            vec![planner_cmd::PeriodSpec {
+                id: None,
+                label: "1. time".into(),
+                start_min: 480,
+                end_min: 525,
+                kind: PeriodKind::Lesson,
+            }],
+        )
+        .await
+        .unwrap();
+        let too_long = "æ".repeat(sundayscreen_core::schedule::LABEL_MAX_CHARS + 1);
+        pstore::set_slot(
+            &pool,
+            1,
+            &periods[0].id,
+            Some((&None, too_long.as_str(), &None)),
+        )
+        .await
+        .unwrap();
+
+        let err = export_payload(&pool, "0.4.0-test", 0.0)
+            .await
+            .expect_err("a file the other machine would throw away is not written");
+        assert_eq!(err.code(), "validation");
+        assert!(
+            err.to_string().contains("slotSubject"),
+            "the refusal names what is too long: {err}"
+        );
+    }
+
+    #[tokio::test]
     async fn a_round_trip_into_an_empty_database_reproduces_everything() {
         let (source, _ds) = temp_pool().await;
         seed_source(&source).await;
@@ -656,6 +896,74 @@ mod tests {
 
         assert_eq!(count(&target, "class").await, 0);
         assert_eq!(count(&target, "period").await, 0);
+    }
+
+    #[tokio::test]
+    async fn a_week_slot_pointing_at_a_period_the_file_lacks_is_refused() {
+        // It used to be `continue`d over in `insert_week` — and the receipt
+        // still said «Importert», with the class count that DID land. A
+        // Tuesday that never arrived must not be discovered on Tuesday.
+        let (target, _dt) = temp_pool().await;
+        let mut file = TransferFile::new("t", 0.0);
+        file.classes.push(TransferClass {
+            id: "c1".into(),
+            name: "7B".into(),
+            members: vec!["Kari".into()],
+            default_scene: None,
+        });
+        file.planner.periods.push(transfer::TransferPeriod {
+            id: "p1".into(),
+            label: "1. time".into(),
+            start_min: 480,
+            end_min: 525,
+            kind: PeriodKind::Lesson,
+        });
+        file.planner.week.push(TransferSlot {
+            weekday: 2,
+            period_id: "p-gone".into(),
+            class_id: Some("c1".into()),
+            subject: "Matte".into(),
+            scene_id: None,
+        });
+
+        let receipt = import::import_setup(&target, &file).await.unwrap();
+        assert_eq!(receipt.outcome, ImportOutcome::Unreadable);
+        assert_eq!(receipt.classes, 0);
+        assert_eq!(
+            count(&target, "class").await,
+            0,
+            "a refusal writes nothing at all — not even the half that was fine"
+        );
+    }
+
+    #[tokio::test]
+    async fn two_week_slots_in_the_same_cell_are_refused_before_the_unique_fires() {
+        // `UNIQUE (weekday, period_id)` would have caught this mid-transaction
+        // and left the command answering with a raw database error, in a
+        // vocabulary that is otherwise all receipts.
+        let (target, _dt) = temp_pool().await;
+        let mut file = TransferFile::new("t", 0.0);
+        file.planner.periods.push(transfer::TransferPeriod {
+            id: "p1".into(),
+            label: "1. time".into(),
+            start_min: 480,
+            end_min: 525,
+            kind: PeriodKind::Lesson,
+        });
+        for subject in ["Matte", "Norsk"] {
+            file.planner.week.push(TransferSlot {
+                weekday: 2,
+                period_id: "p1".into(),
+                class_id: None,
+                subject: subject.into(),
+                scene_id: None,
+            });
+        }
+
+        let receipt = import::import_setup(&target, &file).await.unwrap();
+        assert_eq!(receipt.outcome, ImportOutcome::Unreadable);
+        assert_eq!(count(&target, "period").await, 0);
+        assert_eq!(count(&target, "week_slot").await, 0);
     }
 
     #[tokio::test]

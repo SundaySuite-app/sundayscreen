@@ -36,5 +36,6 @@ export const LIMITS = {
 
   // crates/sundayscreen-core/src/members.rs
   NAME_MAX_CHARS: 120,
+  CLASS_NAME_MAX_CHARS: 80,
   MEMBERS_MAX: 1000,
 } as const;

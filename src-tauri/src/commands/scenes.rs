@@ -5,6 +5,7 @@
 //! part of the library: it cannot be renamed, listed or deleted here.
 
 use sqlx::SqlitePool;
+use sundayscreen_core::members::CLASS_NAME_MAX_CHARS;
 use tauri::State;
 
 use crate::commands::classes::{lesson_switch_for, ClassSnapshot};
@@ -13,15 +14,16 @@ use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::settings;
 
-/// Longest scene name we accept.
-const NAME_MAX_CHARS: usize = 80;
+// A screen's name is bounded by the same `members::CLASS_NAME_MAX_CHARS` a
+// class name is — `transfer::check_limits` checks both against that ONE
+// constant, so a local copy here could only ever drift into disagreement.
 
 fn valid_scene_name(raw: &str) -> AppResult<String> {
     let name = raw.trim();
     if name.is_empty() {
         return Err(AppError::Validation("scene name must not be empty".into()));
     }
-    Ok(name.chars().take(NAME_MAX_CHARS).collect())
+    Ok(name.chars().take(CLASS_NAME_MAX_CHARS).collect())
 }
 
 async fn require_scene(pool: &SqlitePool, id: &str) -> AppResult<SceneRow> {

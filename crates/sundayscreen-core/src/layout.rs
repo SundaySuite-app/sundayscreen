@@ -126,12 +126,44 @@ fn default_group_n() -> u32 {
 fn default_dice_count() -> u32 {
     1
 }
+fn default_dice_faces() -> u8 {
+    6
+}
 
 /// Bounds for the group knob and the dice.
 pub const GROUP_N_MIN: u32 = 2;
 pub const GROUP_N_MAX: u32 = 30;
 pub const DICE_MIN: u32 = 1;
 pub const DICE_MAX: u32 = 3;
+
+/// Every die type the widget offers, ASCENDING.
+///
+/// Deliberately NOT `pub`: `scripts/gen-limits.mjs` harvests `pub const`
+/// SCALARS into `app/lib/limits.generated.ts` and has no notion of an array,
+/// so a public one here would either be skipped in silence or make the parser
+/// throw. The TypeScript side therefore mirrors this list BY HAND in
+/// `app/widgets/dice/dice-core.ts` (`FACE_OPTIONS`), and both sides pin the
+/// literal set in a test — [`dice_face_options_are_pinned`] here,
+/// «FACE_OPTIONS speiler Rust-lista» there. Two pins, one set: the drift guard
+/// the generator cannot give us.
+const DICE_FACE_OPTIONS: [u8; 6] = [4, 6, 8, 10, 12, 20];
+
+/// The nearest offered die type to `faces`; ties go to the LOWER one.
+///
+/// Snapping rather than rejecting is what keeps a config from a future version
+/// (a d100, say) renderable at all: it degrades to the closest thing this
+/// build can actually draw instead of costing the widget its settings.
+fn snap_dice_faces(faces: u8) -> u8 {
+    let mut best = DICE_FACE_OPTIONS[0];
+    // Strict `<` over an ASCENDING list is what makes a tie resolve LOW:
+    // 5 → 4, 7 → 6, 16 → 12. Pinned in `snapping_a_die_type_picks_the_nearest`.
+    for &option in &DICE_FACE_OPTIONS[1..] {
+        if faces.abs_diff(option) < faces.abs_diff(best) {
+            best = option;
+        }
+    }
+    best
+}
 
 /// How many names ONE draw may put on the board. The ceiling is a
 /// READABILITY bound, not a technical one: the picker's minimum card is
@@ -344,9 +376,22 @@ pub enum WidgetConfig {
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
     },
+    /// The dice. `faces` is the die TYPE — one of 4, 6, 8, 10, 12, 20.
+    ///
+    /// ⚠️ The honest ADR-003 accounting for this field: a v0.3 client (which
+    /// has no `faces`) reading a d20 config keeps the number — it lands in
+    /// `extra` and is written back untouched, so the die type SURVIVES the
+    /// downgrade. What does not survive is a ROLL: that build's clamp pins
+    /// every `last_roll` entry to 1..=6, so a persisted 17 is rewritten as a
+    /// 6 and the newer build reads back a lie. Value DISTORTION, not data
+    /// loss — worth naming, because «the extra map protects everything» is
+    /// the easy assumption and it is not true of a field an older clamp
+    /// already has an opinion about.
     Dice {
         #[serde(default = "default_dice_count")]
         count: u32,
+        #[serde(default = "default_dice_faces")]
+        faces: u8,
         #[serde(default)]
         last_roll: Vec<u8>,
         #[serde(flatten)]
@@ -489,6 +534,7 @@ impl WidgetConfig {
             }),
             "dice" => Some(WidgetConfig::Dice {
                 count: default_dice_count(),
+                faces: default_dice_faces(),
                 last_roll: Vec::new(),
                 extra: Default::default(),
             }),
@@ -608,12 +654,19 @@ impl WidgetConfig {
                 }
             }
             WidgetConfig::Dice {
-                count, last_roll, ..
+                count,
+                faces,
+                last_roll,
+                ..
             } => {
                 *count = (*count).clamp(DICE_MIN, DICE_MAX);
+                // The die TYPE first — the roll's ceiling is derived from it,
+                // so snapping after the roll clamp would validate a 20 against
+                // a type that is about to become a 12.
+                *faces = snap_dice_faces(*faces);
                 last_roll.truncate(DICE_MAX as usize);
                 for v in last_roll.iter_mut() {
-                    *v = (*v).clamp(1, 6);
+                    *v = (*v).clamp(1, *faces);
                 }
             }
             WidgetConfig::TrafficLight { .. } => {}
@@ -1122,6 +1175,152 @@ mod tests {
             last_drawn_many[0].chars().count(),
             crate::members::NAME_MAX_CHARS
         );
+    }
+
+    /// THE DRIFT PIN (Rust half). `DICE_FACE_OPTIONS` is an array, which
+    /// `scripts/gen-limits.mjs` cannot harvest — so the set is spelled twice,
+    /// here and in `app/widgets/dice/dice-core.ts`. Both spellings are pinned
+    /// to the same literal list; changing the offer means changing both, and
+    /// forgetting one is a red test rather than a d20 the frontend draws and
+    /// the backend snaps back to a d12.
+    #[test]
+    fn dice_face_options_are_pinned() {
+        assert_eq!(
+            DICE_FACE_OPTIONS,
+            [4, 6, 8, 10, 12, 20],
+            "mirrored by hand in app/widgets/dice/dice-core.ts (FACE_OPTIONS)"
+        );
+        assert!(
+            DICE_FACE_OPTIONS.windows(2).all(|w| w[0] < w[1]),
+            "snap_dice_faces resolves ties LOW by scanning an ascending list"
+        );
+        assert!(
+            DICE_FACE_OPTIONS.contains(&default_dice_faces()),
+            "the default die type has to be an offered one"
+        );
+    }
+
+    /// Nearest wins; a tie goes to the LOWER type. The tie rule is a CHOICE
+    /// (5 is exactly as far from 4 as from 6) and therefore has to be pinned:
+    /// without it, a refactor could flip 5 → 6 and quietly change what a
+    /// future version's config degrades into.
+    #[test]
+    fn snapping_a_die_type_picks_the_nearest() {
+        let cases = [
+            (0u8, 4u8),
+            (1, 4),
+            (3, 4),
+            (4, 4),
+            (5, 4), // tie 4/6 → low
+            (6, 6), // already offered
+            (7, 6), // tie 6/8 → low
+            (8, 8),
+            (9, 8), // tie 8/10 → low
+            (10, 10),
+            (11, 10), // tie 10/12 → low
+            (12, 12),
+            (13, 12),
+            (16, 12), // tie 12/20 → low
+            (17, 20),
+            (20, 20),
+            (100, 20),
+            (255, 20),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(snap_dice_faces(raw), expected, "snapping d{raw}");
+        }
+    }
+
+    /// The die type and the roll are clamped TOGETHER: the roll's ceiling is
+    /// whatever `faces` snapped to, not a hardcoded 6.
+    #[test]
+    fn the_die_type_and_the_roll_are_clamped_together() {
+        let clamped = |faces: u8, last_roll: Vec<u8>| {
+            let mut cfg = WidgetConfig::Dice {
+                count: 99,
+                faces,
+                last_roll,
+                extra: Default::default(),
+            };
+            cfg.clamp();
+            let WidgetConfig::Dice {
+                count,
+                faces,
+                last_roll,
+                ..
+            } = cfg
+            else {
+                panic!("still dice");
+            };
+            (count, faces, last_roll)
+        };
+
+        // A d20 keeps a 17 that a 1..=6 clamp would have flattened.
+        assert_eq!(
+            clamped(20, vec![17, 0, 21, 99]),
+            (DICE_MAX, 20, vec![17, 1, 20]),
+            "count capped, list truncated to DICE_MAX, values bounded by faces"
+        );
+        // A d4 does not: 6 is off ITS die.
+        assert_eq!(clamped(4, vec![6]), (DICE_MAX, 4, vec![4]));
+        // And the snap happens FIRST — a d17 becomes a d20, so 17 stands.
+        assert_eq!(clamped(17, vec![17]), (DICE_MAX, 20, vec![17]));
+        // …while a d16 becomes a d12 and the same roll is cut down.
+        assert_eq!(clamped(16, vec![17]), (DICE_MAX, 12, vec![12]));
+        // Idempotent, like every other arm.
+        let once = clamped(16, vec![17]);
+        let mut cfg = WidgetConfig::Dice {
+            count: once.0,
+            faces: once.1,
+            last_roll: once.2.clone(),
+            extra: Default::default(),
+        };
+        cfg.clamp();
+        assert_eq!(
+            serde_json::to_value(&cfg).unwrap()["faces"],
+            serde_json::json!(12)
+        );
+    }
+
+    /// A v0.3 config has no `faces` at all. It must read as a d6 — the type
+    /// the whole widget was until now — and NOT as a zero that snaps to d4.
+    #[test]
+    fn a_config_without_a_die_type_reads_as_a_d6() {
+        let mut cfg: WidgetConfig =
+            serde_json::from_str(r#"{"kind":"dice","count":2,"lastRoll":[3,5]}"#).unwrap();
+        cfg.clamp();
+        let out = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(out["faces"], serde_json::json!(6));
+        assert_eq!(out["lastRoll"], serde_json::json!([3, 5]));
+
+        let WidgetConfig::Dice { faces, .. } = WidgetConfig::default_for("dice").unwrap() else {
+            panic!("still dice");
+        };
+        assert_eq!(faces, 6, "and a freshly added die is a d6");
+    }
+
+    /// The whole trip a d20 takes through the row seam: parse, clamp,
+    /// re-serialise — with a field only a NEWER version knows riding along
+    /// untouched (ADR-003/ADR-007 for the widget this round changed).
+    #[test]
+    fn a_d20_survives_the_row_seam_with_an_unknown_field() {
+        let inst = row_to_instance(
+            "w1",
+            "dice",
+            0.1,
+            0.1,
+            0.3,
+            0.2,
+            0,
+            r#"{"kind":"dice","count":3,"faces":20,"lastRoll":[17,4,20],"futureColour":"gold"}"#,
+        )
+        .expect("known kind parses");
+        let mut cfg = inst.config;
+        cfg.clamp();
+        let out = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(out["faces"], serde_json::json!(20));
+        assert_eq!(out["lastRoll"], serde_json::json!([17, 4, 20]));
+        assert_eq!(out["futureColour"], serde_json::json!("gold"));
     }
 
     /// The internally-tagged deserializer leaves the tag in the flatten map;

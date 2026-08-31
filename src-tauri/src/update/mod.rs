@@ -15,6 +15,7 @@ use sundayscreen_core::settings::UpdateChannel;
 use tauri::State;
 use ts_rs::TS;
 
+#[cfg(feature = "updater")]
 use crate::db::Db;
 #[cfg(not(feature = "updater"))]
 use crate::error::AppError;
@@ -119,6 +120,45 @@ async fn check_feed(app: &tauri::AppHandle, channel: UpdateChannel) -> UpdateSta
     }
 }
 
+/// Which ring to ask, given whatever database this boot ended up with.
+///
+/// `None` means there is none: on a boot fault `Db` is deliberately never
+/// managed (see `lib.rs`), and both update commands used to take
+/// `State<'_, Db>` for this one field. Tauri answers an unmanaged-state
+/// argument with a generic `InvokeError`, so on the ONE fault whose chip
+/// reads «install the newest version again» — `databaseTooNew` — the button
+/// that does exactly that failed with a sentence about a missing field. The
+/// channel is a preference, not a precondition: without a database we check
+/// the default (stable) ring, which is where every install is unless someone
+/// deliberately moved it, and a beta machine's fallback is the safer ring
+/// rather than no answer at all.
+///
+/// A failed READ lands in the same place for the same reason.
+#[cfg(feature = "updater")]
+async fn channel_for(pool: Option<&sqlx::SqlitePool>) -> UpdateChannel {
+    let Some(pool) = pool else {
+        tracing::info!("no database on this boot — checking the default update ring");
+        return UpdateChannel::default();
+    };
+    match settings::load(pool).await {
+        Ok(s) => s.update_channel,
+        Err(e) => {
+            tracing::warn!("reading the update channel failed — using the default ring: {e}");
+            UpdateChannel::default()
+        }
+    }
+}
+
+/// The channel this call should use, looked up WITHOUT requiring the state to
+/// exist. `try_state` is the whole point: `State<'_, Db>` as an argument is a
+/// hard requirement Tauri enforces before the command body ever runs.
+#[cfg(feature = "updater")]
+async fn channel_of(app: &tauri::AppHandle) -> UpdateChannel {
+    use tauri::Manager;
+    let db = app.try_state::<Db>();
+    channel_for(db.as_deref().map(|d| d.pool())).await
+}
+
 /// The silent boot check: log the outcome, POST it to `slot`, swallow
 /// EVERYTHING — an offline classroom must never see this fail. Spawned from
 /// setup, with the mailbox handed in (see [`BootUpdate`]).
@@ -148,17 +188,20 @@ pub fn spawn_boot_check(app: tauri::AppHandle, channel: UpdateChannel, slot: Boo
 
 /// Manual check from the manage panel. Errors are a STATUS here, not a
 /// rejection — "could not check" is an answer the panel shows, not a fault.
+///
+/// Takes no `State<'_, Db>`: it must work in degraded mode (see
+/// [`channel_for`]), and a `State` argument is checked before the body runs.
 #[tauri::command]
-pub async fn update_check(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult<UpdateStatus> {
+pub async fn update_check(app: tauri::AppHandle) -> AppResult<UpdateStatus> {
     #[cfg(not(feature = "updater"))]
     {
-        let _ = (app, db);
+        let _ = app;
         Ok(UpdateStatus::Disabled)
     }
     #[cfg(feature = "updater")]
     {
-        let s = settings::load(db.pool()).await?;
-        Ok(check_feed(&app, s.update_channel).await)
+        let channel = channel_of(&app).await;
+        Ok(check_feed(&app, channel).await)
     }
 }
 
@@ -167,19 +210,22 @@ pub async fn update_check(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult
 /// non-restart outcome (the feed answered "nothing" between check and
 /// install — F9-funn B#10a: that used to resolve as a fabricated success);
 /// a successful install restarts the app and never resolves.
+///
+/// No `State<'_, Db>` here either, and for the sharper half of the same
+/// reason: `databaseTooNew` is the fault whose remedy IS this button.
 #[tauri::command]
-pub async fn update_install(app: tauri::AppHandle, db: State<'_, Db>) -> AppResult<UpdateStatus> {
+pub async fn update_install(app: tauri::AppHandle) -> AppResult<UpdateStatus> {
     #[cfg(not(feature = "updater"))]
     {
-        let _ = (app, db);
+        let _ = app;
         Err(AppError::Validation("updater feature disabled".into()))
     }
     #[cfg(feature = "updater")]
     {
         use tauri_plugin_updater::UpdaterExt;
 
-        let s = settings::load(db.pool()).await?;
-        let url = sundayscreen_core::update::channel_feed_url(s.update_channel)
+        let channel = channel_of(&app).await;
+        let url = sundayscreen_core::update::channel_feed_url(channel)
             .parse()
             .map_err(|e| crate::error::AppError::Internal(format!("feed url: {e}")))?;
         let updater = app
@@ -200,5 +246,43 @@ pub async fn update_install(app: tauri::AppHandle, db: State<'_, Db>) -> AppResu
             .await
             .map_err(|e| crate::error::AppError::Internal(format!("update install: {e}")))?;
         app.restart();
+    }
+}
+
+#[cfg(all(test, feature = "updater"))]
+mod tests {
+    use super::*;
+    use crate::db::store;
+    use sqlx::SqlitePool;
+
+    async fn temp_pool() -> (SqlitePool, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pool = store::open_pool(&dir.path().join("test.sqlite"))
+            .await
+            .expect("open_pool");
+        (pool, dir)
+    }
+
+    /// The degraded boot, which is the ONE the update button matters most on:
+    /// `databaseTooNew` tells the teacher to install the newest version, and
+    /// on that boot there is no `Db` to read a channel out of.
+    #[tokio::test]
+    async fn without_a_database_the_check_still_has_a_ring_to_ask() {
+        assert_eq!(channel_for(None).await, UpdateChannel::Stable);
+    }
+
+    #[tokio::test]
+    async fn with_a_database_the_stored_channel_wins() {
+        let (pool, _d) = temp_pool().await;
+        assert_eq!(
+            channel_for(Some(&pool)).await,
+            UpdateChannel::Stable,
+            "an untouched install follows stable"
+        );
+
+        settings::update(&pool, |s| s.update_channel = UpdateChannel::Beta)
+            .await
+            .unwrap();
+        assert_eq!(channel_for(Some(&pool)).await, UpdateChannel::Beta);
     }
 }

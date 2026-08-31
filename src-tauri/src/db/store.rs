@@ -19,7 +19,51 @@ use sqlx::{Row, SqlitePool};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, BootFault, UNKNOWN_DB_PATH};
+
+/// The database file's name inside the OS app-data directory. Owned here
+/// because everything that reasons about the file's NEIGHBOURS —
+/// [`quarantine_database`]'s sidecars, [`backup_path`]'s slots — is here.
+pub const DB_FILE_NAME: &str = "sundayscreen.sqlite";
+
+/// Where the database goes, with its directory made if it was not there.
+///
+/// Extracted from `setup` because until R4 both failures below were a `?`
+/// straight out of `setup` — and Tauri answers an `Err` from `setup` by
+/// stopping the app, which `.expect("error while running tauri application")`
+/// turns into a PANIC with no window. That is precisely the outcome the boot
+/// path was rebuilt to make impossible: the one thing that could explain the
+/// problem is a window with a sentence in it, and a panic is the one boot
+/// that never draws one. Both roads now end in a [`BootFault`], `setup`
+/// succeeds, and the shell boots degraded exactly as it does for an
+/// unopenable file.
+///
+/// [`crate::error::BootFaultKind::Unreadable`] for both, and it is the honest
+/// kind: neither says anything about the file's contents, and neither touches
+/// a byte. The PATH in the fault is the one we actually know — the intended
+/// database path when the directory is merely unmakeable, and
+/// [`UNKNOWN_DB_PATH`] (empty) when the OS could not even name the directory,
+/// because at that point there is no file to point at.
+///
+/// Generic over the error so the caller can hand in `app.path().app_data_dir()`
+/// unwrapped and a test can hand in either arm.
+pub fn resolve_db_path<E: std::fmt::Display>(
+    app_data_dir: Result<PathBuf, E>,
+) -> Result<PathBuf, BootFault> {
+    let dir = match app_data_dir {
+        Ok(dir) => dir,
+        Err(e) => {
+            tracing::error!("resolving the app data directory failed: {e}");
+            return Err(BootFault::unreadable(Path::new(UNKNOWN_DB_PATH)));
+        }
+    };
+    let db_path = dir.join(DB_FILE_NAME);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        tracing::error!(dir = %dir.display(), "creating the app data directory failed: {e}");
+        return Err(BootFault::unreadable(&db_path));
+    }
+    Ok(db_path)
+}
 
 /// Epoch milliseconds as f64 — matches the REAL columns and the TS `number`.
 pub fn now_ms() -> f64 {
@@ -118,8 +162,38 @@ fn backup_path(db_path: &Path, slot: &str) -> PathBuf {
     db_path.with_file_name(format!("{stem}.backup-{slot}.sqlite"))
 }
 
+/// Is there anything in this database a teacher would miss?
+///
+/// Classes and widget rows are the two independent ways she can have put work
+/// in: a machine with no class list yet may still have a library screen laid
+/// out on it, and a class with an empty board is still her class. Either one
+/// makes the database worth copying; NEITHER makes it worth pushing the older
+/// copies one slot closer to the bin (see [`backup_rotating`]).
+async fn holds_anything(pool: &SqlitePool) -> AppResult<bool> {
+    let classes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM class")
+        .fetch_one(pool)
+        .await?;
+    if classes > 0 {
+        return Ok(true);
+    }
+    let widgets: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM widget_instance")
+        .fetch_one(pool)
+        .await?;
+    Ok(widgets > 0)
+}
+
 /// Copy the open database aside and rotate the older copies down: `backup-1`
 /// is always the newest, `backup-3` the oldest still kept.
+///
+/// **An EMPTY database is never copied** (`Ok(None)`, with a warning). That
+/// rule is the whole reason this returns an `Option`, and it was bought with
+/// a real hole: the quarantine boot skipped its own backup, but only its own.
+/// The NEXT start saw an ordinary empty database, vacuumed it into `backup-1`
+/// and pushed the good copy down a slot — three restarts and all three
+/// generations were empty, while the `startedEmpty` chip was still pointing
+/// the teacher at `sundayscreen.backup-1.sqlite` BY NAME. A fresh install has
+/// nothing to lose, so it loses nothing by being skipped; after a quarantine
+/// the good copies now stand until there is real data to replace them with.
 ///
 /// `VACUUM INTO`, never `fs::copy`. A file copy is journal-unaware — under WAL
 /// the committed truth is spread across the `.sqlite` file and its `-wal`, so
@@ -128,12 +202,23 @@ fn backup_path(db_path: &Path, slot: &str) -> PathBuf {
 /// transaction, and writes a defragmented copy.
 ///
 /// Meant to be called AFTER a successful [`open_pool`], so the copy always
-/// holds a fully migrated schema — never a half-migrated one.
+/// holds a fully migrated schema — never a half-migrated one. Note what that
+/// makes the copies and what it does not: they carry THIS build's schema, so
+/// they are not a downgrade remedy. What saves a downgrade is that the file
+/// itself is never touched (`crate::error::should_quarantine`).
 ///
 /// The snapshot is written to a temp file first and only rotated in once it
 /// exists: a disk that fills up mid-vacuum must not cost us the copies we
 /// already had, and `backup-1` must never be a half-written file.
-pub async fn backup_rotating(pool: &SqlitePool, db_path: &Path) -> AppResult<PathBuf> {
+pub async fn backup_rotating(pool: &SqlitePool, db_path: &Path) -> AppResult<Option<PathBuf>> {
+    if !holds_anything(pool).await? {
+        tracing::warn!(
+            db = %db_path.display(),
+            "skipping the startup backup — this database is empty, and the copies beside it are not"
+        );
+        return Ok(None);
+    }
+
     let tmp = backup_path(db_path, "tmp");
     let tmp_str = tmp.to_str().ok_or_else(|| {
         AppError::Internal(format!("backup path is not valid UTF-8: {}", tmp.display()))
@@ -160,7 +245,7 @@ pub async fn backup_rotating(pool: &SqlitePool, db_path: &Path) -> AppResult<Pat
     }
     let newest = backup_path(db_path, "1");
     std::fs::rename(&tmp, &newest)?;
-    Ok(newest)
+    Ok(Some(newest))
 }
 
 // ── Settings (key/value bag) ─────────────────────────────────────────────────
@@ -1281,6 +1366,15 @@ mod tests {
         names
     }
 
+    /// [`backup_rotating`] where a copy is EXPECTED — the `Option` is the
+    /// empty-database rule, not something a seeded test has to restate.
+    async fn backup(pool: &SqlitePool, path: &Path) -> PathBuf {
+        backup_rotating(pool, path)
+            .await
+            .expect("the backup ran")
+            .expect("this database has data, so a copy was taken")
+    }
+
     #[tokio::test]
     async fn the_startup_backup_rotates_and_stays_readable() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1288,12 +1382,12 @@ mod tests {
         let pool = open_pool(&path).await.unwrap();
 
         insert_class(&pool, "7B").await.unwrap();
-        let newest = backup_rotating(&pool, &path).await.unwrap();
+        let newest = backup(&pool, &path).await;
         assert_eq!(newest, dir.path().join("sundayscreen.backup-1.sqlite"));
         assert_eq!(classes_in(&newest).await, vec!["7B".to_string()]);
 
         insert_class(&pool, "8A").await.unwrap();
-        backup_rotating(&pool, &path).await.unwrap();
+        backup(&pool, &path).await;
         // Newest first, and the previous generation slid down one slot.
         assert_eq!(
             classes_in(&backup_path(&path, "1")).await,
@@ -1307,8 +1401,8 @@ mod tests {
 
         // Four boots, three kept generations — and no temp file left behind.
         insert_class(&pool, "9C").await.unwrap();
-        backup_rotating(&pool, &path).await.unwrap();
-        backup_rotating(&pool, &path).await.unwrap();
+        backup(&pool, &path).await;
+        backup(&pool, &path).await;
         assert!(backup_path(&path, "3").exists());
         assert!(!backup_path(&path, "4").exists(), "we keep exactly 3");
         assert!(!backup_path(&path, "tmp").exists(), "temp file cleaned up");
@@ -1323,10 +1417,127 @@ mod tests {
         let pool = open_pool(&path).await.unwrap();
         insert_class(&pool, "written just now").await.unwrap();
 
-        let newest = backup_rotating(&pool, &path).await.unwrap();
+        let newest = backup(&pool, &path).await;
         assert_eq!(
             classes_in(&newest).await,
             vec!["written just now".to_string()]
+        );
+    }
+
+    /// THE regression the `Option` exists for. The quarantine boot skipped
+    /// its own backup, and only its own: every start after it saw an ordinary
+    /// empty database, vacuumed it in and pushed the good copy one slot down.
+    /// Three restarts later all three generations were empty — while the
+    /// `startedEmpty` chip still named `sundayscreen.backup-1.sqlite` to the
+    /// teacher as the thing to go and get.
+    #[tokio::test]
+    async fn an_empty_database_never_eats_the_backup_that_still_has_her_class() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sundayscreen.sqlite");
+
+        // Monday: a real database, backed up on boot the way every start does.
+        {
+            let pool = open_pool(&path).await.unwrap();
+            insert_class(&pool, "7B").await.unwrap();
+            backup(&pool, &path).await;
+            pool.close().await;
+        }
+        assert_eq!(
+            classes_in(&backup_path(&path, "1")).await,
+            vec!["7B".to_string()]
+        );
+
+        // Tuesday: the bytes are found corrupt, moved aside, and the app boots
+        // on the empty database made in their place. Then Wednesday. Then
+        // Thursday — the restarts that used to do the damage.
+        quarantine_database(&path, 1_700_000_000);
+        for boot in 1..=3 {
+            let pool = open_pool(&path).await.unwrap();
+            assert_eq!(
+                backup_rotating(&pool, &path).await.unwrap(),
+                None,
+                "boot {boot}: an empty database has nothing to copy"
+            );
+            pool.close().await;
+        }
+
+        assert_eq!(
+            classes_in(&backup_path(&path, "1")).await,
+            vec!["7B".to_string()],
+            "the copy the chip names by name is still hers"
+        );
+        assert!(
+            !backup_path(&path, "2").exists(),
+            "and nothing was pushed down a slot to make room for nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_backup_resumes_the_moment_there_is_something_to_lose_again() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sundayscreen.sqlite");
+        let pool = open_pool(&path).await.unwrap();
+
+        // A fresh install, or the empty database a quarantine just made.
+        assert_eq!(backup_rotating(&pool, &path).await.unwrap(), None);
+        assert!(!backup_path(&path, "1").exists());
+
+        // A laid-out library screen is work too, even before the first class
+        // name exists — hence "0 classes AND 0 widgets", not "0 classes".
+        let scene = insert_global_scene(&pool, "Prøve").await.unwrap();
+        replace_widgets(&pool, &scene.id, &[widget_row("w1", 0)])
+            .await
+            .unwrap();
+        assert!(backup_rotating(&pool, &path).await.unwrap().is_some());
+
+        // …and the ordinary case: she types her class back in.
+        insert_class(&pool, "7B").await.unwrap();
+        let newest = backup(&pool, &path).await;
+        assert_eq!(classes_in(&newest).await, vec!["7B".to_string()]);
+    }
+
+    // ── The path the database has not been opened from yet (R4 H1) ───────────
+
+    #[tokio::test]
+    async fn a_resolvable_app_data_dir_is_created_and_named() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("nested").join("SundayScreen");
+        let path = resolve_db_path(Ok::<_, std::io::Error>(target.clone())).expect("resolved");
+        assert_eq!(path, target.join(DB_FILE_NAME));
+        assert!(target.is_dir(), "the directory is made, parents and all");
+    }
+
+    /// The failure constructed honestly rather than mocked: a FILE standing
+    /// where the app-data directory has to go. `create_dir_all` cannot make a
+    /// directory through it, and until R4 that `?` left `setup` — which means
+    /// a panic with no window, on the one boot that most needed to explain
+    /// itself.
+    #[test]
+    fn a_blocked_app_data_dir_is_a_boot_fault_rather_than_a_panic() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let blocked = dir.path().join("SundayScreen");
+        std::fs::write(&blocked, b"a file stands where the directory has to go").unwrap();
+
+        let fault = resolve_db_path(Ok::<_, std::io::Error>(blocked.clone()))
+            .expect_err("a directory cannot be created through a file");
+        assert_eq!(fault.kind, crate::error::BootFaultKind::Unreadable);
+        assert_eq!(
+            fault.db_path,
+            blocked.join(DB_FILE_NAME).display().to_string(),
+            "the sentence ends in the path we DO know"
+        );
+        assert_eq!(fault.schema_version, None, "no version is claimed");
+    }
+
+    #[test]
+    fn an_unresolvable_app_data_dir_names_no_path_at_all() {
+        let fault = resolve_db_path(Err::<PathBuf, _>("no home directory"))
+            .expect_err("without a directory there is no database path");
+        assert_eq!(fault.kind, crate::error::BootFaultKind::Unreadable);
+        assert_eq!(
+            fault.db_path,
+            crate::error::UNKNOWN_DB_PATH,
+            "an invented marker word would be a backend-authored sentence"
         );
     }
 

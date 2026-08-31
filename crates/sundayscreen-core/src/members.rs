@@ -12,6 +12,20 @@
 /// Longest member name that will be persisted, in characters.
 pub const NAME_MAX_CHARS: usize = 120;
 
+/// Longest CLASS or SCREEN name, in characters — the label a teacher types
+/// for a group or a board, not a pupil's name (that is [`NAME_MAX_CHARS`],
+/// and the two are free to drift apart).
+///
+/// Lives here, beside the member limits, because it had four independent
+/// copies of the literal `80` until R4: `commands::classes`,
+/// `commands::scenes`, `transfer::check_limits` and the frontend. Nothing
+/// would have noticed one of them moving — the seam-bug shape exactly. One
+/// `pub const` in a file `scripts/gen-limits.mjs` scans makes the frontend's
+/// copy generated (`LIMITS.CLASS_NAME_MAX_CHARS`) and makes a second Rust
+/// declaration of the same NAME a hard error in that script's collision
+/// guard, which is the half that keeps it from quietly forking again.
+pub const CLASS_NAME_MAX_CHARS: usize = 80;
+
 /// Most members a class may hold. Generous — a whole school year, not a
 /// class — but bounded, so a stray paste of a novel cannot become a layout.
 pub const MEMBERS_MAX: usize = 1000;

@@ -43,9 +43,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::members::{MEMBERS_MAX, NAME_MAX_CHARS};
+use crate::members::{CLASS_NAME_MAX_CHARS, MEMBERS_MAX, NAME_MAX_CHARS};
 use crate::schedule::{PeriodKind, LABEL_MAX_CHARS};
-use crate::serde_util::lenient;
 
 /// The `kind` marker every SundayScreen setup file carries. Checked BEFORE
 /// anything else is read.
@@ -82,9 +81,13 @@ pub const WIDGET_CONFIG_MAX_CHARS: usize = 64_000;
 pub const PERIODS_MAX: usize = 40;
 /// Most cells in the weekly timetable — Monday–Friday × every period.
 pub const WEEK_SLOTS_MAX: usize = PERIODS_MAX * 5;
-/// Longest class or screen name, matching what `class_create`/`scene_create`
-/// accept (`commands::{classes,scenes}::NAME_MAX_CHARS`).
-pub const CLASS_NAME_MAX_CHARS: usize = 80;
+
+// The longest class or screen name is `members::CLASS_NAME_MAX_CHARS`,
+// imported above. It was declared HERE too until R4 — one of four copies of
+// the literal `80` that nothing kept in step. It has to be the same number as
+// `class_create`/`scene_create` accept, or the export can write a file the
+// import refuses; being the same DECLARATION is what makes that true rather
+// than currently-true.
 
 // ── The payload ─────────────────────────────────────────────────────────────
 
@@ -167,9 +170,24 @@ pub struct TransferPeriod {
     pub start_min: u32,
     #[serde(default)]
     pub end_min: u32,
-    /// An unknown spelling costs THIS FIELD, not the file (ADR-007 applied
-    /// to an enum value — see `serde_util::lenient`).
-    #[serde(default, deserialize_with = "lenient")]
+    /// Deliberately NOT `lenient`, and the only enum field in the crate that
+    /// is not.
+    ///
+    /// `lenient` is right where the fallback is HARMLESS — an unreadable
+    /// widget alignment draws centred and nothing else changes. Here the
+    /// fallback is [`PeriodKind::Lesson`], and a lesson is a thing the app
+    /// ACTS on: it gets a banner, a suggestion to switch class and screen, an
+    /// auto-switch when the teacher has turned that on, and a pill on the
+    /// board. A future `"assembly"` or `"studytime"` silently becoming a
+    /// lesson would put a made-up lesson on a projector in front of a class.
+    ///
+    /// An ABSENT key still defaults (`#[serde(default)]`), which is the
+    /// tolerant road for an OLDER file that never had the field. A PRESENT
+    /// spelling this build cannot read fails the parse, and the port answers
+    /// `Unreadable` — «the file could not be read. Nothing was changed.» That
+    /// is the honest sentence: we were handed a school day with a period type
+    /// in it, and we do not know what it is.
+    #[serde(default)]
     pub kind: PeriodKind,
 }
 
@@ -530,14 +548,29 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_period_kind_costs_the_field_not_the_file() {
+    fn an_unknown_period_kind_costs_the_whole_file() {
+        // The ONE place tolerance is refused. A future `"assembly"` read as a
+        // Lesson gets a banner, a switch suggestion, an auto-switch and a pill
+        // — a made-up lesson on the projector. «Could not be read, nothing was
+        // changed» is the smaller harm, and it is also true.
         let raw = format!(
             r#"{{"kind":"{KIND}","schemaVersion":1,"planner":{{
                  "periods":[{{"id":"p1","label":"1. time","startMin":480,
                               "endMin":525,"kind":"assembly"}}]}}}}"#
         );
-        let file = parse(&raw).expect("ADR-007: an unknown value is not a catastrophe");
-        assert_eq!(file.planner.periods.len(), 1);
+        assert!(matches!(parse(&raw), Err(ImportRefusal::Unreadable(_))));
+    }
+
+    #[test]
+    fn an_absent_period_kind_is_still_a_lesson() {
+        // The other road stays tolerant: a file written before the field
+        // existed has nothing to disagree about.
+        let raw = format!(
+            r#"{{"kind":"{KIND}","schemaVersion":1,"planner":{{
+                 "periods":[{{"id":"p1","label":"1. time","startMin":480,
+                              "endMin":525}}]}}}}"#
+        );
+        let file = parse(&raw).expect("an absent field is not an unreadable one");
         assert_eq!(file.planner.periods[0].kind, PeriodKind::Lesson);
         assert_eq!(file.planner.periods[0].label, "1. time");
     }

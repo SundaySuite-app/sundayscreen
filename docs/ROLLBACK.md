@@ -46,10 +46,21 @@ Manuell installasjon av forrige versjon (last ned fra GitHub Releases, kjør
 installeren over den kjørende appen) er, siden R4, TRYGT: en
 versjonskonflikt rører aldri databasen (`should_quarantine`,
 src-tauri/src/error.rs — kvarantene skjer KUN ved bevist SQLITE_CORRUPT/
-SQLITE_NOTADB), appen forklarer seg selv på skjermen i stedet for å boote
-tomt uten et ord, og en roterende sikkerhetskopi
-(`sundayscreen.backup-1.sqlite`) finnes uansett. Se docs/DISTRIBUTION.md for
-last-ned-lenker og usignert-førstegangsåpning på macOS.
+SQLITE_NOTADB), og appen forklarer seg selv på skjermen i stedet for å boote
+tomt uten et ord. Det som redder nedgraderingen er at FILA er urørt — ikke
+sikkerhetskopiene: de er tatt etter en vellykket migrering og bærer derfor
+den NYERE skjemaversjonen, så en eldre build kan ikke lese dem heller. Se
+docs/DISTRIBUTION.md for last-ned-lenker og usignert-førstegangsåpning på
+macOS.
+
+Sikkerhetskopiene er der for et annet uhell (en ødelagt fil), og de følger
+én regel som er verdt å kjenne: **en TOM database kopieres aldri**
+(`backup_rotating`). Etter en kvarantene starter appen på en tom base, og
+uten regelen ville neste oppstart vakuumert tomheten inn i `backup-1` og
+dyttet den siste gode kopien et hakk nedover — tre omstarter, tre tomme
+generasjoner, mens skjermmeldingen fortsatt peker læreren på
+`sundayscreen.backup-1.sqlite` ved navn. Kopiene står nå til det finnes
+ekte data igjen.
 
 Updateren selv tilbyr ALDRI en lavere versjon (semver-sammenligning) —
 nedgradering er alltid en manuell handling utført av den som sitter ved

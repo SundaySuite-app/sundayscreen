@@ -150,12 +150,42 @@ fn first_shape_problem(file: &TransferFile) -> Option<String> {
             return Some(p);
         }
     }
+    // The week plan's own integrity, checked BEFORE the first INSERT — the
+    // two ways it could be wrong both used to be discovered too late, and
+    // both were discovered in silence:
+    //
+    // - a cell pointing at a period the file does not contain was SKIPPED with
+    //   a `continue` in `insert_week`, while the receipt still said
+    //   «Importert» with the class count that did land. A Tuesday that
+    //   vanished on the way over is not something a teacher should find out
+    //   about on Tuesday.
+    // - two cells claiming the same (weekday, period) hit `UNIQUE (weekday,
+    //   period_id)` mid-transaction, i.e. a generic `Err` out of a command
+    //   whose whole vocabulary is receipts.
+    //
+    // Both are the same fact — the file cannot be read — so both get the same
+    // sentence: «Fila kunne ikke leses. Ingenting ble endret.»
+    let known_periods: std::collections::HashSet<&str> =
+        file.planner.periods.iter().map(|p| p.id.as_str()).collect();
+    let mut seen_cells: std::collections::HashSet<(u8, &str)> = std::collections::HashSet::new();
     for slot in &file.planner.week {
         // The weekly grid has Monday–Friday columns and nothing else, so a
         // slot outside that range could never be shown. Refusing beats
         // dropping it in silence.
         if !(1..=5).contains(&slot.weekday) {
             return Some(format!("weekday {} is outside 1..=5", slot.weekday));
+        }
+        if !known_periods.contains(slot.period_id.as_str()) {
+            return Some(format!(
+                "week slot (weekday {}) points at period «{}», which is not in the file",
+                slot.weekday, slot.period_id
+            ));
+        }
+        if !seen_cells.insert((slot.weekday, slot.period_id.as_str())) {
+            return Some(format!(
+                "two week slots claim weekday {} period «{}»",
+                slot.weekday, slot.period_id
+            ));
         }
     }
     None
@@ -224,10 +254,14 @@ async fn insert_widgets(
     Ok(())
 }
 
-/// The weekly timetable, remapped. A cell whose period did not survive the
-/// remap is dropped (it references nothing); a class or screen pointer that
-/// cannot be remapped becomes `NULL`, which is a legal, meaningful state —
-/// the same one migration 0004's `ON DELETE SET NULL` produces.
+/// The weekly timetable, remapped. A class or screen pointer that cannot be
+/// remapped becomes `NULL`, which is a legal, meaningful state — the same one
+/// migration 0004's `ON DELETE SET NULL` produces.
+///
+/// The `continue` on a missing PERIOD is now unreachable and stays as a
+/// guard, not as a policy: `first_shape_problem` refuses the whole file for
+/// exactly that shape, so nothing may quietly disappear here. It is kept
+/// because the alternative on a broken invariant would be an `unwrap`.
 async fn insert_week(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     week: &[TransferSlot],

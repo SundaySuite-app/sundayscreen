@@ -42,28 +42,29 @@ pub fn run() {
     #[cfg(feature = "updater")]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
-    // The native file dialog, for «flytt oppsettet» alone. Registered here
-    // and reached ONLY from `commands::transfer`: the webview cannot call it
-    // (no capability entry, no npm package), so the app's permission surface
-    // is unchanged and every byte read or written goes through Rust.
+    // The native file dialog, for «flytt oppsettet» alone. Every byte read or
+    // written goes through Rust (`commands::transfer`), and the webview cannot
+    // reach the plugin's own commands: `dialog:*` is absent from
+    // `capabilities/default.json`, so Tauri's ACL DENIES all three
+    // (`plugin:dialog|open`, `|save`, `|message`).
+    //
+    // What it is NOT is invisible to the webview, and the earlier comment here
+    // said so. `tauri_plugin_dialog::init()` injects `init-iife.js` into every
+    // page (every non-Android target), and that script REPLACES two globals:
+    // `window.alert` → `plugin:dialog|message`, `window.confirm` →
+    // `plugin:dialog|confirm`. Both then reject — the first on the ACL, the
+    // second because `confirm` is not even a registered command — but the
+    // replacement itself is real, and it carries a trap worth writing down:
+    // the injected `window.confirm` is ASYNC. It returns a Promise, and a
+    // Promise is always truthy, so `if (confirm("…"))` would take the yes
+    // branch every time. This app calls neither global (nothing in `app/`
+    // uses `alert`/`confirm`), which is what keeps the posture intact — not
+    // the plugin being unseen.
     let builder = builder.plugin(tauri_plugin_dialog::init());
 
     builder
         .setup(|app| {
             use tauri::Manager;
-
-            // Open the app database (settings + classes + layouts) once and
-            // share it as managed state. Lives under the OS app-data dir so it
-            // survives reinstalls and isn't tied to the executable location.
-            let db_dir = app
-                .path()
-                .app_data_dir()
-                .map_err(|e| format!("resolving app data dir: {e}"))?;
-            std::fs::create_dir_all(&db_dir).map_err(|e| {
-                tracing::error!(dir = %db_dir.display(), "creating app data dir failed: {e}");
-                format!("creating app data dir: {e}")
-            })?;
-            let db_path = db_dir.join("sundayscreen.sqlite");
 
             // The boot check's mailbox, managed BEFORE anything can spawn into
             // it (`update::BootUpdate`). It has no dependency on the database
@@ -98,56 +99,72 @@ pub fn run() {
             // reads or writes a schema it does not understand, because `Db` is
             // simply never managed.
             let mut fault: Option<error::BootFault> = None;
-            let pool = match tauri::async_runtime::block_on(db::store::open_pool(&db_path)) {
-                Ok(pool) => Some(pool),
-                Err(first_err) if error::should_quarantine(&first_err) => {
-                    tracing::error!(
-                        db = %db_path.display(),
-                        "the database file is corrupt — moving it aside and recreating: {first_err}"
-                    );
-                    let stamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|d| d.as_secs())
-                        .unwrap_or(0);
-                    for moved in db::store::quarantine_database(&db_path, stamp) {
-                        tracing::warn!(file = %moved.display(), "kept the old bytes for rescue");
-                    }
-                    match tauri::async_runtime::block_on(db::store::open_pool(&db_path)) {
-                        Ok(pool) => {
-                            // The app works and the teacher's classes are not
-                            // in it. That was a `warn!` in a terminal no
-                            // classroom has open until R4.
-                            fault = Some(error::BootFault::started_empty(&db_path));
-                            Some(pool)
-                        }
-                        Err(e) => {
-                            // NOT `from_open_error`: its sentences all end in
-                            // "the file is untouched", and the quarantine
-                            // above has just renamed it.
-                            tracing::error!("recreating database also failed: {e}");
-                            fault = Some(error::BootFault::rescue_failed(&db_path));
-                            None
-                        }
-                    }
-                }
-                Err(other) => {
-                    // The file is INTACT — nothing here touches it.
-                    tracing::error!(
-                        db = %db_path.display(),
-                        "opening the database failed — the file was NOT modified: {other}"
-                    );
-                    fault = Some(error::BootFault::from_open_error(&other, &db_path));
+
+            // Open the app database (settings + classes + layouts) once and
+            // share it as managed state. It lives under the OS app-data dir so
+            // it survives reinstalls and isn't tied to the executable location
+            // — and NAMING that directory, or creating it, can fail too. Both
+            // of those were a `?` out of `setup` until R4, i.e. the very panic
+            // the paragraph above exists to prevent, three lines above the
+            // code that prevents it. `resolve_db_path` classifies them as
+            // `Unreadable` instead, and the boot continues degraded.
+            let db_path = match db::store::resolve_db_path(app.path().app_data_dir()) {
+                Ok(path) => Some(path),
+                Err(path_fault) => {
+                    fault = Some(path_fault);
                     None
                 }
             };
 
-            let recreated = matches!(
-                fault,
-                Some(error::BootFault {
-                    kind: error::BootFaultKind::StartedEmpty,
-                    ..
-                })
-            );
+            let pool = match &db_path {
+                // There is no path, so there is nothing to open. The fault set
+                // above is already the whole explanation.
+                None => None,
+                Some(db_path) => match tauri::async_runtime::block_on(db::store::open_pool(db_path))
+                {
+                    Ok(pool) => Some(pool),
+                    Err(first_err) if error::should_quarantine(&first_err) => {
+                        tracing::error!(
+                            db = %db_path.display(),
+                            "the database file is corrupt — moving it aside and recreating: {first_err}"
+                        );
+                        let stamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        for moved in db::store::quarantine_database(db_path, stamp) {
+                            tracing::warn!(file = %moved.display(), "kept the old bytes for rescue");
+                        }
+                        match tauri::async_runtime::block_on(db::store::open_pool(db_path)) {
+                            Ok(pool) => {
+                                // The app works and the teacher's classes are
+                                // not in it. That was a `warn!` in a terminal
+                                // no classroom has open until R4.
+                                fault = Some(error::BootFault::started_empty(db_path));
+                                Some(pool)
+                            }
+                            Err(e) => {
+                                // NOT `from_open_error`: its sentences all end
+                                // in "the file is untouched", and the
+                                // quarantine above has just renamed it.
+                                tracing::error!("recreating database also failed: {e}");
+                                fault = Some(error::BootFault::rescue_failed(db_path));
+                                None
+                            }
+                        }
+                    }
+                    Err(other) => {
+                        // The file is INTACT — nothing here touches it.
+                        tracing::error!(
+                            db = %db_path.display(),
+                            "opening the database failed — the file was NOT modified: {other}"
+                        );
+                        fault = Some(error::BootFault::from_open_error(&other, db_path));
+                        None
+                    }
+                },
+            };
+
             if let Some(f) = &fault {
                 tracing::warn!(
                     kind = ?f.kind,
@@ -157,7 +174,11 @@ pub fn run() {
             }
             app.manage(commands::app::BootStatus(fault));
 
-            if let Some(pool) = pool {
+            // A pool exists only when a path did, so the two `Some`s always
+            // arrive together — taken as a pair rather than unwrapped, because
+            // "there is a database but nowhere to back it up to" must be an
+            // unrepresentable state, not a panic waiting for a rare rig.
+            if let (Some(pool), Some(db_path)) = (pool, &db_path) {
                 // Restore the saved window geometry BEFORE the shell paints, so
                 // the projector setup comes back without a visible jump.
                 match tauri::async_runtime::block_on(settings::load(&pool)) {
@@ -198,21 +219,18 @@ pub fn run() {
                 // Taken AFTER the window restore so the projector picture is
                 // not held up by it, and NEVER fatal: a full disk must not
                 // stop the lesson.
-                if recreated {
-                    // The database we just made is empty. Rotating it in would
-                    // push the last good copy one slot closer to the bin.
-                    tracing::warn!(
-                        "skipping the startup backup — this database was just recreated"
-                    );
-                } else {
-                    match tauri::async_runtime::block_on(db::store::backup_rotating(
-                        &pool, &db_path,
-                    )) {
-                        Ok(path) => {
-                            tracing::info!(backup = %path.display(), "startup backup written")
-                        }
-                        Err(e) => tracing::warn!("startup backup failed (continuing anyway): {e}"),
+                //
+                // `Ok(None)` is the deliberate skip: an EMPTY database is
+                // never copied. The rule lives in `backup_rotating` rather
+                // than here — a "was this boot the quarantine one?" flag at
+                // this call site is what let the NEXT boot eat the copies
+                // anyway (R4 H2).
+                match tauri::async_runtime::block_on(db::store::backup_rotating(&pool, db_path)) {
+                    Ok(Some(path)) => {
+                        tracing::info!(backup = %path.display(), "startup backup written")
                     }
+                    Ok(None) => { /* skipped, and `backup_rotating` said why */ }
+                    Err(e) => tracing::warn!("startup backup failed (continuing anyway): {e}"),
                 }
 
                 app.manage(db::Db::new(pool));
@@ -236,6 +254,7 @@ pub fn run() {
             commands::app::boot_fault,
             commands::settings::settings_get,
             commands::settings::settings_save,
+            commands::settings::settings_set_window,
             commands::classes::class_ensure_active,
             commands::classes::class_list,
             commands::classes::class_create,

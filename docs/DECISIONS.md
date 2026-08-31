@@ -277,8 +277,12 @@ til event-loopen — som under `RunEvent::Exit` alt er destruert. Closuren
 kjører aldri og mottaket returnerer aldri: **en app som nekter å lukke**.
 Derfor kjøres installasjonen på en arbeidstråd og ventes på med
 `recv_timeout(30 s)`; timeout er `warn` + normal avslutning. Ingenting er
-halvgjort da — AppleScript-grenen nås kun ETTER at `rename` feilet, altså før
-noe er flyttet.
+halvgjort på DEN stien — AppleScript-grenen nås kun ETTER at `rename` feilet,
+altså før noe er flyttet. Taket har ett akseptert restvindu: en treg men
+fremadskridende installasjon (stort arkiv, virusskanner) kan fortsatt stå
+midt i utpakkingen når de 30 sekundene løper ut, og da avsluttes prosessen
+under den løsrevne tråden. Alternativet — ubundet venting foran en klasse —
+er verre.
 
 **Windows kommer tilbake én gang, og det er med vilje ikke fjernet.**
 `tauri.conf.json` setter ingen `plugins.updater.windows.installMode`, så
@@ -292,6 +296,14 @@ dokumenterer oppførselen (NEEDS-RICHARD) og rører ikke `tauri.conf.json`.
 enn låst til det som lå på den da den ble satt opp. Avkryssingen står i
 Oppsett-panelet; skrus den av, oppfører merket, den manuelle sjekken og den
 manuelle installasjonen seg nøyaktig som før.
+
+**Bryteren leses FERSKT ved lukking (R5-gransking M3).** Boot-lesingen avgjør
+bare om det LASTES NED; om det INSTALLERES avgjøres av bryterens stilling i
+lukkeøyeblikket — `install_staged_at_exit` leser innstillingen på nytt fra
+databasen. Skrur læreren av bryteren etter at bytene er hentet, installeres
+ingenting; bytene beholdes i sporet, så «Installer nå» virker fortsatt, og
+på-igjen før lukking gir exit-install igjen. UI-teksten «installeres når du
+lukker appen» er gatet på BEGGE fakta (staged OG bryteren på) av samme grunn.
 
 **Feil koster kun automatikken.** Slår nedlastingen feil, blir det en `warn`
 — postkassa beholder `Available`, og merket + «Oppdater og start på nytt»
@@ -404,3 +416,27 @@ brutt registry-regelen i morgen. Verten og alt en overlay rendrer må aldri
 bære `transform`, `filter`, `backdrop-filter`, `contain` eller
 `container-type` — hver av dem gjør elementet til containing block igjen og
 setter panelet tilbake i fella det finnes for å slippe ut av.
+
+**En ukastet terning hviler på HJØRNET (R5-gransking H1).** Første idé var én
+felles «trekvart-vipp» for alle seks legemene, og granskeren felte den med
+måling: beste fjes sto 0,83–0,87 mot klassen (mot 0,956 for et ekte svar), så
+en fersk D20 i stor visning viste en lettlest «8» ingen hadde kastet — klassen
+kunne ikke skille «ikke kastet» fra «kastet». Ett fast kvaternion kan ikke
+være «ingen fjes valgt» for seks forskjellige legemer. `idleOrientationFor`
+roterer i stedet en VERTEKS mot kamera: hjørne-på er den kanoniske
+ingen-fjes-valgt-posituren, og symmetrien gjør det til et teorem — alle fjes
+over merketerskelen står NØYAKTIG likt (maskinpresisjon), pinnet i test med
+antall per legeme {D4:3, D6:3, D8:4, D10:5, D12:3, D20:5} og beste facing
+≤ 0,81. D4 ender under fade-båndet og står nesten merkeløs — riktig: før
+kastet finnes ikke noe tall å vise. Panelets finish-swatcher bruker samme
+positur (tre-fire likt belyste fasetter er MER av det en finish-swatch skal
+vise), så den gamle IDLE_TILT er slettet.
+
+**`data-back-faces` er kontrakten mellom trait og stilark (R5-gransking
+M2).** `MaterialTraits.backFaces` var død data med grønn vakt: ingenting
+leste den — glassets bakkanter bodde i en CSS-selektor på materialNAVNET.
+Et sjette materiale med `backFaces: true` og uten CSS-regel ville gått grønt
+gjennom og tegnet ingenting (samme familie som R4s døde vakt). Nå setter
+`paintDie` attributtet FRA traiten og stilarket keyer på attributtet — traiten
+er load-bearing, og `die-paint.test.ts` pinner at DOM-en følger tabellen for
+alle fem materialene.

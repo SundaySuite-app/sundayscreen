@@ -58,6 +58,12 @@ sikkerhetskopi finnes uansett — se docs/ROLLBACK.md.
      fabrikkert ut. **Skurrer det, si fra:** en liten tilfeldig vipp per
      terning er en linje kode, men den koster lesbarheten litt, så valget er
      ditt.
+  5. **Spøkelsestallene på kanten (granskingens L4).** På en D20 kan svake,
+     halvgjennomsiktige sifre skimtes på fjesene som er i ferd med å rulle
+     rundt kanten — det er innfadingen som gjør at tall ikke POPPER inn under
+     snurring. Geometrien er bevist i orden (tallene forlater aldri sitt
+     fjes); spørsmålet er bare om det LESES som en flekk fra bakerste pult.
+     Skurrer det, kan fade-båndet strammes.
 
 - [ ] **Riggtest automatisk oppdatering (ADR-014):** med en oppdatering
       klar — lukk appen, både med krysset og med Cmd+Q (macOS), og se at NESTE

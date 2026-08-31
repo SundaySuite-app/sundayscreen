@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.5.0-beta.1] — 2026-08-31
+
+Runde 5 «Terningen i rommet». Der beta.2 ga terningen tykkelse, er dette
+noe annet: terningen er nå en **ekte 3D-modell** — fem legemer, kvaternioner
+og perspektivprojeksjon, håndrullet i rene kjerner (ingen three.js, ingen
+canvas).
+
+- **Snurr terningen.** Dra på den, så roterer den under fingeren med
+  treghet, og blir stående der du slapp — vis klassen hele tallrommet på en
+  D20. Klikk kaster som før, nå som ekte 3D-tumling gjennom lufta.
+- **Fem materialer og seks farger.** D-knappen åpner utseendevelgeren:
+  terningtype, farge (klassisk, gull, grønn, rød, blå, skifer) og materiale
+  (elfenben, kasino, tre, metall, glass — glasset er gjennomskinnelig med
+  synlige bakkanter). Alle 30 kombinasjonene har bevist kontrast.
+- **En ukastet terning hviler på hjørnet** — ingen fjes vendt mot klassen,
+  så et tall aldri kan forveksles med et kast (granskingsfunn).
+- **«Vis stort» gir faktisk stor terning** — 506 px mot før 368 på en
+  1024×768-projektor (granskingsfunn).
+- **Av-bryteren for automatisk oppdatering holder også ved lukking:** en
+  allerede nedlastet oppdatering installeres ikke når bryteren er av, og
+  panelteksten lover ikke lenger noe annet (granskingsfunn).
+- Tastatur: utseendevelgeren tar fokuset med seg ved åpning og leverer det
+  tilbake ved lukking.
+
 ## [0.4.0-beta.3] — 2026-08-31
 
 - **Appen oppdaterer seg selv.** Når en ny versjon finnes, lastes den ned

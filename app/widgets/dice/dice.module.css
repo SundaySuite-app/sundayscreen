@@ -68,11 +68,31 @@
   fill: var(--ink);
 }
 
+/* The numeral the non-d6 types wear instead of pips. `central` baseline so
+   the shape table can place it by its OPTICAL centre — a triangle and a
+   hexagon do not want the numeral at the same height, and a shape's centre
+   is a geometry fact that belongs next to its points, not in here. */
+.value {
+  fill: var(--ink);
+  font-size: 46px;
+  font-family: var(--font);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  dominant-baseline: central;
+}
+
+/* The d4's triangle narrows fast; a full-size «20» would print over its two
+   sloping edges. */
+.die[data-narrow] .value {
+  font-size: 34px;
+}
+
 .unknown {
   fill: var(--ink-3);
   font-size: 48px;
   font-family: var(--font);
   font-weight: 700;
+  dominant-baseline: central;
 }
 
 .sum {

@@ -305,3 +305,102 @@ byte-ene via `try_state` (ALDRI `State<'_, Staged>` som argument — samme felle
 skal kurere). At det er et TAK og ikke en lesing er det som gjør «manuelt
 installert» og «installert ved lukking» gjensidig utelukkende: `app.restart()`
 utløser `RunEvent::Exit` den også.
+
+## ADR-015 — Terningen er en ekte 3D-modell, håndrullet (2026-08-31)
+
+Terningkortet tegner fem konvekse legemer — tetraeder, kube, oktaeder,
+femkant-trapesoeder, dodekaeder, ikosaeder — konstruert fra φ og √5, snudd av
+kvaternioner og projisert per frame. Ingen 2,5D-fasetter, ingen dybdekopi:
+læreren kan dra terningen rundt og vise klassen hele tallrommet.
+
+**Ingen three.js, og tallene sier hvorfor.** Budsjettvakta har ett tak på
+185 000 B rå JS. Målt 2026-08-31, med motoren, materialene og velgeren inne:
+178 700 B — 6 300 B luft igjen, og budsjettet ble IKKE hevet. three.js' fulle
+build er ~600 kB minifisert, altså over tre ganger HELE taket og ~3,4× dagens
+app; selv en hardt tree-shaket WebGLRenderer-kjerne ligger langt over de
+~25 kB lufta som fantes da runden ble planlagt. Prisen hadde uansett kjøpt noe
+vi ikke trenger: fem KONVEKSE legemer trenger ingen scene-graf, og konveksitet
+er lisensen til å kulle på `n·(kamera − c) > 0` og hoppe over z-sorteringen
+helt. Motoren ligger i tre rene kjerner (`die-solids-core`, `die-orient-core`,
+`die-project-core`), node-testet uten DOM; komponenten er en tynn rAF-driver.
+SVG framfor canvas/WebGL: ingen kontekst å miste, ingen DPI-matrise, gratis
+skalering i «Vis stort», og token-/klassesystemet gjelder fortsatt.
+
+**Rotasjonen bor i GEOMETRIEN, aldri i en CSS-transform.** Dette er
+arkitekturlåsen, ikke en stilpreferanse. `e2e/dice.spec.ts` pinner at den
+utregnede `transform` på hvert terning-`<svg>` er identiteten — etter kast,
+etter snurr, og SAMPLET GJENNOM hele reduced-motion-kastet (ikke bare på
+slutten, som den flyvende versjonen også består). De tre testene som pinnet
+dette FØR runden stod URØRT gjennom hele 3D-omskrivingen — ikke ryddet opp i
+etterpå, men sanne per konstruksjon: et legeme som snus i projisert geometri
+har ingenting å legge i `transform` til å begynne med. Det er også det som lar
+flukten eie `transform` alene, til en ren translasjon som gis tilbake til
+layouten ved landing.
+
+Grunnen til at låsen er verdt så mange påstander er R3s **transform-fella**: et
+element med `transform` blir containing block for alle
+`position: fixed`-etterkommere, og verktøylinjas `translateX(-50%)` gjorde
+klassemenyens backdrop 784×52 px i stedet for hele skjermen — et klikk utenfor
+menyen lukket den aldri. En rotasjon som hadde flyttet inn i CSS ville dratt
+nøyaktig den egenskapen med seg inn i hvert eneste terningkort, uten at noen
+test hadde sagt fra.
+
+**Orientering er view-tilstand og persisteres ALDRI.** Presedensen er
+`focusedWidgetId`: hva som er stort på skjermen akkurat nå er ikke noe en
+omstart skylder deg. `lastRoll` bærer løfte 2 alene — restart midt i timen
+viser kastet front-på igjen, ikke vinkelen læreren tilfeldigvis forlot
+terningen i. Derfor er `data-value` (kastets protokoll: hva klassen ble
+fortalt, hva som lagres) og `data-face-up` (hva som vender mot rommet NÅ)
+BEVISST forskjellige etter en manuell snurr, og ingen av dem skal leses ut av
+den andre.
+
+Hvileposituren komponeres i ETT punkt: `restOrientationForValue(solid, value)`
+= `REST_TILT ∘ orientationForValue(...)`. Flyktmålet, hvilebildet og
+reload-bildet kaller alle den samme funksjonen, så de kan ikke sprike.
+`REST_TILT` er 14°/−10°: rett fjes-på leser en kube som et flatt kvadrat — den
+2D-terningen denne runden finnes for å erstatte, i nøyaktig det øyeblikket
+klassen leser svaret. Vippen koster sifferet ~4 % bredde, og fjes-opp-
+invarianten overlever for alle seks legemer: minste vinkel mellom to
+fjesnormaler er D20s 41,8°, så en 17° samlet vipp kan aldri forfremme et
+nabofjes. Det er en test, ikke et håp.
+
+**Flate toner er AV KONSTRUKSJON.** Et plant fjes under fjernt lys har ÉN
+radians over hele arealet — det finnes ingen gradient å tegne. Hvert fjes får
+derfor én Lambert-verdi, kvantisert til ett av fem trinn som slår opp i
+materialets CSS-rampe (aldri inline `fill` — tokens-gaten ser bare `.css`).
+Det som i 2,5D-runden var et kompromiss («flate toner overlever 40 px på en
+projektor») er nå fysisk faktum. Lyset står fast i view-rommet og terningen
+snur seg under det.
+
+**D10 er utledet, ikke avskrevet.** Femkant-trapesoederet er det ene legemet
+som ikke er platonsk, og det eneste stedet en desimal kunne snike seg inn.
+Poler i `(0, 0, ±p)`, to 5-ringer i radius `c` og høyde `±h`, 36° forskjøvet.
+Et drage-fjes er plant nøyaktig når `h/p = (1 − cos 36°)/(1 + cos 36°)
+= 1 − 2/√5` — `c` faller ut, så planaritet alene fikserer ikke kroppen. Den
+frie parameteren brukes på å legge alle tolv verteksene på ÉN omskreven kule:
+`p = 1` ⇒ `h = 1 − 2/√5`, `c = √(1 − h²)`, og forholdet `p/h = 5 + 2√5` leses
+tilbake UT av de konstruerte verteksene i test, til 1e-15. Samme kriterium
+reproduserer KUBEN for n = 3 (`h/p = 1/3`, `c = √8/3` — kuben sett ned
+romdiagonalen), som er den billigst tenkelige sanity-sjekken på at «felles
+omskreven kule» er riktig måte å bruke parameteren på.
+
+**Den forseglede boksen, og hvorfor svaret ble en registry-slot.** Utseende-
+panelet fikk ikke plass i kortet, og det er ikke en terningbug: hvert kort er
+`overflow: hidden` med `container-type: size`, og layout containment gjør
+kortet til containing block for `position: fixed` også. INGEN widget kan
+noensinne tegne en popover ut av sitt eget kort — verken panelet eller
+backdropen. Det er rotårsak #3 i samme familie som R3s to
+(halvbredde-fella og transform-fella, docs/REVISJON-R3.md §Rotårsaker):
+**en boks som måler mot feil ramme**, ett hakk til.
+
+Svaret er `WidgetDef.Overlay`: en valgfri slot i registeret. Skjermlaget slår
+opp def-en og rendrer panelet på Shell-nivå, der `fixed` betyr viewporten
+igjen, plassert av en ren, tabelltestet `popover-core`. Registeret forblir
+eneste koblingspunkt (CLAUDE.md), så evnen arves av alle tolv kinds i stedet
+for å være en ledning trukket til én mappe. `createPortal` er forkastet (den
+bor i `preact/compat`, som bundlen bevisst ikke bærer), og en direkte
+Shell-import av terningens panel er forkastet fordi den ville virket i dag og
+brutt registry-regelen i morgen. Verten og alt en overlay rendrer må aldri
+bære `transform`, `filter`, `backdrop-filter`, `contain` eller
+`container-type` — hver av dem gjør elementet til containing block igjen og
+setter panelet tilbake i fella det finnes for å slippe ut av.

@@ -35,7 +35,31 @@ reinstallasjonen TRYGG: en versjonskonflikt rører aldri databasen lenger,
 appen forklarer seg selv på skjermen i stedet for å boote tomt, og en
 sikkerhetskopi finnes uansett — se docs/ROLLBACK.md.
 
-- [ ] **Riggtest automatisk oppdatering (ADR-014, nyest):** med en oppdatering
+- [ ] **Riggtest Runde 5 «Terningen i rommet» (nyest):** fire punkter, alle
+      på ekte projektor. Terningen er nå en ekte 3D-modell — og det er
+      nøyaktig det ingen test kan se etter.
+
+  1. **Snurr en D20 foran klassen.** Dra på terningen med musa eller
+     styreflaten og la elevene lese fjesene rundt: går det an å SE hele
+     tallrommet 1–20, eller blir tallene for skrå til å leses før de
+     forsvinner rundt kanten? Terningen blir stående der du slapp den — det
+     er med vilje. Veien tilbake til svaret er å kaste på nytt.
+  2. **Tell prikkene på en D6 fra tre meter,** i alle fem materialene
+     (elfenben, kasino, tre, metall, glass — bytt i «Utseende»-panelet, som
+     åpnes med knappen som viser «D6»). Prøv gjerne to–tre av de seks
+     fargene også. Er det ett materiale der prikkene forsvinner, er det
+     materialet som er feil, ikke øynene dine.
+  3. **«Vis stort» + snurr på en 1024×768-projektor.** Forstørr
+     terningkortet og snurr. Føles det jevnt (60 bilder i sekundet), eller
+     hakker det? Den gamle maskinen er den som teller her, ikke Mac-en.
+  4. **4-4-4-spørsmålet.** Legg til tre terninger og kast til de lander likt.
+     De blir da PIKSELIDENTISKE — samme tall, samme vinkel, samme skygge.
+     Det er bevisst (samme svar skal se likt ut), men det ser unektelig litt
+     fabrikkert ut. **Skurrer det, si fra:** en liten tilfeldig vipp per
+     terning er en linje kode, men den koster lesbarheten litt, så valget er
+     ditt.
+
+- [ ] **Riggtest automatisk oppdatering (ADR-014):** med en oppdatering
       klar — lukk appen, både med krysset og med Cmd+Q (macOS), og se at NESTE
       oppstart er den nye versjonen. Panelet skal si «v… installeres når du
       lukker appen» så snart nedlastingen er ferdig; sier det fortsatt «v…

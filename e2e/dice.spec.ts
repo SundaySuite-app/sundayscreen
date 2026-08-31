@@ -13,7 +13,9 @@ import { installFixtures } from "./harness";
 // physics core proves the flight. What none of them can prove is that the
 // arithmetic reaches the DOM and then LETS GO of it — a residual `transform`
 // on a face is invisible in a unit test and permanent on a projector, because
-// the layout no longer owns that die.
+// the layout no longer owns that die. The other half of «lets go» is the rAF
+// loop itself: it outlives Preact's own bookkeeping if nothing cancels it, so
+// the last test in this file removes a die MID-THROW and counts frames.
 //
 // ## ⚠️ `data-value` and `data-face-up` are DIFFERENT ON PURPOSE
 //
@@ -25,7 +27,7 @@ import { installFixtures } from "./harness";
 // her finger to show the class the other sides — which is the whole point of
 // the trackball. Nobody should «fix» that by making one read the other.
 //
-// ## The three transform assertions below are the ARCHITECTURE LOCK
+// ## The transform assertions below are the ARCHITECTURE LOCK
 //
 // The die's rotation lives in projected GEOMETRY, never in a CSS transform.
 // That is what lets the flight own `transform` for a pure translation, and it
@@ -113,6 +115,52 @@ function geometry(dice: Locator): Promise<string> {
     .evaluateAll((els) =>
       els.map((el) => el.getAttribute("points") ?? "").join("|"),
     );
+}
+
+/** A flick: press on the die, throw it across a good part of its own width,
+ *  and let go while still moving. Well past `isDrag`'s 4 px, and fast enough
+ *  that `flickSpin` returns a rate far above `SPIN_STOP_EPS` — so whether the
+ *  die coasts afterwards is decided by the motion PREFERENCE, never by the
+ *  gesture being too limp to have earned one. */
+async function flick(page: Page, dice: Locator): Promise<void> {
+  const die = (await dice.locator("svg[data-solid]").first().boundingBox())!;
+  const cx = die.x + die.width / 2;
+  const cy = die.y + die.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + 90, cy + 25, { steps: 10 });
+  await page.mouse.up();
+}
+
+/** How many rAF callbacks the page has actually RUN, from the counter
+ *  `countFrames` installs.
+ *
+ *  This is a whole-page number and it can be one because the dice widget is
+ *  the ONLY thing in `app/` that asks for an animation frame — the timer
+ *  derives from the clock, the picker spins in CSS. So on a board whose last
+ *  die has been removed, a count that keeps climbing is a loop that outlived
+ *  its component, and there is nothing else it could be. */
+function rafRuns(page: Page): Promise<number> {
+  return page.evaluate(
+    () => (window as unknown as { __rafRuns: number }).__rafRuns,
+  );
+}
+
+/** Install that counter. Must run BEFORE `page.goto`. */
+async function countFrames(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __rafRuns: number };
+    w.__rafRuns = 0;
+    const raf = window.requestAnimationFrame.bind(window);
+    // Counted on the way IN to the callback, not when one is requested: a
+    // cancelled frame is exactly the thing being asserted about, and a
+    // request-side counter would count it anyway.
+    window.requestAnimationFrame = (cb: FrameRequestCallback) =>
+      raf((tMs) => {
+        w.__rafRuns++;
+        cb(tMs);
+      });
+  });
 }
 
 /** Open the appearance panel. The card must already be hovered — the settings
@@ -544,4 +592,122 @@ test("three d20 fit the smallest card, and so does the three-button row", async 
 
   const row = dice.locator("[data-settings-row]");
   await assertContained((await row.boundingBox())!, card, "the settings row");
+});
+
+test("reduced motion: the die still follows the finger, but lets go of it", async ({
+  page,
+}) => {
+  // Design choice 7, and the one half of `prefers-reduced-motion` no unit
+  // test can reach: DIRECT MANIPULATION IS NOT «MOTION». A teacher who asked
+  // her OS for less movement still gets a die that turns 1:1 under her
+  // finger — taking that away would not be calm, it would be a broken
+  // trackball. What she does not get is INERTIA: the die stops the instant
+  // she lets go, because coasting is movement she did not ask for.
+  await installFixtures(page);
+  await page.goto("/");
+  await addWidget(page, "Terning");
+
+  const dice = page.locator('[data-widget-kind="dice"]');
+  const roll = dice.getByRole("button", { name: "Kast" });
+
+  await roll.click();
+  await expect(roll).toHaveAttribute("data-value", /^[1-6]$/);
+  const landed = await roll.getAttribute("data-value");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+
+  const atRest = await geometry(dice);
+  await flick(page, dice);
+
+  // 1. The body turned WHILE the finger was on it.
+  const released = await geometry(dice);
+  expect(released, "the die did not follow the finger").not.toBe(atRest);
+
+  // 2. …and the moment the finger left, it was done. No coast, no flick.
+  await page.waitForTimeout(300);
+  expect(
+    await geometry(dice),
+    "the die coasted despite prefers-reduced-motion: reduce",
+  ).toBe(released);
+
+  // 3. Still in the geometry, still not in a transform. ARCHITECTURE LOCK.
+  expect((await transforms(roll)).every(isIdentity)).toBe(true);
+
+  // 4. …and turning it by hand did not re-roll it, here either.
+  await expect(roll).toHaveAttribute("data-value", landed!);
+
+  // 5. THE SAME GESTURE, with the preference lifted, DOES coast. Without
+  //    this, assertion 2 is also satisfied by a flick too weak to have
+  //    started a coast in the first place — a green test that proves the
+  //    mouse moved slowly.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await flick(page, dice);
+  const justReleased = await geometry(dice);
+  await page.waitForTimeout(150);
+  expect(
+    await geometry(dice),
+    "the flick never coasted even with motion allowed — assertion 2 proves nothing",
+  ).not.toBe(justReleased);
+});
+
+test("a die removed mid-throw takes its animation loop with it", async ({
+  page,
+}) => {
+  // The rAF loop is the one thing in the widget that keeps running after
+  // Preact has stopped asking it to. `useEffect(() => cleanup, [])` cancels
+  // the frame, the interval and the timeout — and a leak here is invisible
+  // in every other test in this file, because they all let the throw finish.
+  // On a projector it is an 8-hour school day of a loop repainting nodes
+  // that are no longer in the document.
+  const problems: string[] = [];
+  page.on("pageerror", (err) => problems.push(`pageerror: ${err.message}`));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") problems.push(`console.error: ${msg.text()}`);
+  });
+
+  await installFixtures(page);
+  await countFrames(page);
+  await page.goto("/");
+  await addWidget(page, "Terning");
+
+  const dice = page.locator('[data-widget-kind="dice"]');
+  const roll = dice.getByRole("button", { name: "Kast" });
+
+  await roll.click();
+
+  // The loop is RUNNING — asserted, not assumed. This is what makes the
+  // removal below happen mid-flight rather than after a throw that quietly
+  // finished while Playwright was busy.
+  const before = await rafRuns(page);
+  await page.waitForTimeout(100);
+  const during = await rafRuns(page);
+  expect(during, "the throw never started a rAF loop to leak").toBeGreaterThan(
+    before,
+  );
+
+  await dice.hover();
+  await page.getByRole("button", { name: "Fjern" }).click();
+  await expect(dice).toHaveCount(0);
+
+  // One frame may already have been dispatched when the component went away;
+  // let it land, then take the reading that has to hold still.
+  await page.waitForTimeout(100);
+  const atRemoval = await rafRuns(page);
+
+  // Well past the throw's own 1100 ms — a loop that only stopped because the
+  // flight ended would still be counting through this window.
+  await page.waitForTimeout(1500);
+  expect(
+    await rafRuns(page),
+    "a rAF loop survived the widget that started it",
+  ).toBe(atRemoval);
+
+  // …and it went quietly. A cleanup that throws on unmount leaves the board
+  // in a half-rendered state that no later assertion in this file would see.
+  expect(problems, problems.join("\n")).toEqual([]);
+
+  // The board is still a working board: the removal is undoable, which is
+  // also the cheapest proof that the shell survived the teardown.
+  await page.getByRole("button", { name: "Angre" }).click();
+  await expect(dice).toHaveCount(1);
 });

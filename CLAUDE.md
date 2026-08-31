@@ -39,7 +39,9 @@ visningsflaten. macOS + Windows.
   feilring + typed fallback). Appen skal alltid boote i ren nettleser.
 - **Widget-registry:** én mappe per widget under `app/widgets/`;
   `registry.ts` er eneste koblingspunkt. Ny widget = ny mappe + én
-  registry-linje + én `WidgetConfig`-variant + i18n-nøkler.
+  registry-linje + én `WidgetConfig`-variant + i18n-nøkler (+ valgfri
+  `Overlay`-slot for paneler som må slippe UT av kortet — kortet er en
+  forseglet boks, se ADR-015).
 - **Pure core-stil:** DOM-logikk reduseres til `*-core.ts` (node-testet);
   komponentene er tynne. Vitest er node-env — ALDRI jsdom.
 

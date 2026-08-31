@@ -13,11 +13,17 @@
 // enten en falsk regresjon ingen kan reprodusere lokalt, eller en falsk grønn
 // som skjuler en ekte økning. Rå filstørrelse er den samme overalt.
 //
-// Budsjetter (målt 2026-08-30, god margin foreløpig: 141 718 / 47 761 /
-// 251 402 B):
+// Budsjetter (målt 2026-08-31, etter 3D-terningen: 178 700 / 58 138 /
+// 302 359 B — margin nå 6 300 / 6 862 / 17 641 B):
 //   - største enkelt-JS-fil   ≤ 185 000 B
 //   - største enkelt-CSS-fil  ≤  65 000 B
 //   - HELE dist/, alle filer  ≤ 320 000 B
+//
+// ⚠️ Marginen er ikke lenger romslig. Taket ble BEVISST stående da terningens
+// 3D-motor landet (ADR-015): en gate skal gjøre vekst SYNLIG, ikke forby
+// planlagt vekst — men den neste runden som trenger plass må heve tallet med
+// et MÅLT tall i denne docstringen, aldri flytte kode mellom chunks for å
+// komme under (det er å spille gaten, ikke å bestå den).
 //
 // FORUTSETNING: dist/ er FERSK. Dette skriptet bygger IKKE selv — det leser
 // bare det som ligger der fra sist. Kjør `npm run build` rett før, i samme

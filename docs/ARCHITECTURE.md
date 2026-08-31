@@ -26,6 +26,7 @@ lydmåler, friminutt-skjerm, A/B-uker, touch, tegning, toskjermsmodus.
 app/            Preact + signals. Tynne komponenter over rene *-core.ts.
   lib/api-shim  ALLE invoke() går her: fixture-søm, feilring, typed fallback.
   widgets/      én mappe per widget; registry.ts er eneste koblingspunkt.
+                WidgetDef har en valgfri Overlay-slot (se pkt. 9).
 crates/sundayscreen-core   Typeautoritet + all beslutningslogikk (headless).
 src-tauri/      Tynt I/O-skall: kommandoer, sqlx, vindushåndtering.
 ```
@@ -65,8 +66,27 @@ rect: NormRect, z, config }` og `WidgetConfig` som `#[serde(tag =
    → signal-swap i `batch()`.
 7. **Fullskjerm:** boot i vindu (dra til projektor) → F11/knapp; macOS
    `set_simple_fullscreen`, Windows borderless `set_fullscreen` — ALDRI
-   always-on-top/exclusive. Lagdelt Escape (popover → overlay → fullskjerm).
-   `windowState` persisteres m/ monitor-sanity-clamp.
+   always-on-top/exclusive. Lagdelt Escape (widgetoverlay → addmenu → menu →
+   overlay → fokus → fullskjerm). `windowState` persisteres m/
+   monitor-sanity-clamp.
+8. **Terningen er en 3D-modell** (ADR-015). Fem konvekse legemer utledet fra
+   φ/√5, kvaternion-orientering og perspektivprojeksjon, i tre rene kjerner
+   (`die-solids-core` · `die-orient-core` · `die-project-core`); komponenten
+   er en tynn rAF-driver som maler SVG imperativt. Ingen three.js —
+   budsjettaket er 185 000 B rå JS. Konveksitet gir kulling uten
+   z-sortering; ett Lambert-trinn per fjes slår opp i en CSS-rampe (flate
+   toner er fysikk, ikke kompromiss). **Rotasjonen bor i geometrien, aldri i
+   en CSS-transform** — e2e-påstandene om det er arkitekturlåsen. Orientering er
+   view-tilstand og persisteres aldri; `lastRoll` bærer løfte 2 alene.
+9. **`WidgetDef.Overlay`:** valgfri slot for et panel som ikke får plass i
+   kortet. Hvert kort er `overflow: hidden` + `container-type: size`, og
+   layout containment gjør kortet til containing block for `position: fixed`
+   — ingen widget kan tegne en popover ut av sitt eget kort. Skjermlaget
+   (`screen/WidgetOverlay.tsx`) rendrer panelet på Shell-nivå, plassert av
+   `screen/popover-core.ts`; `--z-popover: 200` og øverste Escape-rung.
+   Registeret forblir eneste koblingspunkt, så evnen arves av alle kinds.
+   Verten og alt den rendrer må aldri bære `transform`/`filter`/`contain`/
+   `container-type` (ADR-015).
 
 ## SQLite-skjema
 

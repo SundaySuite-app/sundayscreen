@@ -27,12 +27,6 @@
   --line: #e4dfd2;
   --line-2: #cfc8b6;
 
-  /* The dice's two body tones (R4.1, owner request: «litt mer 3d»):
-     the thickness behind the face, and the tint on its shaded facets.
-     Surfaces, never ink — nothing reads text off these. */
-  --die-depth: #cfc7b4;
-  --die-facet: #f0eadd;
-
   /* ── The six die COLOUR FAMILIES, and the ink each one carries ────────
    *
    * A family is a PAIR, never a colour: the body the die is cut from, and

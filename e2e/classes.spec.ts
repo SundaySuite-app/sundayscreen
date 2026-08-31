@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { addWidget, installFixtures } from "./harness";
+import { addWidget, installFixtures, settleEffects } from "./harness";
 
 // F3's promise: each class has its own name list AND its own layout, and the
 // switch is two clicks.
@@ -342,6 +342,12 @@ test("9B never reads 8A's groups off the board", async ({ page }) => {
   await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
   await page.getByPlaceholder("Ny klasse …").fill("8A");
   await page.getByRole("button", { name: "Legg til", exact: true }).click();
+  // «Legg til» auto-switches the panel to the new class, and the panel's
+  // clear-draft-on-class-change effect is DEFERRED (same scheduler as the
+  // agenda wipe in harness.ts::settleEffects) — typing inside that window
+  // gets wiped along with the `edited` guard, and «Lagre navneliste» would
+  // then replace-all an EMPTY list for 8A.
+  await settleEffects(page);
   await page.getByPlaceholder(/Ett navn per linje/).fill("Emma\nJonas\nSara");
   await page.getByRole("button", { name: "Lagre navneliste" }).click();
   await page.getByRole("button", { name: "7B" }).click();

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { addWidget, installFixtures } from "./harness";
+import { addWidget, installFixtures, settleEffects } from "./harness";
 
 // The F9 robustness journeys: the failure shapes a classroom actually
 // produces — a projector swap mid-lesson, a whole school year pasted into
@@ -124,6 +124,12 @@ test("a name typed before the list lands is never overwritten by the seed", asyn
   await page.goto("/");
 
   await openManage(page);
+  // The panel's clear-draft effect fires once on MOUNT, deferred (see
+  // harness.ts::settleEffects) — a fill inside that window is wiped along
+  // with the `edited` guard, and this test's own seed would then win: the
+  // exact opposite of what it proves. Let the mount settle; the deferred
+  // read is still being held, so the race under test is untouched.
+  await settleEffects(page);
   const area = page.getByPlaceholder(/Ett navn per linje/);
   await area.fill("Nils");
 

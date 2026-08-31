@@ -913,11 +913,62 @@ export async function installFixtures(
 }
 
 /**
+ * Wait out Preact's DEFERRED effect flush, so a journey never types into a
+ * component whose mount (or key-change) effects are still pending.
+ *
+ * Preact runs `useEffect` callbacks on rAF + setTimeout — up to two frames
+ * AFTER the render — or synchronously at the NEXT re-render, whichever comes
+ * first. A journey is free to type ~10 ms after the click that mounted the
+ * field, a gesture no human hand can make: the field paints in the same
+ * frame pipeline that flushes the effects, so a human's eye-to-keyboard
+ * second always lands after the flush, however slow the machine. Two
+ * components carry clear-draft effects that made this a real wipe (both are
+ * features — a half-typed line must not follow a lesson/class switch):
+ * the agenda widget's draft (trace-proven: fill at t+22 ms → wipe → Enter
+ * at t+28 ms → submit saw "") and the manage panel's name list (whose
+ * `edited` guard the wipe also resets, letting the seed overwrite typing).
+ *
+ * Awaiting one rAF and then a macrotask queues BEHIND the pending flush
+ * chain in both schedulers Playwright runs us under — native timers
+ * (registration-order FIFO per the HTML spec) and `page.clock`'s single
+ * fake-timer queue — so when this resolves the effects have run. The one
+ * assumption to keep true: the gesture before this call must have RENDERED
+ * the component synchronously (widget-add and panel-open are pure signal
+ * writes today); an IPC-gated mount would let this settle run too early.
+ *
+ * The race is for `page.clock.pauseAt`: a PAUSED mocked clock freezes rAF
+ * and setTimeout, so the in-page chain would hang forever — while Preact's
+ * own flush is equally frozen, which makes «settled» meaningless there.
+ * The bail-out timer runs in the TEST process, outside the page's mocked
+ * clock, so a paused-clock journey proceeds after a bounded beat instead.
+ * Contract for such journeys: mount effects have NOT run and will fire on
+ * the next clock advance — authored time-travel, deterministic, never this
+ * flake. (250 ms is ~6× the worst flush delay measured under full parallel
+ * load; a running clock resolves the left arm in 1–2 frames.)
+ */
+export async function settleEffects(page: Page): Promise<void> {
+  let bail: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    page
+      .evaluate(
+        () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))),
+      )
+      .catch(() => undefined),
+    new Promise<void>((r) => {
+      bail = setTimeout(r, 250);
+    }),
+  ]);
+  clearTimeout(bail);
+}
+
+/**
  * Add a widget through the toolbar's add menu (R2 replaced the eight flat
  * buttons with one popover). `label` is the visible catalogue label, e.g.
- * "Tekst" or "Klokke".
+ * "Tekst" or "Klokke". Ends with [`settleEffects`], so the journey can type
+ * into the fresh widget on the next line without racing its mount effects.
  */
 export async function addWidget(page: Page, label: string): Promise<void> {
   await page.getByRole("button", { name: "Legg til verktøy" }).click();
   await page.getByRole("menuitem", { name: label }).click();
+  await settleEffects(page);
 }

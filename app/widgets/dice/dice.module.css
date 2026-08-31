@@ -56,6 +56,11 @@
 .die {
   width: var(--die);
   height: var(--die);
+  /* The depth copy pokes ~4 units past the 100-grid down-right; SVGs clip
+     at the viewBox by default and would shave the thickness off. The ink
+     lands in the roll area's own padding — boundingBox() reads the layout
+     box, so the containment tests are unaffected. */
+  overflow: visible;
 }
 
 .face {
@@ -64,8 +69,44 @@
   stroke-width: 4;
 }
 
+/* The die's thickness: a flat darker whole-die copy offset down-right,
+   like a die lying on the desk. One tone — a gradient here is what turns
+   to mud at projector sizes. */
+.depth {
+  fill: var(--die-depth);
+  stroke: var(--die-depth);
+  stroke-width: 4;
+}
+
+/* The other visible faces. A single quiet tint over the base face; the
+   front facet stays --raised and pops forward. */
+.facetShade {
+  fill: var(--die-facet);
+}
+
+.facetEdge {
+  fill: none;
+  stroke: var(--line-2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .pip {
   fill: var(--ink);
+}
+
+/* The drilled rim the pip sits in… */
+.pipRim {
+  fill: var(--die-facet);
+  stroke: var(--line-2);
+  stroke-width: 1;
+}
+
+/* …and the fleck of light on its shoulder. */
+.pipSpec {
+  fill: var(--raised);
+  opacity: 0.85;
 }
 
 /* The numeral the non-d6 types wear instead of pips. `central` baseline so

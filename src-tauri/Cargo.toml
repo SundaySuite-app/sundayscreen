@@ -1,6 +1,6 @@
 [package]
 name = "sundayscreen"
-version = "0.4.0-beta.1"
+version = "0.4.0-beta.2"
 description = "Offline classroom display — timers, name pickers and work signals on the projector. Part of the Sunday suite."
 authors = ["Richard Fossland"]
 license = "MIT"

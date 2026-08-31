@@ -21,6 +21,8 @@ import { LIMITS } from "@lib/limits.generated";
 import { updateWidgetConfig, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import {
+  DEPTH_DX,
+  DEPTH_DY,
   FACE_SHAPES,
   nextFaces,
   PIP_FACES,
@@ -57,6 +59,12 @@ function DieFace({ value, faces }: { value: number | null; faces: number }) {
     faces === PIP_FACES ? null : (FACE_SHAPES[faces] ?? FACE_SHAPES[20]);
   const labelY = shape ? shape.labelY : PIP_LABEL_Y;
 
+  // The 3-D of it (owner request 08-31): one darker whole-die copy behind
+  // the face gives the thickness, the shape's own facet table gives the
+  // other visible faces, and the pips are drilled dimples rather than flat
+  // dots. All flat tones and 2-unit edges — what survives 40 px on a
+  // projector. The depth copy is drawn FIRST so the face covers it.
+  const depth = `translate(${DEPTH_DX} ${DEPTH_DY})`;
   return (
     <svg
       class={styles.die}
@@ -64,9 +72,40 @@ function DieFace({ value, faces }: { value: number | null; faces: number }) {
       data-narrow={shape?.narrow ? "" : undefined}
     >
       {shape ? (
-        <polygon points={shape.points} class={styles.face} />
+        <>
+          <polygon
+            points={shape.points}
+            class={styles.depth}
+            transform={depth}
+          />
+          <polygon points={shape.points} class={styles.face} />
+          {shape.shaded.map((pts, i) => (
+            <polygon key={`s${i}`} points={pts} class={styles.facetShade} />
+          ))}
+          {shape.edges.map((pts, i) => (
+            <polyline key={`e${i}`} points={pts} class={styles.facetEdge} />
+          ))}
+        </>
       ) : (
-        <rect x="4" y="4" width="92" height="92" rx="18" class={styles.face} />
+        <>
+          <rect
+            x="4"
+            y="4"
+            width="92"
+            height="92"
+            rx="18"
+            class={styles.depth}
+            transform={depth}
+          />
+          <rect
+            x="4"
+            y="4"
+            width="92"
+            height="92"
+            rx="18"
+            class={styles.face}
+          />
+        </>
       )}
       {value === null ? (
         <text x="50" y={labelY} class={styles.unknown} text-anchor="middle">
@@ -74,7 +113,13 @@ function DieFace({ value, faces }: { value: number | null; faces: number }) {
         </text>
       ) : shape === null ? (
         (PIPS[value] ?? []).map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="9" class={styles.pip} />
+          // A dimple, not a dot: a rim the pip sits inside, the pip itself a
+          // hair up-left of it, and a specular fleck where the light lands.
+          <g key={i}>
+            <circle cx={x} cy={y} r="10" class={styles.pipRim} />
+            <circle cx={x - 0.8} cy={y - 0.8} r="8.4" class={styles.pip} />
+            <circle cx={x - 3.2} cy={y - 3.2} r="2.3" class={styles.pipSpec} />
+          </g>
         ))
       ) : (
         <text x="50" y={labelY} class={styles.value} text-anchor="middle">

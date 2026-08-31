@@ -205,7 +205,7 @@ test("the die type can be changed, and it survives a reload", async ({
   // a different solid, and that is checkable without waiting for a lucky 7.
   await roll.click();
   await expect(roll).toHaveAttribute("data-value", /^[1-8]$/);
-  await expect(roll.locator("svg polygon")).toHaveAttribute(
+  await expect(roll.locator("svg polygon").first()).toHaveAttribute(
     "points",
     FACE_SHAPES[8].points,
   );

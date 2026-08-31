@@ -27,6 +27,12 @@
   --line: #e4dfd2;
   --line-2: #cfc8b6;
 
+  /* The dice's two body tones (R4.1, owner request: «litt mer 3d»):
+     the thickness behind the face, and the tint on its shaded facets.
+     Surfaces, never ink — nothing reads text off these. */
+  --die-depth: #cfc7b4;
+  --die-facet: #f0eadd;
+
   /* ── Ink, three levels — every one of them a READING level ───────────
    *
    * `--ink-3` is not «the third grey»; it is MUTED TEXT WITH A CONTRAST

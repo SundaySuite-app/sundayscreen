@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0-beta.2] — 2026-08-31
+
+- **Terningen er blitt fysisk** (eierønske): hver terning har nå tykkelse
+  (som en terning på pulten), synlige sidefasetter med tynne kanter — D12
+  og D20 viser frontfasetten omkranset av de skrå naboene — og prikkene på
+  D6 er borete groper med lysglimt, lettere å telle fra avstand. Flate
+  toner og 2-enhets kanter med vilje: det er det som overlever 40 px på en
+  projektor.
+
 ## [0.4.0-beta.1] — 2026-08-31
 
 Runde 4 «Veien tilbake» — den største runden siden verktøykassa ble bygd:

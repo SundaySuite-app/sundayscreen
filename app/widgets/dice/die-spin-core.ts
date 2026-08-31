@@ -22,6 +22,7 @@
 // reaches for «the spin constant» has to say which one out loud.
 
 import {
+  QUAT_IDENTITY,
   SPIN_DAMP_PER_STEP,
   SPIN_STOP_EPS,
   orientationForValue,
@@ -34,7 +35,7 @@ import {
   type SpinState,
 } from "./die-orient-core";
 import type { Solid } from "./die-solids-core";
-import { v3, vUnit } from "./die-solids-core";
+import { v3, vCross, vLen, vUnit } from "./die-solids-core";
 
 /** The coast is integrated in fixed steps, like the throw next door — a frame
  *  that arrives late runs several of them rather than taking one big one, so
@@ -69,26 +70,6 @@ export const TRACKBALL_MAX_RATE =
   (TRACKBALL_MAX_DEG_PER_MS * TRACKBALL_STEP_MS * Math.PI) / 180;
 
 /**
- * The die's pose before anybody has rolled it.
- *
- * A real die is never seen square-on by accident, and this one must not be
- * either: `lastRoll` is empty on a freshly added widget, and a body parked at
- * the identity would show its first face flat to the class — a «1» the widget
- * would be inventing. Tipped like this, no face is square enough to read as
- * an answer and every body shows the three-quarter view that says «solid».
- *
- * The pinned property is the one that matters (see the test): at this
- * orientation the best face of every one of the six bodies is well short of
- * facing the class.
- *
- * ⚠️ The x tilt is BIG (80°), and that is not a stylistic choice — it is what
- * the bodies cost. An octahedron's eight normals are the cube's diagonals, so
- * a gentle nudge off square lands the next face square instead; a search over
- * the whole two-angle grid found nothing under ~75° that keeps all six bodies
- * off «flat on» at once. These two angles are the pose where the squarest
- * face of the worst body is furthest from facing the class.
- */
-/**
  * The presentation tilt a ROLLED die rests in. Dead face-on, the cube reads
  * as a flat square — the 2-D die this round exists to replace, at the exact
  * moment the class is reading the answer (seen on screen, not guessed). A
@@ -113,12 +94,72 @@ export function restOrientationForValue(solid: Solid, value: number): Quat {
   return qMul(REST_TILT, orientationForValue(solid, value));
 }
 
-export const IDLE_TILT: Quat = qNormalize(
-  qMul(
-    qAxisAngle(v3(0, 1, 0), (28 * Math.PI) / 180),
-    qAxisAngle(v3(1, 0, 0), (-80 * Math.PI) / 180),
-  ),
-);
+/**
+ * How far the idle pose is turned about the LINE OF SIGHT, purely for
+ * composition. −15° is what puts a cube's corner-on view into the drawing
+ * everybody recognises: one face normal straight up, one seam straight down,
+ * two seams up-left and up-right. It cannot change any face's `facing`
+ * (that is `n · ẑ`, and a rotation about ẑ leaves z alone), so it is free.
+ */
+const IDLE_TWIST = (-15 * Math.PI) / 180;
+
+/**
+ * The pose a die is drawn in before anybody has rolled it: CORNER ON.
+ *
+ * `lastRoll` is empty on a freshly added widget, and a body parked at the
+ * identity would show its first face flat to the class — a «1» the widget
+ * would be inventing. The fix is not «tip it a bit»: a tipped die is still a
+ * die with a best face, and the class cannot tell «tipped by 20°» from
+ * «landed and tipped by 20°». What it CAN tell is a die standing on its
+ * corner, because that is the one attitude in which no face is the answer —
+ * every face at the vertex is equally turned toward the room, and a tie is
+ * not a number.
+ *
+ * So: rotate `solid.v[0]` — a real vertex of the body, on the unit sphere by
+ * construction — onto the camera axis by the SHORTEST arc, then turn the
+ * whole picture `IDLE_TWIST` about that same camera axis for composition. Per
+ * body, because the vertices are per body; deterministic, because nothing
+ * here is a search.
+ *
+ * What that costs each body, measured (the facing of every face over
+ * `MARK_MIN_FACING`, all equal to within 3e-16 — the test pins both halves):
+ *
+ *   - d4   3 faces at 0.333 — inside the mark's fade band, so a tetrahedron
+ *          idles with three ghost numerals. That is correct and not a
+ *          shortfall: a tetrahedron's best face is 1/3 square whatever you
+ *          do with it (its faces stand against VERTICES), which is the same
+ *          fact `MARK_MIN_FACING = 0.3` was chosen around.
+ *   - d6   3 faces at 0.577 — the isometric cube.
+ *   - d8   4 faces at 0.577
+ *   - d10  5 kites at 0.669 — its `v[0]` is a POLE, so the trapezohedron
+ *          idles pole-on, five equal faces around the point.
+ *   - d12  3 faces at 0.795
+ *   - d20  5 faces at 0.795
+ *
+ * Every one of those is under the 0.956 a rolled die rests at, and the worst
+ * of them is under 0.81 — which is the gap the test defends. The other half
+ * of the test is the one that matters more: the tie has to be EXACT, because
+ * a «corner-on» pose that is a degree off is just a tilt again, with one face
+ * quietly winning.
+ */
+export function idleOrientationFor(solid: Solid): Quat {
+  const vertex = vUnit(solid.v[0]);
+  // The shortest arc from the vertex to the camera axis. `|v × ẑ| = sin θ`
+  // and `v · ẑ = cos θ`, so `atan2` of the two is the angle without an
+  // `acos` that would lose precision as the two vectors line up.
+  const axis = vCross(vertex, v3(0, 0, 1));
+  const sin = vLen(axis);
+  const toCamera =
+    sin > 1e-12
+      ? qAxisAngle(axis, Math.atan2(sin, vertex.z))
+      : // Parallel: either already pointing at the camera (the d10's pole,
+        // which is nothing to do) or dead away from it, where the cross
+        // product has no direction to offer and any half-turn will do.
+        vertex.z > 0
+        ? QUAT_IDENTITY
+        : qAxisAngle(v3(1, 0, 0), Math.PI);
+  return qNormalize(qMul(qAxisAngle(v3(0, 0, 1), IDLE_TWIST), toCamera));
+}
 
 /** One pointer position, as the component saw it. `t` is any monotone clock;
  *  only differences are ever read. */

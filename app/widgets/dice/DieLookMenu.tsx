@@ -24,13 +24,39 @@
 // out is the backdrop or Escape — both of which the host already owns, which
 // is why the `close` the slot hands over is not destructured here.
 //
-// ## Keyboard: Tab and Escape, and no roving tabindex
+// ## Keyboard: in on opening, back out on closing, and no roving tabindex
 //
 // `menuitemradio` + `aria-checked` describes the three groups honestly, but
 // the arrow-key roving-tabindex pattern that usually comes with a `menu` is
 // NOT in this house — no other panel has it — and a die round is not the
 // place to introduce a keyboard convention the other eleven widgets would
 // then be missing. Every control is a real, tabbable button.
+//
+// That argument is about moving WITHIN the panel, and it never covered
+// getting IN. The panel is a sibling of the surface (the host owns the box),
+// so document order puts it after everything on the board: a teacher who
+// opened it from the keyboard was left standing on the trigger with the first
+// pill ELEVEN Tab stops away — the card's own chrome, then the whole toolbar,
+// then the backdrop. Measured, in `e2e/dice-picker.spec.ts`. Since R5 this
+// panel is also the ONLY route to the die type, so those eleven stops are not
+// a shortcut anyone can decline.
+//
+// So focus is moved IN when the panel opens, onto the first type pill, and
+// returned to whatever opened it when it closes (Escape, the backdrop, the
+// card leaving the board). Two choices worth naming:
+//
+//  - onto a real `<button>`, not onto the panel root with `tabindex="-1"`:
+//    a button is focusable in every engine without an added attribute,
+//    WKWebView included, and it costs no extra Tab to reach the first
+//    control. `preventScroll` because child effects run BEFORE the host's
+//    placement effect, so at this moment the panel is still at its
+//    pre-measurement `left: 0; top: 0`.
+//  - the opener is REMEMBERED (`document.activeElement`), not looked up:
+//    the trigger lives inside a card this file must not reach into, and the
+//    keyboard journey this exists for always has it focused. A mouse open in
+//    an engine that does not focus a clicked button leaves nothing to
+//    remember — and `<body>` is exactly where the keyboard was before the
+//    click, so there is nothing to restore either.
 
 import { useLayoutEffect, useRef } from "preact/hooks";
 
@@ -48,7 +74,7 @@ import {
   MATERIAL_TRAITS,
 } from "./die-materials-core";
 import { solidFor } from "./die-solids-core";
-import { IDLE_TILT } from "./die-spin-core";
+import { idleOrientationFor } from "./die-spin-core";
 import styles from "./dice.module.css";
 
 /**
@@ -58,8 +84,10 @@ import styles from "./dice.module.css";
  * renders the pool and a layout effect paints it once; the effect has no deps
  * because the type and the colour above it can both change under it.
  *
- * `IDLE_TILT`, not square-on: a swatch drawn face-on shows ONE face, and one
- * face is the same picture for all five finishes.
+ * Corner-on (`idleOrientationFor`), not square-on: a swatch drawn face-on
+ * shows ONE face, and one face is the same picture for all five finishes.
+ * The corner pose shows three-plus equally lit facets — which is exactly
+ * what a FINISH swatch exists to differ on.
  */
 function FinishSwatch({
   widgetId,
@@ -78,7 +106,7 @@ function FinishSwatch({
   useLayoutEffect(() => {
     const svg = ref.current;
     if (!svg) return;
-    paintDie(svg, solid, IDLE_TILT, {
+    paintDie(svg, solid, idleOrientationFor(solid), {
       traits,
       poolKey: `${solid.sides}:${material}`,
       grainId: (tone) => id(`grain${tone}`),
@@ -99,6 +127,32 @@ function FinishSwatch({
 }
 
 export function DieLookMenu({ widget }: { widget: WidgetInstance }) {
+  // Hooks BEFORE the kind guard, so the hook order is unconditional no matter
+  // what a future registry hands this component.
+  const firstTypeRef = useRef<HTMLButtonElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+
+  // Mount only. Opening a SECOND panel while this one is up is unreachable —
+  // the host's backdrop takes that click and closes this one first — so there
+  // is no swap for a dependency list to catch.
+  useLayoutEffect(() => {
+    const opener = document.activeElement;
+    // `<body>` is not somewhere to send the keyboard back to; it is where the
+    // keyboard already is when nothing holds it.
+    openerRef.current =
+      opener instanceof HTMLElement && opener !== document.body ? opener : null;
+    firstTypeRef.current?.focus({ preventScroll: true });
+    return () => {
+      const back = openerRef.current;
+      // `isConnected`: the card can leave the board WHILE the panel is open
+      // (the planner switches lesson on a timer, and the stale sweep in
+      // `state/chrome.ts` closes the panel behind it). Focusing a detached
+      // node is a silent no-op that would strand the keyboard on `<body>`
+      // with no way back — so it is checked, not attempted.
+      if (back?.isConnected) back.focus();
+    };
+  }, []);
+
   const cfg = widget.config;
   if (cfg.kind !== "dice") return null;
   const faces = snapFaces(cfg.faces);
@@ -131,9 +185,13 @@ export function DieLookMenu({ widget }: { widget: WidgetInstance }) {
       <div class={styles.section} role="group" aria-label={t("dice.faces")}>
         <span class={styles.sectionLabel}>{t("dice.faces")}</span>
         <div class={styles.row}>
-          {FACE_OPTIONS.map((option) => (
+          {FACE_OPTIONS.map((option, i) => (
             <button
               key={option}
+              // Where the keyboard lands when the panel opens — the first
+              // control of the first group, which is also where the eye
+              // starts.
+              ref={i === 0 ? firstTypeRef : undefined}
               class={styles.pill}
               data-die-faces={option}
               role="menuitemradio"
@@ -171,8 +229,13 @@ export function DieLookMenu({ widget }: { widget: WidgetInstance }) {
         </div>
       </div>
 
-      <div class={styles.section} role="group" aria-label={t("dice.look")}>
-        <span class={styles.sectionLabel}>{t("dice.look")}</span>
+      {/* «Materiale», not «Utseende» a second time: the PANEL is the
+          appearance panel, and a group inside it that repeats the panel's own
+          name reads out as «Utseende, meny … Utseende, gruppe» — two
+          different scopes wearing one word. The section is the finish, which
+          is what `dice.materialName.*` has always called it. */}
+      <div class={styles.section} role="group" aria-label={t("dice.material")}>
+        <span class={styles.sectionLabel}>{t("dice.material")}</span>
         <div class={styles.row}>
           {DIE_MATERIALS.map((option) => (
             <button

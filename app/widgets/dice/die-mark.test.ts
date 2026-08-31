@@ -16,8 +16,13 @@ import { describe, expect, it } from "vitest";
 
 import { PIPS, PIP_FACES } from "./dice-core";
 import { pipsForValue } from "./DiceWidget";
-import { orientationForFace, qNormalize, type Quat } from "./die-orient-core";
-import { PIP_R, projectDie } from "./die-project-core";
+import {
+  orientationForFace,
+  qNormalize,
+  qRotate,
+  type Quat,
+} from "./die-orient-core";
+import { PIP_R, projectDie, toGrid } from "./die-project-core";
 import { solidFor } from "./die-solids-core";
 
 const cube = solidFor(PIP_FACES);
@@ -85,23 +90,89 @@ describe("pipsForValue agrees with the projection", () => {
     }
   });
 
-  it("agrees on the RADIUS too, on the face turned to the class", () => {
-    // The one place the two derivations could legitimately differ: the
-    // projection takes the ellipse's minor axis, this one takes the face's
-    // projected u-axis. On a face square to the class they are the same
-    // number — and square to the class is the only state the scramble ever
-    // runs in, which is what makes the shortcut honest rather than sloppy.
+  it("agrees on the RADIUS at ANY orientation, not merely square-on", () => {
+    // ⚠️ This test used to run on `orientationForFace` alone, because the
+    // docstring next door promised the scramble «only ever runs on a die at
+    // REST, square to the class». It does not (R5-funn M1): under reduced
+    // motion the trackball still follows the finger 1:1, and `roll()` then
+    // takes a branch that never touches `orient.current` — so the scramble
+    // routinely runs on a hand-spun body. On such a body the old shortcut
+    // (the projected u-axis instead of the ellipse's minor axis) drew pips
+    // up to 1.84× too fat.
+    //
+    // Both ends now call `pipRadius`, which is why the tolerance is a
+    // RELATIVE 1e-12 and not a `toBeCloseTo`: same formula, same inputs, so
+    // anything above float dust means the two have been re-derived apart
+    // again.
+    const rand = seeded(90210);
+    let checked = 0;
+    for (let i = 0; i < 400; i++) {
+      const q = randomQuat(rand);
+      const view = projectDie(cube, q);
+      view.faces.forEach((paint, fi) => {
+        if (paint.pips.length === 0) return;
+        const mine = pipsForValue(cube, fi, q, paint.value);
+        mine.forEach((spot, k) => {
+          const theirs = paint.pips[k][2];
+          expect(theirs).toBeGreaterThan(0);
+          expect(
+            Math.abs(spot[2] - theirs) / theirs,
+            `face ${fi}, pip ${k}`,
+          ).toBeLessThan(1e-12);
+          checked++;
+        });
+      });
+    }
+    // …on a real sample, not on an empty loop that agrees vacuously.
+    expect(checked).toBeGreaterThan(2000);
+  });
+
+  it("and it is a real radius, not a collapsed one, square-on", () => {
     for (let face = 0; face < cube.f.length; face++) {
       const q = orientationForFace(cube, face);
       const view = projectDie(cube, q);
-      const mine = pipsForValue(cube, view.up, q, view.upValue);
       expect(view.up).toBe(face);
-      mine.forEach((spot, k) => {
-        expect(spot[2]).toBeCloseTo(view.faces[view.up].pips[k][2], 9);
-      });
-      // …and it is a real radius, not a collapsed one.
+      const mine = pipsForValue(cube, view.up, q, view.upValue);
       expect(mine[0][2]).toBeGreaterThan(PIP_R / 4);
     }
+  });
+
+  it("the discarded shortcut really does disagree, and by a lot", () => {
+    // The receipt for the test above. A seam test whose two ends happen to
+    // agree everywhere proves nothing about the seam, so this measures how
+    // far apart the OLD derivation and the renderer actually get: if the
+    // answer were «a rounding error», the fix would have been cosmetic and
+    // the tolerance above would be defending nothing.
+    //
+    // The review measured 1.84× over the orientations a HAND-SPUN die
+    // actually reaches; over uniform random ones, which include faces almost
+    // edge-on to the class, this loop finds 6.74×. The floor below is the
+    // conservative of the two — the point is the order of magnitude.
+    let worst = 1;
+    const rand = seeded(4242);
+    for (let i = 0; i < 400; i++) {
+      const q = randomQuat(rand);
+      const view = projectDie(cube, q);
+      view.faces.forEach((paint, fi) => {
+        if (paint.pips.length === 0) return;
+        const face = cube.f[fi];
+        const c = qRotate(q, face.c);
+        const u = qRotate(q, face.u);
+        const origin = toGrid(c);
+        const along = toGrid({
+          x: c.x + u.x * face.inr,
+          y: c.y + u.y * face.inr,
+          z: c.z + u.z * face.inr,
+        });
+        // What `pipsForValue` used to return: the projected u-axis, which is
+        // the ellipse's radius in ONE direction and its major axis whenever
+        // the face is tilted about that same axis.
+        const old =
+          (PIP_R * Math.hypot(along.x - origin.x, along.y - origin.y)) / 50;
+        worst = Math.max(worst, old / paint.pips[0][2]);
+      });
+    }
+    expect(worst).toBeGreaterThan(1.8);
   });
 });
 

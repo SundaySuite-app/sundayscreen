@@ -153,9 +153,10 @@
     "faces": "Die type",
     "facesLabel": "D{n}",
     "color": "Colour",
+    "material": "Material",
     "look": "Appearance",
     "colorName": {
-      "classic": "White",
+      "classic": "Classic",
       "red": "Red",
       "blue": "Blue",
       "green": "Green",

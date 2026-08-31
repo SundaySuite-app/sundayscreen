@@ -48,6 +48,10 @@ export interface MaterialTraits {
    * Glass is the only one, and it is the whole of what makes glass read as
    * glass: every other material's back faces are culled by
    * `die-project-core` and never reach the DOM as anything visible.
+   *
+   * Read by `paintDie`, which writes it onto the die's `<svg>` as
+   * `data-back-faces`; the stylesheet keys the far edges off THAT and not off
+   * the material's name, so this field is what actually decides (R5-funn M2).
    */
   backFaces: boolean;
   /** Fill the faces from an SVG `<pattern>` instead of a flat tone — one
@@ -56,9 +60,18 @@ export interface MaterialTraits {
   /** A specular window clipped to the brightest face — the one thing that
    *  makes a casino die look wet rather than merely bright. */
   gloss: boolean;
-  /** A plate of the card's own paper under the front numeral. Glass draws
-   *  its far edges straight across the front faces, and a «17» with two of
-   *  them running through it is unreadable at the back of the room. */
+  /**
+   * A plate of the card's own paper under the front NUMERAL. Glass draws its
+   * far edges straight across the front faces, and a «17» with two of them
+   * running through it is unreadable at the back of the room.
+   *
+   * ⚠️ LABEL faces only — a pip face never gets one, so a glass d6 has the
+   * node and never shows it (`paintDie` hides the plate whenever the up face
+   * has no label matrix). That is deliberate and not a gap: a pip is a solid
+   * dot the size of a fingertip, and a far edge crossing one leaves it a
+   * solid dot. It is a numeral's THIN strokes that a hairline through them
+   * turns into a different number.
+   */
   plate: boolean;
 }
 

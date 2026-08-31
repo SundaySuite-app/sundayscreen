@@ -60,11 +60,7 @@ import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tf } from "../../i18n";
 import { LIMITS } from "@lib/limits.generated";
 import { openWidgetOverlay, widgetOverlay } from "../../state/chrome";
-import {
-  selectedWidgetId,
-  updateWidgetConfig,
-  updateWidgetConfigBy,
-} from "../../state/layout";
+import { selectedWidgetId, updateWidgetConfigBy } from "../../state/layout";
 import { isDrag } from "../../screen/interact-core";
 // ⚠️ The second ring in this folder, and it holds for the same reason the
 // chrome → registry → dice → chrome one does: `useDrag` reads the registry
@@ -96,7 +92,7 @@ import {
   LABEL_EM,
   MARK_MIN_FACING,
   matrixAttr,
-  PIP_R,
+  pipRadius,
   projectDie,
   toGrid,
   TONES,
@@ -104,9 +100,9 @@ import {
 } from "./die-project-core";
 import { solidFor, type Solid } from "./die-solids-core";
 import {
-  IDLE_TILT,
   TRACKBALL_STEP_MS,
   flickSpin,
+  idleOrientationFor,
   restOrientationForValue,
   trimSamples,
   type PointerSample,
@@ -183,15 +179,22 @@ function markOpacity(facing: number): number {
  * the answer arrives. A d6's number is its pips, so «scramble the front
  * number» has to be able to lay out a pattern the geometry is not holding.
  *
- * The radius is taken from the face's own projected u-axis rather than
- * re-deriving the ellipse's minor axis: this only ever runs on a die at REST,
- * square to the class, where the two are the same number.
+ * ⚠️ «Stands still» is not «stands SQUARE», and the difference used to be
+ * wrong here (R5-funn M1). The body it runs on is wherever the teacher last
+ * left it: the trackball follows the finger 1:1 under reduced motion too —
+ * that is design choice 7, deliberate — and `roll()` then takes the reduced
+ * branch, which never touches `orient.current`. So the scramble can perfectly
+ * well run on a die that has been hand-spun 40° off square, and a radius
+ * taken from the projected u-axis alone was drawing pips up to 1.84× too fat
+ * there. The positions were always right; only the dots swelled.
  *
- * ⚠️ It is a SECOND implementation of the pip block in `projectDie`, which is
- * exactly the shape a seam bug comes in: two pieces of arithmetic that are
- * each correct and disagree in the middle. So it is exported, and
- * `die-mark.test.ts` holds the two against each other — same positions for
- * the value the body carries, same radius on a face square to the class.
+ * It is still a SECOND implementation of the pip block in `projectDie`, which
+ * is exactly the shape a seam bug comes in: two pieces of arithmetic that are
+ * each correct and disagree in the middle. The FORMULA is now shared —
+ * `pipRadius` in die-project-core is the single ellipse-minor-axis — and
+ * `die-mark.test.ts` still holds the two ends against each other over
+ * arbitrary orientations rather than over the square-on ones the docstring
+ * used to promise.
  */
 export function pipsForValue(
   solid: Solid,
@@ -209,15 +212,23 @@ export function pipsForValue(
       y: c.y + u.y * lx + w.y * ly,
       z: c.z + u.z * lx + w.z * ly,
     });
+  // The face's own frame, projected — the same three points `projectDie`
+  // takes the numeral's affine matrix from, in the same order.
   const origin = at(0, 0);
-  const along = at(face.inr, 0);
-  const scale = Math.hypot(along.x - origin.x, along.y - origin.y) / HALF;
+  const alongU = at(face.inr, 0);
+  const alongW = at(0, face.inr);
+  const radius = pipRadius(
+    (alongU.x - origin.x) / HALF,
+    (alongU.y - origin.y) / HALF,
+    (alongW.x - origin.x) / HALF,
+    (alongW.y - origin.y) / HALF,
+  );
   return (PIPS[value] ?? []).map(([px, py]) => {
     const spot = at(
       ((px - HALF) / HALF) * face.inr,
       ((py - HALF) / HALF) * face.inr,
     );
-    return [spot.x, spot.y, PIP_R * scale];
+    return [spot.x, spot.y, radius];
   });
 }
 
@@ -371,6 +382,9 @@ export function paintDie(
 
   let brightest = view.up;
   let brightestTone = -1;
+  // The runner-up among the faces turned at the class — the one number that
+  // says whether `view.up` is a READING or a coin toss. See the plate below.
+  let runnerUp = -Infinity;
 
   view.faces.forEach((paint, i) => {
     const face = pool.faces[i];
@@ -396,6 +410,9 @@ export function paintDie(
     if (paint.front && paint.tone > brightestTone) {
       brightestTone = paint.tone;
       brightest = i;
+    }
+    if (paint.front && i !== view.up && paint.facing > runnerUp) {
+      runnerUp = paint.facing;
     }
 
     const mark = pool.marks[i];
@@ -435,10 +452,23 @@ export function paintDie(
     pool.glossClip.setAttribute("points", view.faces[brightest].points);
   }
   if (pool.plate) {
-    // A plate of the card's own paper under the numeral, so the far edges a
-    // glass die draws across its front do not run through the answer.
+    // A plate of the card's own paper under the NUMERAL of the face the class
+    // is reading, so the far edges a glass die draws across its front do not
+    // run through the answer. Never under pips — a far edge across a solid
+    // dot leaves a solid dot (see `MaterialTraits.plate`), which is why a
+    // glass d6 has this node and never shows it.
+    //
+    // ⚠️ …and never when there is no answer to protect. Corner-on, a die has
+    // three to five faces turned at the class by exactly the same amount, and
+    // `view.up` is then a tie broken on face index. A white disc behind ONE of
+    // five equal numerals is a die pointing at its own answer — which is
+    // precisely what `idleOrientationFor` exists to stop it doing (R5-funn
+    // H1), and it was visible on a glass d20 the moment the corner-on pose
+    // landed. A rolled die rests at 0.956 against a runner-up far below it, so
+    // the margin is never in doubt where it matters.
     const front = view.faces[view.up];
-    if (front.label) {
+    const decided = front.facing - runnerUp > 1e-6;
+    if (front.label && decided) {
       const scale = Math.hypot(front.label[0], front.label[1]);
       pool.plate.style.display = "";
       pool.plate.setAttribute("cx", fmt(front.label[4]));
@@ -449,8 +479,36 @@ export function paintDie(
     }
   }
 
+  // Which finish wants the far side drawn — read off the TRAITS, so the table
+  // in `die-materials-core` is load-bearing rather than decorative (R5-funn
+  // M2). It used to be spelled `[data-material="glass"]` in the stylesheet,
+  // which meant a sixth finish with `backFaces: true` would have gone green
+  // through every trait test and drawn nothing at all.
+  //
+  // An ATTRIBUTE, present or absent: `.back` is `display: none` by default and
+  // `[data-back-faces] .back` turns it back on, so the die is never one
+  // re-render away from a flash of its own far side.
+  if (opts.traits.backFaces) svg.dataset.backFaces = "";
+  else delete svg.dataset.backFaces;
+
   // What the class is reading RIGHT NOW. Deliberately not the same thing as
   // the roll area's `data-value`: see the component's own note below.
+  //
+  // ⚠️ Not written by a die that is not talking to the class. The appearance
+  // panel paints five 40 px `aria-hidden` swatches with this same renderer,
+  // and five decorative dice claiming «the room is reading a 4» is five lies
+  // in the attribute the e2e suite treats as the widget's own word for what
+  // is turned toward the room (R5-funn L2).
+  if (svg.getAttribute("aria-hidden") === "true") return view;
+
+  // ⚠️ At REST the up face is a genuine argmax and this is the answer. In the
+  // IDLE pose it is a TIE: `idleOrientationFor` stands the body on a corner,
+  // where three to five faces are turned toward the room by exactly the same
+  // amount, and `projectDie` breaks that tie on face INDEX (first strict
+  // winner wins). Deterministic — the same body always publishes the same
+  // number — but it is a tie-break, not a reading: `data-value` is absent
+  // precisely then, and that is the attribute that says whether there is an
+  // answer at all.
   svg.dataset.faceUp = String(opts.mark ?? view.upValue);
   return view;
 }
@@ -533,14 +591,14 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
       : [];
 
   /** Where a die sits when nothing is happening to it: showing the face it
-   *  landed on, or tipped into the idle pose when there is no answer yet. */
+   *  landed on, or standing on its corner when there is no answer yet. */
   const restQuat = (index: number): Quat => {
     const now = live.current;
     const body = solidFor(now.faces);
     return now.lastRoll.length === now.count &&
       now.lastRoll[index] !== undefined
       ? restOrientationForValue(body, now.lastRoll[index])
-      : IDLE_TILT;
+      : idleOrientationFor(body);
   };
 
   const paint = () => {
@@ -817,7 +875,16 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
       LIMITS.DICE_MAX,
     );
     if (next === count) return;
-    updateWidgetConfig(widget.id, { ...cfg, count: next, lastRoll: [] });
+    // Merged into the CURRENT config, not spread from this render's closure —
+    // the same rule the commit at the end of `roll()` follows (F9-funn S#6),
+    // and it is not theoretical here: a colour chosen in the appearance panel
+    // and a `+` pressed in the same tick had the colour fall straight back
+    // out again, because `cfg` was captured before the panel wrote (R5-funn
+    // L1). `count` is the one thing this control owns; everything else on the
+    // config belongs to whoever wrote it last.
+    updateWidgetConfigBy(widget.id, (c) =>
+      c.kind === "dice" ? { ...c, count: next, lastRoll: [] } : c,
+    );
   };
 
   const openLook = () => {

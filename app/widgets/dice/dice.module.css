@@ -9,14 +9,17 @@
  * faces share the width. The cap was the defect; it was never the guard.
  *
  * The real budget, all three of which have to hold at once:
- *   - 56cqmin        keeps a die from swallowing a large card
+ *   - `--die-cap`    a proportion of the card, so a die does not swallow one
  *   - the row width  100cqw − 24px (.dice padding) − 16px (.rollArea padding)
  *                    − (n−1) × 12px (var(--sp-3) between faces), split n ways
- *   - the column     100cqh minus padding, the roll area's own padding, the
+ *   - `--die-column` 100cqh minus padding, the roll area's own padding, the
  *                    sum line and the gaps ≈ 92px
  *
- * One die on the default card now lands at ~134px; three at minSizePx fit
- * exactly rather than clipping. e2e/readability.spec.ts pins the second half.
+ * One die on the default 300×240 card lands at ~134px (~120px on the e2e
+ * viewport, whose board scales it to 270×216); three at minSizePx fit exactly
+ * rather than clipping. e2e/readability.spec.ts pins both.
+ *
+ * The two named budgets are KNOBS, not constants — see «Big cards» below.
  */
 .dice {
   width: 100%;
@@ -27,15 +30,53 @@
   justify-content: center;
   gap: var(--sp-2);
   padding: var(--sp-3);
-  --die: min(56cqmin, calc(100cqw - 40px), calc(100cqh - 92px));
+  --die-cap: 56cqmin;
+  --die-column: calc(100cqh - 92px);
+  --die: min(var(--die-cap), calc(100cqw - 40px), var(--die-column));
 }
 
 .dice[data-count="2"] {
-  --die: min(56cqmin, calc((100cqw - 52px) / 2), calc(100cqh - 92px));
+  --die: min(var(--die-cap), calc((100cqw - 52px) / 2), var(--die-column));
 }
 
 .dice[data-count="3"] {
-  --die: min(56cqmin, calc((100cqw - 64px) / 3), calc(100cqh - 92px));
+  --die: min(var(--die-cap), calc((100cqw - 64px) / 3), var(--die-column));
+}
+
+/* ── Big cards, and «Vis stort» in particular ─────────────────────────────
+ *
+ * `56cqmin` was tuned in R3 against a card sharing a board with five other
+ * widgets, and it was never revisited for the mode whose entire purpose is
+ * size. Measured at 1024×768: the enlarged card is 976×660, the height budget
+ * alone would have paid for a 568px die — and the cap drew it at 368, i.e.
+ * 56 % of the card's height, with 138px of dead paper above it and 138 below
+ * (R5-funn H2). «Vis stort» gave a bigger card and the same small die.
+ *
+ * So on a card this size the PROPORTIONAL cap comes off entirely — that is
+ * what `100cqmin` means here: the short side is never the binding term, and
+ * the two real budgets (the row and the column) decide. The column reserves
+ * 60px more than the small-card figure, which is the settings row's own band:
+ * 44px of buttons, `--sp-2` up from the bottom edge and `--sp-2` of plate
+ * shadow around it. Without that the die's bottom corner would be printed
+ * through by the row the moment the teacher's pointer entered the card.
+ *
+ * Measured after (1024×768, dev server, Chromium): one die 506px against 368
+ * before — the e2e floor is 480 — its top 77px down the card and its bottom
+ * 583px down, 16px clear of the settings row's plate (which starts at 599
+ * once its `--sp-2` shadow is counted). Two dice and three come out
+ * WIDTH-bound, at 461 and 303: the column knob does not reach them, and the
+ * cap was not what was holding them back either.
+ *
+ * The query is on SIZE, not on `[data-focused]`, and deliberately: the shell
+ * owns that attribute and it is not a descendant selector this stylesheet can
+ * reach. A card a teacher has dragged out to 640×420 on the board is asking
+ * for the same thing «Vis stort» asks for, and gets it.
+ */
+@container (min-width: 640px) and (min-height: 420px) {
+  .dice {
+    --die-cap: 100cqmin;
+    --die-column: calc(100cqh - 152px);
+  }
 }
 
 .rollArea {
@@ -303,7 +344,13 @@
   fill-opacity: 0.78;
 }
 
-.look[data-material="glass"] .back {
+/* ⚠️ Keyed on `[data-back-faces]`, NOT on `[data-material="glass"]`.
+   `MaterialTraits.backFaces` is what decides this, and the renderer writes
+   the attribute from that field (`paintDie`) — so the trait is load-bearing
+   and its test is honest. Spelled as the material, a sixth finish that asked
+   for back faces would have passed every trait test in the suite and drawn
+   nothing at all (R5-funn M2). */
+[data-back-faces] .back {
   display: inline;
   fill: none;
   stroke: var(--t1);
@@ -341,7 +388,7 @@
  * minifier this bundle runs.
  */
 @container (max-width: 260px) or (max-height: 210px) {
-  .look[data-material="glass"] .back {
+  [data-back-faces] .back {
     display: none;
   }
 

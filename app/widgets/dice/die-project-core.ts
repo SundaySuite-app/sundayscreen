@@ -84,6 +84,38 @@ export const PIP_R = 10;
 export const LABEL_EM = 46;
 
 /**
+ * The radius one pip is drawn at, given the face's own 2×2 projected map.
+ *
+ * `(ax, ay)` is where the face's u axis lands and `(bx, by)` its w axis, both
+ * in half-grid units — the same four numbers the numeral's affine matrix is
+ * built from.
+ *
+ * A projected circle is an ELLIPSE, and a `<circle>` per pip is worth
+ * keeping: six rotated `<ellipse>` elements per face, re-angled every frame,
+ * is a lot of attribute writing for a dot ten units across. So the radius is
+ * the ellipse's MINOR axis — the smaller singular value of the map, obtained
+ * from the eigenvalues of `MᵀM` — not its area-preserving mean. The mean
+ * looks marginally better and spills over the face's own edge on one pip in
+ * ten once the face tilts; the minor axis is the inscribed circle and never
+ * can. On a face square to the class the two are identical, which is where
+ * the die spends most of its life — but NOT all of it, which is exactly why
+ * this is one exported function and not two copies (R5-funn M1: the second
+ * copy took the u axis alone and ran 1.84× too wide on a hand-spun die).
+ */
+export function pipRadius(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const gu = ax * ax + ay * ay;
+  const gw = bx * bx + by * by;
+  const guw = ax * bx + ay * by;
+  const spread = Math.sqrt(Math.max(0, (gu - gw) * (gu - gw) + 4 * guw * guw));
+  return PIP_R * Math.sqrt(Math.max(0, (gu + gw - spread) / 2));
+}
+
+/**
  * How square to the class a face must be before it is given its MARK — its
  * numeral or its pips. Below this the face is drawn as a plain shaded sliver,
  * which is what a real die looks like at that angle anyway.
@@ -356,23 +388,9 @@ export function projectDie(solid: Solid, q: Quat, scratch?: DieView): DieView {
 
     if (solid.sides === PIP_FACES) {
       paint.label = null;
-      // A projected circle is an ELLIPSE, and a `<circle>` per pip is worth
-      // keeping: six rotated `<ellipse>` elements per face, re-angled every
-      // frame, is a lot of attribute writing for a dot ten units across.
-      //
-      // The radius is the ellipse's MINOR axis — the smaller singular value
-      // of the face's 2×2 map — not its area-preserving mean. The mean looks
-      // marginally better and spills over the face's own edge on one pip in
-      // ten once the face tilts; the minor axis is the inscribed circle and
-      // never can. On a face square to the class the two are identical, which
-      // is where the die spends its life.
-      const gu = ax * ax + ay * ay;
-      const gw = bx * bx + by * by;
-      const guw = ax * bx + ay * by;
-      const spread = Math.sqrt(
-        Math.max(0, (gu - gw) * (gu - gw) + 4 * guw * guw),
-      );
-      const shrink = Math.sqrt(Math.max(0, (gu + gw - spread) / 2));
+      // One radius for the whole face — see `pipRadius`, which is also what
+      // the reduced-motion scramble next door calls.
+      const radius = pipRadius(ax, ay, bx, by);
       const spots = PIPS[face.value] ?? [];
       paint.pips.length = spots.length;
       spots.forEach(([px, py], k) => {
@@ -386,7 +404,7 @@ export function projectDie(solid: Solid, q: Quat, scratch?: DieView): DieView {
         const slot = paint.pips[k] ?? (paint.pips[k] = [0, 0, 0]);
         slot[0] = at.x;
         slot[1] = at.y;
-        slot[2] = PIP_R * shrink;
+        slot[2] = radius;
       });
       return;
     }

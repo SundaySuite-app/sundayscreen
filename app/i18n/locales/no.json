@@ -153,9 +153,10 @@
     "faces": "Terningtype",
     "facesLabel": "D{n}",
     "color": "Farge",
+    "material": "Materiale",
     "look": "Utseende",
     "colorName": {
-      "classic": "Hvit",
+      "classic": "Klassisk",
       "red": "Rød",
       "blue": "Blå",
       "green": "Grønn",

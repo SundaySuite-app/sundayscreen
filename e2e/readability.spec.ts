@@ -161,6 +161,51 @@ test("a die is big enough to read, and three still fit at minimum size", async (
   expect(up.join("-")).toBe(await roll.getAttribute("data-value"));
 });
 
+test("an enlarged die actually gets bigger", async ({ page }) => {
+  // «Vis stort» used to hand the die a much bigger card and draw it at the
+  // same fraction of the SHORT SIDE — `56cqmin`, a cap tuned in R3 for a card
+  // sharing a board with five other widgets and never revisited (R5-funn H2).
+  // At 1024×768 the enlarged card is 976×660 and the die came out 368px: 56 %
+  // of the card's height, with 138px of blank paper above it and 138 below,
+  // while the height budget alone would have paid for 568.
+  //
+  // A FLOOR, not a pin — the budgets land at 506px today. 480 is where the
+  // claim «the die is the card now» stops being true, and it is far enough
+  // above the old 368 that the cap cannot creep back.
+  await installFixtures(page);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/");
+  await addWidget(page, "Terning");
+
+  const dice = page.locator('[data-widget-kind="dice"]');
+  const die = dice.locator("svg[data-solid]").first();
+  const before = (await die.boundingBox())!;
+
+  await dice.hover();
+  await dice.getByRole("button", { name: "Vis stort" }).click();
+
+  await expect
+    .poll(async () => (await die.boundingBox())!.height)
+    .toBeGreaterThanOrEqual(480);
+
+  const after = (await die.boundingBox())!;
+  // Square, and grown — a die that had merely been stretched would pass the
+  // height floor while reading as an egg from the back of the room.
+  expect(after.width).toBeCloseTo(after.height, 0);
+  expect(after.height).toBeGreaterThan(before.height * 3);
+
+  // …and it still fits the card it grew into, settings row included: the
+  // point of raising the cap was to spend the dead space, not to overrun the
+  // one control «Vis stort» leaves on the card.
+  const card = (await dice.boundingBox())!;
+  await assertContained(after, card, "the enlarged die");
+  const row = (await dice.locator("[data-settings-row]").boundingBox())!;
+  expect(
+    after.y + after.height,
+    "the die is printed through by the settings row",
+  ).toBeLessThan(row.y);
+});
+
 test("the text widget is projector-sized at its default size", async ({
   page,
 }) => {

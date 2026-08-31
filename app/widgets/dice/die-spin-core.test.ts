@@ -19,9 +19,9 @@ import {
   spinStep,
   type SpinState,
 } from "./die-orient-core";
-import { SOLID_SIDES, solidFor, v3, vDot } from "./die-solids-core";
+import { MARK_MIN_FACING } from "./die-project-core";
+import { SOLID_SIDES, solidFor, v3 } from "./die-solids-core";
 import {
-  IDLE_TILT,
   TRACKBALL_MAX_DEG_PER_MS,
   TRACKBALL_MAX_RATE,
   TRACKBALL_SAMPLE_MS,
@@ -30,6 +30,7 @@ import {
   coastSteps,
   coastTravel,
   flickSpin,
+  idleOrientationFor,
   restOrientationForValue,
   trimSamples,
   type PointerSample,
@@ -278,32 +279,92 @@ describe("the coast", () => {
   });
 });
 
-describe("IDLE_TILT", () => {
-  it("shows no body a face square enough to read as an answer", () => {
-    // The whole point: a die nobody has rolled must not appear to be showing
-    // one. `facing` is the cosine between a face normal and the screen, so 1
-    // is «flat on» — the pose has to keep every body well short of it.
+describe("idleOrientationFor", () => {
+  // What a die that has not been rolled must not do: look like a die that
+  // has. The predecessor — one shared `IDLE_TILT` for all six bodies — was
+  // asserted with «best facing < 0.9», and passed at 0.685 / 0.870 / 0.862 /
+  // 0.825 / 0.856 / 0.867 while a ROLLED die rests at 0.956. A cube at 0.870
+  // is four pips turned at the class; the test was green and the widget was
+  // showing an answer it had not been asked for.
+  //
+  // The three assertions below are the replacement, and it is the SECOND one
+  // that does the work: «less than some number» can always be satisfied by
+  // tilting a bit further, and a bit further is still a tilt with a winner.
+  // A tie cannot be tilted into.
+
+  it("keeps every body's best face well short of an answer", () => {
     for (const sides of SOLID_SIDES) {
       const solid = solidFor(sides);
-      const best = Math.max(
-        ...solid.f.map((face) => qRotate(IDLE_TILT, face.n).z),
+      const q = idleOrientationFor(solid);
+      const best = Math.max(...solid.f.map((face) => qRotate(q, face.n).z));
+      // 0.81 is the d12/d20's 0.795 with room to breathe, and it is a long
+      // way under REST_TILT's 0.956 (pinned in the block below).
+      expect(best, `d${sides} idles at ${best.toFixed(3)}`).toBeLessThanOrEqual(
+        0.81,
       );
-      expect(best, `d${sides} reads as an answer at rest`).toBeLessThan(0.9);
-      // …and it still shows the class a face, rather than an edge.
-      expect(best, `d${sides} rests on an edge`).toBeGreaterThan(0.6);
     }
   });
 
-  it("is a unit quaternion", () => {
-    const { x, y, z, w } = IDLE_TILT;
-    expect(Math.hypot(x, y, z, w)).toBeCloseTo(1, 12);
+  it("is a symmetric TIE: no single face is the one being shown", () => {
+    // Every face the class can see at all — i.e. every face over
+    // `MARK_MIN_FACING`, which is exactly the set that gets a mark drawn on
+    // it — is turned toward the room by the SAME amount. Three faces on a
+    // cube, four on an octahedron, five kites on the d10's pole. A die
+    // standing on its corner is the one attitude in which «which number is
+    // it showing» has no answer, and this is that claim as arithmetic.
+    const seen: Record<number, number> = {};
+    for (const sides of SOLID_SIDES) {
+      const solid = solidFor(sides);
+      const q = idleOrientationFor(solid);
+      const facings = solid.f
+        .map((face) => qRotate(q, face.n).z)
+        .filter((z) => z > MARK_MIN_FACING);
+      // …and there is more than one of them, or «a tie» would be one face
+      // tying with itself.
+      expect(facings.length, `d${sides} shows one face only`).toBeGreaterThan(
+        1,
+      );
+      const spread = Math.max(...facings) - Math.min(...facings);
+      expect(spread, `d${sides} has a favourite face`).toBeLessThan(1e-12);
+      seen[sides] = facings.length;
+    }
+    // The counts are the vertex figures of the six bodies, and they are
+    // pinned: a pose that quietly stopped being corner-on would still tie if
+    // it tied among two faces, and two is not a corner.
+    expect(seen).toEqual({ 4: 3, 6: 3, 8: 4, 10: 5, 12: 3, 20: 5 });
   });
 
-  it("is a real rotation, not the identity in disguise", () => {
-    // A tilt that had been normalised down to nothing would pass every other
-    // assertion here by accident.
-    const turned = qRotate(IDLE_TILT, v3(0, 0, 1));
-    expect(vDot(turned, v3(0, 0, 1))).toBeLessThan(0.95);
+  it("really stands the body on a vertex", () => {
+    // The mechanism, not just its consequence: `solid.v[0]` is turned onto
+    // the camera axis. Without this, a pose that happened to tie for some
+    // other reason would satisfy everything above.
+    for (const sides of SOLID_SIDES) {
+      const solid = solidFor(sides);
+      const onCamera = qRotate(idleOrientationFor(solid), solid.v[0]);
+      expect(onCamera.z, `d${sides} is not corner-on`).toBeCloseTo(1, 12);
+    }
+  });
+
+  it("is deterministic, and a unit rotation", () => {
+    for (const sides of SOLID_SIDES) {
+      const solid = solidFor(sides);
+      const q = idleOrientationFor(solid);
+      expect(idleOrientationFor(solid)).toEqual(q);
+      expect(Math.hypot(q.x, q.y, q.z, q.w)).toBeCloseTo(1, 12);
+    }
+  });
+
+  it("is a real rotation for every body, the d10 included", () => {
+    // `|w| = cos(θ/2)`, so this is «turned by something». The d10 is the
+    // interesting one: its `v[0]` IS the camera axis, so the arc that gets it
+    // there is the identity and `IDLE_TWIST` about the line of sight is the
+    // whole of its pose. A guard written as «the z axis moved» would call
+    // that a bug — it is the body's own five-fold symmetry, and the tie test
+    // above is what proves the pose honest there.
+    for (const sides of SOLID_SIDES) {
+      const q = idleOrientationFor(solidFor(sides));
+      expect(Math.abs(q.w), `d${sides} is the identity`).toBeLessThan(0.999);
+    }
   });
 });
 

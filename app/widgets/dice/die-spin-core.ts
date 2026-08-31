@@ -22,16 +22,18 @@
 // reaches for «the spin constant» has to say which one out loud.
 
 import {
-  spinStep,
   SPIN_DAMP_PER_STEP,
   SPIN_STOP_EPS,
+  orientationForValue,
   qAxisAngle,
   qMul,
   qNormalize,
+  spinStep,
   type Quat,
   type Spin,
   type SpinState,
 } from "./die-orient-core";
+import type { Solid } from "./die-solids-core";
 import { v3, vUnit } from "./die-solids-core";
 
 /** The coast is integrated in fixed steps, like the throw next door — a frame
@@ -86,6 +88,31 @@ export const TRACKBALL_MAX_RATE =
  * off «flat on» at once. These two angles are the pose where the squarest
  * face of the worst body is furthest from facing the class.
  */
+/**
+ * The presentation tilt a ROLLED die rests in. Dead face-on, the cube reads
+ * as a flat square — the 2-D die this round exists to replace, at the exact
+ * moment the class is reading the answer (seen on screen, not guessed). A
+ * gentle 14°/−10° keeps the die visibly a solid while costing the numeral
+ * ~4 % of its width (cos ≈ 0.96). The up-face invariant survives for every
+ * body: the smallest angle between two face normals is the d20's 41.8°, so a
+ * 17° combined tilt can never promote a neighbouring face to «up» — and that
+ * is a test, not a hope.
+ */
+export const REST_TILT: Quat = qNormalize(
+  qMul(
+    qAxisAngle(v3(0, 1, 0), (14 * Math.PI) / 180),
+    qAxisAngle(v3(1, 0, 0), (-10 * Math.PI) / 180),
+  ),
+);
+
+/** Where a die with THIS answer rests: face toward the class, numeral
+ *  horizontal, tipped just enough to stay a solid. The single composition
+ *  point — the flight target, the rest pose and the reload pose all call
+ *  this, so they cannot disagree. */
+export function restOrientationForValue(solid: Solid, value: number): Quat {
+  return qMul(REST_TILT, orientationForValue(solid, value));
+}
+
 export const IDLE_TILT: Quat = qNormalize(
   qMul(
     qAxisAngle(v3(0, 1, 0), (28 * Math.PI) / 180),

@@ -8,6 +8,8 @@
 
 import { describe, expect, it } from "vitest";
 
+import { FACE_OPTIONS } from "./dice-core";
+
 import {
   QUAT_IDENTITY,
   qRotate,
@@ -17,17 +19,18 @@ import {
   spinStep,
   type SpinState,
 } from "./die-orient-core";
-import { solidFor, SOLID_SIDES, vDot, v3 } from "./die-solids-core";
+import { SOLID_SIDES, solidFor, v3, vDot } from "./die-solids-core";
 import {
-  coastSpin,
-  coastSteps,
-  coastTravel,
-  flickSpin,
   IDLE_TILT,
   TRACKBALL_MAX_DEG_PER_MS,
   TRACKBALL_MAX_RATE,
   TRACKBALL_SAMPLE_MS,
   TRACKBALL_STEP_MS,
+  coastSpin,
+  coastSteps,
+  coastTravel,
+  flickSpin,
+  restOrientationForValue,
   trimSamples,
   type PointerSample,
 } from "./die-spin-core";
@@ -301,5 +304,32 @@ describe("IDLE_TILT", () => {
     // assertion here by accident.
     const turned = qRotate(IDLE_TILT, v3(0, 0, 1));
     expect(vDot(turned, v3(0, 0, 1))).toBeLessThan(0.95);
+  });
+});
+
+describe("REST_TILT", () => {
+  it("never promotes a neighbouring face to «up», for any body and value", () => {
+    // The whole licence for tilting the resting die: the smallest angle
+    // between two face normals is the d20's 41.8°, far beyond the ~17°
+    // combined tilt — so the face the class should read stays the face
+    // pointing at them. Checked exhaustively, not trusted.
+    for (const sides of FACE_OPTIONS) {
+      const solid = solidFor(sides);
+      for (const face of solid.f) {
+        const q = restOrientationForValue(solid, face.value);
+        let best = -1;
+        let bestDot = -Infinity;
+        for (const g of solid.f) {
+          const { z: nz } = qRotate(q, g.n);
+          if (nz > bestDot) {
+            bestDot = nz;
+            best = g.value;
+          }
+        }
+        expect(best).toBe(face.value);
+        // …and the answer still faces the class almost squarely.
+        expect(bestDot).toBeGreaterThan(0.94);
+      }
+    }
   });
 });

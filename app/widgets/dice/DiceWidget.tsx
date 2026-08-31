@@ -81,7 +81,6 @@ import {
   type MaterialTraits,
 } from "./die-materials-core";
 import {
-  orientationForValue,
   qMul,
   qNormalize,
   qRotate,
@@ -105,9 +104,10 @@ import {
 } from "./die-project-core";
 import { solidFor, type Solid } from "./die-solids-core";
 import {
-  flickSpin,
   IDLE_TILT,
   TRACKBALL_STEP_MS,
+  flickSpin,
+  restOrientationForValue,
   trimSamples,
   type PointerSample,
 } from "./die-spin-core";
@@ -539,7 +539,7 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
     const body = solidFor(now.faces);
     return now.lastRoll.length === now.count &&
       now.lastRoll[index] !== undefined
-      ? orientationForValue(body, now.lastRoll[index])
+      ? restOrientationForValue(body, now.lastRoll[index])
       : IDLE_TILT;
   };
 
@@ -668,7 +668,7 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
     // tumble be honest: every face the class sees on the way is the number
     // that is really on it.
     const final = Array.from({ length: count }, () => randomDie(faces));
-    const targets = final.map((value) => orientationForValue(solid, value));
+    const targets = final.map((value) => restOrientationForValue(solid, value));
     setRolling(true);
 
     const reduced = prefersReducedMotion();

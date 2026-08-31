@@ -6,7 +6,10 @@
 #   - runs on your arch (aarch64-apple-darwin), not the ubuntu x86 runner
 #   - skips `npm ci` — uses your existing node_modules
 #   - skips the apt system deps (webkit/gtk) — already present on macOS
-#   - does NOT mirror CI's separate `audit` job or the `windows-check` job
+#   - does NOT mirror CI's separate `audit`, `windows-check` or `e2e` job —
+#     the `e2e` job (Playwright, twice: dev server and production build) is
+#     its OWN tier, deliberately outside `npm run check` (see CLAUDE.md);
+#     run it yourself with `npm run e2e` / `npm run e2e:headed`.
 #
 # Each step below is the same command CI runs, in the same order. Reuses the
 # package.json scripts so this mirror can't silently drift from them.
@@ -23,6 +26,16 @@ step "frontend — tsc --noEmit";         npm run typecheck
 step "frontend — vitest";               npm run test
 
 step "frontend — production build";     npm run build
+# Same grep CI runs right after ITS build step (ci.yml's "No dynamic code
+# evaluation in the shipped bundle") — missing here for a while, which meant
+# this script's own header claim ("the exact gate CI runs") was false: a
+# `dist/` that would fail this check in CI could still say "safe to push"
+# locally.
+step "no dynamic code evaluation in dist/"
+if grep -RnE "eval\(|new Function" dist/assets/*.js; then
+  printf "\033[1;31m✗ dist/ contains dynamic code evaluation — the CSP (script-src 'self') will break at runtime\033[0m\n" >&2
+  exit 1
+fi
 # MUST come straight after an EXPLICIT build, not before it and not relying
 # on a later `tauri build`'s implicit beforeBuildCommand: a bundle-budget
 # check that reads a stale dist/ from a previous run (or from `npm run dev`
@@ -36,6 +49,7 @@ step "i18n ingen døde nøkler";          npm run i18n-keys:unused
 step "i18n hardkoding 0 (app/)";        npm run i18n-hardcoded-tsx
 step "i18n flertallsgrupper";           npm run i18n-plurals
 step "farger kun via tokens (app/)";    npm run css-tokens
+step "limits generert fil er fersk";    npm run limits:check
 
 step "rust — cargo fmt --check";        npm run fmt:rust:check
 step "rust — cargo clippy -D warnings"; npm run lint:rust

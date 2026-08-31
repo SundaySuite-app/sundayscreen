@@ -93,6 +93,76 @@ test("a pasted name list saves, counts, and survives a reload", async ({
   );
 });
 
+// ── The two clamps `members_set` owns (E2-4) ────────────────────────────────
+//
+// Both mirror a Rust unit test in members.rs by name
+// (`overlong_names_are_capped_on_a_char_boundary`,
+// `the_list_is_capped_at_members_max`) — but driving either one through the
+// TEXTAREA alone would not prove the FIXTURE's own contract: ManagePanel's
+// `parseNameList` (name-list-core.ts) already trims every paste to
+// NAME_MAX_CHARS/MEMBERS_MAX client-side, so a too-long paste never reaches
+// `members_set` un-clamped that way — the harness's own clamp (just added
+// to mirror Rust "exactly") would be invisible behind the frontend's
+// redundant one. Both tests below call `window.api.membersSet` directly —
+// the same IPC surface any other caller uses — so the fixture is asked the
+// question the UI itself never gets to ask.
+
+test("a class can never hold more than the member limit, even asked for directly", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+
+  const names = Array.from({ length: 1001 }, (_, i) => `Elev ${i}`);
+  const saved = await page.evaluate(
+    (ns) => window.api.membersSet("c1", ns).then((m) => m.length),
+    names,
+  );
+  expect(saved).toBe(1000);
+
+  // …and the READ side agrees: reload so the panel re-hydrates from what
+  // actually landed, not from a draft that asked for 1001.
+  await page.reload();
+  await openManage(page);
+  await expect(page.getByText("1000 navn")).toBeVisible();
+  const lineCount = await page
+    .getByPlaceholder(/Ett navn per linje/)
+    .evaluate(
+      (el) =>
+        (el as HTMLTextAreaElement).value.split("\n").filter(Boolean).length,
+    );
+  expect(lineCount).toBe(1000);
+});
+
+test("a name longer than the character limit is stored truncated, and the panel shows the stored version", async ({
+  page,
+}) => {
+  // "æ" — the same character the Rust test above uses, on purpose: a single
+  // codepoint, so this proves the CAP LENGTH agrees with Rust. The
+  // surrogate-pair (emoji) case is `charSlice`'s own concern, documented
+  // once at its definition in harness.ts.
+  await installFixtures(page);
+  await page.goto("/");
+
+  const long = "æ".repeat(150);
+  const saved = await page.evaluate(
+    (n) => window.api.membersSet("c1", [n]).then((m) => m.map((x) => x.name)),
+    long,
+  );
+  const truncated = "æ".repeat(120);
+  expect(saved).toEqual([truncated]);
+
+  await page.reload();
+  await openManage(page);
+  // Re-seeded from the ANSWER, not the draft (ManagePanel.tsx's save
+  // handler) — this is the one place a name cut to 120 characters becomes
+  // visible at all.
+  await expect(page.getByPlaceholder(/Ett navn per linje/)).toHaveValue(
+    truncated,
+  );
+  await expect(page.getByText("1 navn")).toBeVisible();
+});
+
 test("a failed name-list read says so, and «Lagre navneliste» cannot wipe the class", async ({
   page,
 }) => {
@@ -189,6 +259,72 @@ test("a settings write after a class switch does not revert the active class", a
   await expect(page.getByRole("button", { name: "Bytt klasse" })).toHaveText(
     /8A/,
   );
+});
+
+/**
+ * Copied LOCALLY from chrome.spec.ts's own helper of the same name — this
+ * file does not import from or edit chrome.spec.ts, so the copy is the
+ * price of reusing the trick: `window_set_fullscreen` is a write with no
+ * typed fallback, so outside Tauri it REJECTS and `toggleFullscreen` returns
+ * without flipping the signal, which would keep this journey from ever
+ * reaching `settingsSetWindow` at all.
+ */
+async function allowFullscreen(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (
+      window as unknown as Record<string, Record<string, unknown>>
+    ).__SUNDAYSCREEN_FIXTURES__.window_set_fullscreen = () => undefined;
+  });
+}
+
+test("toggling fullscreen persists the window without clobbering the language or update channel", async ({
+  page,
+}) => {
+  // `settings_set_window`'s whole point (R4-spor 3.3): the real command
+  // (commands/settings.rs::set_window_for) is a narrow read-modify-write,
+  // not `settings_save`'s whole-blob clobber — a stale language/
+  // updateChannel snapshot must never ride along on a window drag, resize,
+  // or (as here) a fullscreen toggle. The harness's OWN fixture has to
+  // mirror that narrowness, or this whole bug class is invisible at this
+  // tier — it was, until this fixture existed at all (see harness.ts).
+  await installFixtures(page);
+  await allowFullscreen(page);
+  await page.goto("/");
+
+  // Seed a REAL settings write first — a below-minimum geometry, so the
+  // clamp this test is really about has something to do — then reload so
+  // the app's live `settings` signal actually reflects it. Seeding via
+  // `evaluate` alone would leave `toggleFullscreen`'s in-memory read
+  // (`settings.peek().window`) stale, since it is a signal, not a fresh IPC
+  // read on every use.
+  await page.evaluate(async () => {
+    const current = await window.api.getSettings();
+    await window.api.saveSettings({
+      ...current,
+      language: "en",
+      updateChannel: "beta",
+      window: { x: 20, y: 20, w: 100, h: 50, fullscreen: false },
+    });
+  });
+  await page.reload();
+
+  const enterFs = page.getByRole("button", {
+    name: "Fullskjerm",
+    exact: true,
+  });
+  await enterFs.click();
+  await expect(
+    page.getByRole("button", { name: "Avslutt fullskjerm", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  const stored = await page.evaluate(() => window.api.getSettings());
+  // The clamp landed (MIN_WINDOW_W/H, settings.rs) …
+  expect(stored.window?.w).toBe(960);
+  expect(stored.window?.h).toBe(600);
+  // … and untouched is untouched: `settings_set_window` may not carry the
+  // WHOLE blob the way `settings_save` does.
+  expect(stored.language).toBe("en");
+  expect(stored.updateChannel).toBe("beta");
 });
 
 test("9B never reads 8A's groups off the board", async ({ page }) => {

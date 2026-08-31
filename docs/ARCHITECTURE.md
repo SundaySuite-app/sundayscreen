@@ -85,15 +85,17 @@ en anvendt fil (checksum-avvik leses som korrupsjon).
 
 ## IPC-flate
 
-`app_info` · `settings_get/save` · `class_ensure_active → ActiveContext` ·
+`app_info` · `boot_fault` · `settings_get/save/set_window` ·
+`class_ensure_active → ActiveContext` ·
 `class_list/create/rename/delete/switch` · `members_get/set` ·
 `attendance_set` · `layout_load/save` (scene-nøklet) · `scene_list/create/
 rename/delete/duplicate` · `lesson_switch → ClassSnapshot` ·
 `picker_draw_many/reset` · `groups_split` · `planner_periods_get/set` ·
 `planner_week_get` · `planner_slot_set` · `planner_override_set` ·
 `planner_day_get → DayPlan` · `planner_agenda_set/check` ·
-`planner_notes_set` · `update_check/install` · `window_set_fullscreen` ·
-`window_is_fullscreen`. Alle gjennom api-shimmen; skriv REJECTer.
+`planner_notes_set` · `transfer_export/import` · `update_check/install` ·
+`update_pending` · `window_set_fullscreen` · `window_is_fullscreen`. Alle
+gjennom api-shimmen; skriv REJECTer.
 
 ## Faseplan
 

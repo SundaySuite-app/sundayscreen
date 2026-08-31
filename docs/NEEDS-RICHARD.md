@@ -35,7 +35,17 @@ reinstallasjonen TRYGG: en versjonskonflikt rører aldri databasen lenger,
 appen forklarer seg selv på skjermen i stedet for å boote tomt, og en
 sikkerhetskopi finnes uansett — se docs/ROLLBACK.md.
 
-- [ ] **Riggtest Runde 3 (nyest):** seks punkter i docs/REVISJON-R3.md
+- [ ] **Riggtest Runde 4 (nyest):** fire punkter, ingen forutsetter en
+      spesiell dag. Eksportér oppsettet fra én maskin («Klasser og navn» →
+      «Eksporter oppsett …») og importér fila på en ANNEN maskin — se at
+      klassene, skjermene og navnene faktisk kommer over, og at ukeplanen
+      bare blir med når den andre maskinen ikke hadde en fra før. Bruk «Vis
+      stort» på en widget mens en ekte prøve pågår. Trekk flere navn i ett
+      trekk på en ekte klasseliste, ikke bare én og én. Og — nytt siden R4 —
+      nedgraderingstesten (v0.4 → v0.3) er nå TRYGG å kjøre: se
+      docs/ROLLBACK.md §4 — en versjonskonflikt rører aldri databasen, og
+      appen forklarer seg selv på skjermen i stedet for å boote tomt.
+- [ ] **Riggtest Runde 3:** seks punkter i docs/REVISJON-R3.md
       §Riggtest-punkter. Viktigst: **se trafikklyset fra åtte meter og mys** —
       slukkede lamper er nå mørke og rødt er det som lyser, motsatt av før.
       Deretter: åpne appen på en 1024×768-projektor (hele vinduet skal være

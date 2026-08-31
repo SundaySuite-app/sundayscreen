@@ -5,6 +5,7 @@ import {
   NAME_MAX_CHARS,
   namesToText,
   parseNameList,
+  rawNameCount,
 } from "./name-list-core";
 
 describe("parseNameList", () => {
@@ -37,5 +38,21 @@ describe("parseNameList", () => {
   it("round-trips through namesToText", () => {
     const names = ["Kari", "Ola"];
     expect(parseNameList(namesToText(names))).toEqual(names);
+  });
+});
+
+describe("rawNameCount", () => {
+  it("counts what the teacher typed, past the cap the parse applies", () => {
+    const lines = Array.from({ length: 1200 }, (_, i) => `Elev ${i}`).join(
+      "\n",
+    );
+    // The parse mirrors storage and caps; the raw count is the refusal's
+    // truth. If these two ever agree above the cap, the guard is dead again.
+    expect(parseNameList(lines).length).toBe(MEMBERS_MAX);
+    expect(rawNameCount(lines)).toBe(1200);
+  });
+
+  it("ignores blank lines exactly like the parse does", () => {
+    expect(rawNameCount("Kari\n\n  \nOla\n")).toBe(2);
   });
 });

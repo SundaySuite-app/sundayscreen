@@ -251,6 +251,53 @@ export async function installFixtures(
             save(db);
             return blob;
           },
+          /**
+           * The narrow read-modify-write `commands/settings.rs::
+           * set_window_for` performs — NOT `settings_save`'s whole-blob
+           * clobber. Touching anything but the `window` key here would hide
+           * exactly the bug R4-spor 3.3 fixed: a stale language/
+           * updateChannel snapshot riding along on every window drag/resize
+           * and every fullscreen toggle. Was MISSING from this fixture map
+           * entirely until now (E2-1's neighbourhood) — a journey exercising
+           * `settingsSetWindow` fell through to the real `tauriInvoke`,
+           * which rejects outside Tauri, so the whole path was silently
+           * untested at this tier.
+           *
+           * Clamps w/h to the same floor `Settings::validate` enforces
+           * (`MIN_WINDOW_W`/`MIN_WINDOW_H`, settings.rs) and echoes back the
+           * CLAMPED value, exactly like the real command's return type
+           * promises — callers adopt the answer, never what they sent. The
+           * other half of `validate` (dropping a non-finite/absurd geometry
+           * outright) is the real backend's own unit-tested job and not
+           * reproduced here; only the floor is load-bearing for a journey.
+           * The two constants are hand-copied, not sourced from
+           * `limits.generated` — that generator only scans layout.rs/
+           * schedule.rs/members.rs (see scripts/gen-limits.mjs's own module
+           * doc), and settings.rs's window bounds sit outside that list —
+           * same reason NAME_MAX_CHARS=80 is hand-copied a few lines up in
+           * `scene_create`.
+           */
+          settings_set_window: (args?: Record<string, unknown>) => {
+            const MIN_WINDOW_W = 960;
+            const MIN_WINDOW_H = 600;
+            const db = load();
+            const raw = (arg(args, "window") ?? {}) as {
+              x: number;
+              y: number;
+              w: number;
+              h: number;
+              fullscreen: boolean;
+            };
+            const clamped = {
+              ...raw,
+              w: Math.max(raw.w, MIN_WINDOW_W),
+              h: Math.max(raw.h, MIN_WINDOW_H),
+            };
+            db.settings ??= {};
+            db.settings.window = clamped;
+            save(db);
+            return clamped;
+          },
           update_check: { phase: "upToDate" },
           app_info: { name: "SundayScreen", version: "0.0.0-e2e" },
           // The two "how did the boot go" reads. `null` is the HEALTHY answer to
@@ -622,9 +669,18 @@ export async function installFixtures(
             const db = load();
             db.drawn ??= {};
             const classId = String(arg(args, "classId"));
+            // Mirrors `members::clean_name` + `reconcile` EXACTLY (F9-funn
+            // S8b's neighbourhood): trim, drop empties, truncate each
+            // survivor to NAME_MAX_CHARS codepoints, THEN cap the list at
+            // MEMBERS_MAX — same order Rust runs them in. Before this the
+            // fixture kept every name whole and unbounded, so a journey
+            // pasting a too-long name or a too-long list saw a class the
+            // real backend would never have stored.
             const names = ((arg(args, "names") as string[]) ?? [])
               .map((n) => n.trim())
-              .filter((n) => n.length > 0);
+              .filter((n) => n.length > 0)
+              .map((n) => charSlice(n, limits.NAME_MAX_CHARS))
+              .slice(0, limits.MEMBERS_MAX);
             const freeIds = new Map<string, string[]>();
             const wasAway = new Map<string, string | null>();
             for (const m of db.members[classId] ?? []) {
@@ -670,18 +726,48 @@ export async function installFixtures(
           // finding, and the Rust tests own that half.
           transfer_export: (args?: Record<string, unknown>) =>
             `/Users/e2e/Documents/${String(arg(args, "suggestedName"))}`,
-          transfer_import: () => ({
-            outcome: "imported",
-            classes: 2,
-            scenes: 3,
-            members: 47,
-            plannerImported: false,
-            // The default answer is the INTERESTING one: this machine
-            // already had a school day, so the week plan stayed behind and
-            // the receipt has to say so.
-            plannerSkipped: true,
-            fileAppVersion: "0.0.0-e2e",
-          }),
+          transfer_import: () => {
+            // A symbolic ONE class + ONE global scene — not the real remap
+            // (the Rust integration tests own that half, per the module doc
+            // above), but enough that `loadClasses()`/`loadScenes()` after a
+            // successful import have something NEW to reveal. Before this,
+            // every import journey saw the exact two menus it started with,
+            // so a deleted `loadClasses()` call in `runImport` (E2-6) was
+            // invisible at this tier — the receipt could say "2 klasser" and
+            // the class switcher would never grow.
+            const db = load();
+            const cls = {
+              id: mint(db),
+              name: "Importert klasse",
+              sortIndex: db.classes.length,
+              createdAt: db.classes.length,
+            };
+            db.classes.push(cls);
+            db.members[cls.id] = [];
+            ensureDefaultScene(db, cls);
+            const scene: E2eScene = {
+              id: mint(db),
+              classId: null,
+              name: "Importert skjerm",
+              sortIndex: db.scenes.length,
+              createdAt: db.scenes.length,
+            };
+            db.scenes.push(scene);
+            db.layouts[scene.id] = [];
+            save(db);
+            return {
+              outcome: "imported",
+              classes: 2,
+              scenes: 3,
+              members: 47,
+              plannerImported: false,
+              // The default answer is the INTERESTING one: this machine
+              // already had a school day, so the week plan stayed behind and
+              // the receipt has to say so.
+              plannerSkipped: true,
+              fileAppVersion: "0.0.0-e2e",
+            };
+          },
 
           layout_load: (args?: Record<string, unknown>) =>
             load().layouts[String(arg(args, "sceneId"))] ?? [],
@@ -785,7 +871,24 @@ export async function installFixtures(
             const members = present(all, arg(args, "today"));
             if (members.length === 0) throw new Error(ERR_ALL_AWAY);
             const mode = String(arg(args, "mode"));
-            const n = Math.max(Number(arg(args, "n")) || 2, 1);
+            // GROUP_N_MIN/MAX, not a hand-copied "2"/"1" (E2-21): the real
+            // `groups_split` command is itself lenient (`group_count` only
+            // floors `n` at 1, then clamps the group COUNT to the member
+            // count — see crates/sundayscreen-core/src/groups.rs), so this
+            // pair is not something the backend enforces at the seam. It is
+            // what GroupsWidget.tsx's own stepper is bounded by, though —
+            // nothing that reaches this fixture through the real UI can ever
+            // ask for less than GROUP_N_MIN or more than GROUP_N_MAX — and a
+            // second, undocumented "2"/"1" here was free to drift from that
+            // one source, the exact seam-bug shape this file guards against
+            // everywhere else.
+            const n = Math.min(
+              Math.max(
+                Number(arg(args, "n")) || limits.GROUP_N_MIN,
+                limits.GROUP_N_MIN,
+              ),
+              limits.GROUP_N_MAX,
+            );
             const count =
               mode === "size"
                 ? Math.ceil(members.length / n)

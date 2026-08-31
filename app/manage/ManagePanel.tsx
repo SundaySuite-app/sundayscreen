@@ -39,7 +39,7 @@ import {
 } from "../state/transfer";
 import styles from "./ManagePanel.module.css";
 import { Icon } from "../ui/Icon";
-import { namesToText, parseNameList } from "./name-list-core";
+import { namesToText, parseNameList, rawNameCount } from "./name-list-core";
 
 export function ManagePanel() {
   const current = activeClass.value;
@@ -138,7 +138,10 @@ export function ManagePanel() {
     });
   };
 
-  const parsedCount = parseNameList(namesDraft).length;
+  // The RAW line count, not the capped parse: `parseNameList` caps at
+  // MEMBERS_MAX before `.length` could ever see the overflow, so the
+  // refusal below would otherwise be dead code (found by F-D's review).
+  const parsedCount = rawNameCount(namesDraft);
   /** More names than a class can hold. `members_set` TRUNCATES rather than
    *  refusing, so a 1200-name paste used to be answered with «1200 navn» and
    *  «Lagret» while 1000 rows existed — the count came from the draft, the

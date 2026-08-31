@@ -65,6 +65,8 @@ jobs:
         run: npm run i18n-plurals
       - name: Colors only via tokens
         run: npm run css-tokens
+      - name: Generated limits mirror the Rust source
+        run: npm run limits:check
 
       - name: Rust — fmt
         run: npm run fmt:rust:check

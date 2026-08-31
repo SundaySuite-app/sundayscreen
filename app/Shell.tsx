@@ -11,6 +11,7 @@ import { PlannerPanel } from "./planner/PlannerPanel";
 import { SuggestionBanner } from "./screen/SuggestionBanner";
 import { Surface } from "./screen/Surface";
 import { Toolbar } from "./screen/Toolbar";
+import { WidgetOverlay } from "./screen/WidgetOverlay";
 import { attendancePanelOpen } from "./state/attendance";
 import { bootFault } from "./state/boot";
 import { managePanelOpen } from "./state/classes";
@@ -122,6 +123,13 @@ export function Shell() {
         </div>
       )}
       <Toolbar />
+      {/* A widget's own popover, drawn HERE and not in the card that owns it:
+          every card is `overflow: hidden` with `container-type: size`, which
+          also makes it a containing block for `position: fixed`, so nothing a
+          widget renders can leave its own box. Mounted after the toolbar so
+          it comes later in paint order too, on top of a bar it may overlap.
+          Renders nothing at all until a widget opens one. */}
+      <WidgetOverlay />
       {/* The reveal handle may never appear on top of an open panel. The
           list of what counts as "open" lives ONCE, in state/chrome.ts — this
           condition used to carry its own copy and had already drifted past

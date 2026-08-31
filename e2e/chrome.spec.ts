@@ -476,3 +476,74 @@ test("an enlarged card does not survive a restart", async ({ page }) => {
   expect(Math.abs(restored.width - small.width)).toBeLessThan(2);
   expect(Math.abs(restored.x - small.x)).toBeLessThan(2);
 });
+
+// ── The Escape ladder, after a rung landed on TOP of it ─────────────────────
+//
+// `escapeTarget` grew a «widgetoverlay» rung above every other layer — a
+// panel a WIDGET owns, drawn by the screen layer because no card can draw one
+// itself (`overflow: hidden` + `container-type: size`), and outermost-first
+// because it can float over all of them: it belongs to a card, and a card can
+// be enlarged.
+//
+// The rung itself has no journey here, and cannot have one yet: a popover
+// opens only from a kind that declares `WidgetDef.Overlay`, and none does
+// until the die's appearance panel lands one commit later. The alternative —
+// a test hook in shipping code to fake one — is a worse trade than waiting.
+// What IS testable now is the thing inserting a rung at the top can silently
+// break: every layer BELOW it still reaching the signal it is supposed to
+// close. The unit table (app/screen/chrome-core.test.ts) pins the order; this
+// pins the wiring, three deep in one journey.
+
+test("three layers still peel bottom-up: panel, then big card, then fullscreen", async ({
+  page,
+}) => {
+  await installFixtures(page, { memberNames: ["Kari", "Ola"] });
+  await allowFullscreen(page);
+  // Frozen: the toolbar's idle clock must not slide the class switcher away
+  // between the stacking and the three presses.
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  // The new host is mounted in the shell unconditionally and must render
+  // NOTHING while no widget has opened a panel — no stray backdrop over the
+  // board, which is the one way a host like this breaks an app on day one.
+  await expect(page.locator("[data-widget-overlay]")).toHaveCount(0);
+
+  // `exact` on both: the name match is a SUBSTRING one and «Fullskjerm» is a
+  // prefix of «Avslutt fullskjerm».
+  const enterFs = page.getByRole("button", { name: "Fullskjerm", exact: true });
+  const exitFs = page.getByRole("button", {
+    name: "Avslutt fullskjerm",
+    exact: true,
+  });
+  await enterFs.click();
+  await expect(exitFs).toHaveAttribute("aria-pressed", "true");
+
+  const text = page.locator('[data-widget-kind="text"]');
+  await text.hover();
+  await text.getByRole("button", { name: "Vis stort" }).click();
+  const scrim = page.locator("[data-focus-scrim]");
+  await expect(scrim).toBeVisible();
+
+  // The scrim lives INSIDE the surface, so the toolbar is still reachable
+  // over an enlarged card — which is what makes this third layer stackable.
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Hvem er her i dag?" }).click();
+  const panel = page.getByRole("region", { name: "Hvem er her i dag?" });
+  await expect(panel).toBeVisible();
+
+  // One layer per press, and the two underneath stay exactly where they are.
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(scrim).toBeVisible();
+  await expect(exitFs).toHaveAttribute("aria-pressed", "true");
+
+  await page.keyboard.press("Escape");
+  await expect(scrim).toHaveCount(0);
+  await expect(exitFs).toHaveAttribute("aria-pressed", "true");
+
+  // …and only now does the projector view go.
+  await page.keyboard.press("Escape");
+  await expect(enterFs).toBeVisible();
+});

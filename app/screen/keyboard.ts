@@ -1,11 +1,15 @@
 // Global keys: F11 toggles fullscreen, Cmd/Ctrl+Z takes back the deletion the
-// snackbar is offering, and Escape peels ONE layer at a time (text field →
-// class menu → an overlay panel → an enlarged widget → fullscreen). Installed
-// once from main.tsx.
+// snackbar is offering, and Escape peels ONE layer at a time (text field → a
+// widget's own popover → the add menu → class menu → an overlay panel → an
+// enlarged widget → fullscreen). Installed once from main.tsx.
 
 import { attendancePanelOpen } from "../state/attendance";
 import { classMenuOpen, managePanelOpen } from "../state/classes";
-import { addMenuOpen } from "../state/chrome";
+import {
+  activeWidgetOverlay,
+  addMenuOpen,
+  closeWidgetOverlay,
+} from "../state/chrome";
 import {
   clearFocus,
   focusedWidget,
@@ -63,6 +67,10 @@ export function installKeyboard(): () => void {
     }
 
     const layer = escapeTarget({
+      // The CROSSED signal again, for the same reason as `focused` below: a
+      // widget popover whose card left the board draws nothing, so it must
+      // not answer for a press either.
+      widgetOverlayOpen: activeWidgetOverlay.peek() !== null,
       addMenuOpen: addMenuOpen.peek(),
       menuOpen: classMenuOpen.peek() || sceneMenuOpen.peek(),
       // EVERY overlay belongs in here. An overlay the chain does not know
@@ -80,6 +88,9 @@ export function installKeyboard(): () => void {
       fullscreen: fullscreen.peek(),
     });
     switch (layer) {
+      case "widgetoverlay":
+        closeWidgetOverlay();
+        break;
       case "addmenu":
         addMenuOpen.value = false;
         break;

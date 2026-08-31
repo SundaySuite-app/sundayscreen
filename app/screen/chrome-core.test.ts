@@ -33,6 +33,7 @@ describe("shouldHide", () => {
 
 describe("escapeTarget", () => {
   const all = {
+    widgetOverlayOpen: true,
     addMenuOpen: true,
     menuOpen: true,
     overlayOpen: true,
@@ -41,14 +42,23 @@ describe("escapeTarget", () => {
   };
 
   it("closes one layer per press, innermost first", () => {
-    expect(escapeTarget(all)).toBe("addmenu");
-    expect(escapeTarget({ ...all, addMenuOpen: false })).toBe("menu");
-    expect(escapeTarget({ ...all, addMenuOpen: false, menuOpen: false })).toBe(
-      "overlay",
-    );
+    expect(escapeTarget(all)).toBe("widgetoverlay");
+    expect(escapeTarget({ ...all, widgetOverlayOpen: false })).toBe("addmenu");
+    expect(
+      escapeTarget({ ...all, widgetOverlayOpen: false, addMenuOpen: false }),
+    ).toBe("menu");
     expect(
       escapeTarget({
         ...all,
+        widgetOverlayOpen: false,
+        addMenuOpen: false,
+        menuOpen: false,
+      }),
+    ).toBe("overlay");
+    expect(
+      escapeTarget({
+        ...all,
+        widgetOverlayOpen: false,
         addMenuOpen: false,
         menuOpen: false,
         overlayOpen: false,
@@ -57,6 +67,7 @@ describe("escapeTarget", () => {
     expect(
       escapeTarget({
         ...all,
+        widgetOverlayOpen: false,
         addMenuOpen: false,
         menuOpen: false,
         overlayOpen: false,
@@ -65,6 +76,7 @@ describe("escapeTarget", () => {
     ).toBe("fullscreen");
     expect(
       escapeTarget({
+        widgetOverlayOpen: false,
         addMenuOpen: false,
         menuOpen: false,
         overlayOpen: false,
@@ -74,16 +86,39 @@ describe("escapeTarget", () => {
     ).toBeNull();
   });
 
+  it("a widget's own popover is dismissed before anything else", () => {
+    // It is the one layer that can float over every other: it belongs to a
+    // card, the card can be enlarged, and it sits at --z-popover — above the
+    // focus scrim AND the toolbar. A lower rung would take the big card away
+    // from under the panel the teacher is looking at.
+    expect(
+      escapeTarget({
+        widgetOverlayOpen: true,
+        addMenuOpen: false,
+        menuOpen: false,
+        overlayOpen: false,
+        focused: true,
+        fullscreen: true,
+      }),
+    ).toBe("widgetoverlay");
+  });
+
   it("an enlarged card is dismissed AFTER any panel or menu over it", () => {
     // The rung order is the whole decision: a menu drawn on top of the big
     // card must go first, or Escape shrinks the card and leaves the menu.
-    expect(escapeTarget({ ...all, addMenuOpen: false, menuOpen: false })).toBe(
-      "overlay",
-    );
+    expect(
+      escapeTarget({
+        ...all,
+        widgetOverlayOpen: false,
+        addMenuOpen: false,
+        menuOpen: false,
+      }),
+    ).toBe("overlay");
     // …and it goes BEFORE fullscreen, so «Vis stort» never costs the
     // projector view.
     expect(
       escapeTarget({
+        widgetOverlayOpen: false,
         addMenuOpen: false,
         menuOpen: false,
         overlayOpen: false,

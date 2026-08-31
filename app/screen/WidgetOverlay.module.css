@@ -1,0 +1,43 @@
+/* The host is mounted in Shell.tsx, whose `main` is `position: relative` with
+   no transform and no containment — which is what makes `fixed` here mean the
+   VIEWPORT. Move this component under anything that establishes a containing
+   block and both rules below silently start measuring that box instead. */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  border: none;
+  background: none;
+  cursor: default;
+  z-index: var(--z-popover);
+}
+
+.panel {
+  position: fixed;
+  /* Pre-measurement coordinates, overwritten in a LAYOUT effect (i.e. before
+     the first paint) with what popover-core worked out. They are never a
+     frame anyone sees; they exist so the box has a place to be measured in. */
+  left: 0;
+  top: 0;
+  /* One above the backdrop, and --z-popover already clears the toolbar (100),
+     the focus scrim and the enlarged card (40/41). */
+  z-index: calc(var(--z-popover) + 1);
+  /* The panel may not be taller or wider than the screen it opens on: the
+     placement clamps a too-large panel to the top-left corner, which is
+     honest but not usable. Capped here, and the cap is what the layout effect
+     measures — so a long panel scrolls INSIDE the viewport instead of running
+     off the bottom of a 768-tall projector. */
+  max-width: calc(100vw - 2 * var(--sp-2));
+  max-height: calc(100vh - 2 * var(--sp-2));
+  overflow: auto;
+  padding: var(--sp-3);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-dialog);
+  color: var(--ink);
+  /* Deliberately NO transform (not even a `translate(-50%)` for centring —
+     popover-core does the arithmetic instead), no filter, no container-type:
+     each of them would make this a containing block for anything `fixed`
+     inside it, which is the exact trap this whole host exists to get out of. */
+}

@@ -29,9 +29,17 @@ export function shouldHide(
   return nowMs - lastActivityMs >= CHROME_HIDE_MS;
 }
 
-/** What one Escape press closes, in order: the add menu, then the class
- *  menu, then the manage panel, then the enlarged widget, then fullscreen —
- *  one layer per press, innermost first.
+/** What one Escape press closes, in order: a widget's own popover, then the
+ *  add menu, then the class menu, then the manage panel, then the enlarged
+ *  widget, then fullscreen — one layer per press, innermost first.
+ *
+ *  «widgetoverlay» is OUTERMOST-first, above even the add menu, because it is
+ *  the only layer that can be open over any of the others: it belongs to a
+ *  card, and a card can be enlarged, so the die's appearance panel may be
+ *  floating over «Vis stort» on the projector (it rides at `--z-popover`,
+ *  which clears both the focus scrim and the toolbar). Anywhere lower in this
+ *  chain, the first Escape would have taken away the big card underneath it
+ *  and left the panel standing.
  *
  *  «focus» sits between the overlays and fullscreen, not innermost. A menu or
  *  a panel is drawn ON TOP of an enlarged card, so an inner focus rung would
@@ -39,15 +47,23 @@ export function shouldHide(
  *  stayed on the board — the mirror image of the missing-overlay bug that put
  *  `overlayOpen` in this chain in the first place. */
 export type EscapeLayer =
-  "addmenu" | "menu" | "overlay" | "focus" | "fullscreen" | null;
+  | "widgetoverlay"
+  | "addmenu"
+  | "menu"
+  | "overlay"
+  | "focus"
+  | "fullscreen"
+  | null;
 
 export function escapeTarget(state: {
+  widgetOverlayOpen: boolean;
   addMenuOpen: boolean;
   menuOpen: boolean;
   overlayOpen: boolean;
   focused: boolean;
   fullscreen: boolean;
 }): EscapeLayer {
+  if (state.widgetOverlayOpen) return "widgetoverlay";
   if (state.addMenuOpen) return "addmenu";
   if (state.menuOpen) return "menu";
   if (state.overlayOpen) return "overlay";

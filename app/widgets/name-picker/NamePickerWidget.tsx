@@ -14,12 +14,12 @@ import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tn } from "../../i18n";
 import { localDateStr } from "../../planner/date-core";
 import { openAttendance, presentOn } from "../../state/attendance";
-import { managePanelOpen, members } from "../../state/classes";
 import {
-  activeClass,
-  updateWidgetConfig,
-  updateWidgetConfigBy,
-} from "../../state/layout";
+  managePanelOpen,
+  members,
+  membersReadFailed,
+} from "../../state/classes";
+import { activeClass, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import { toast } from "../../ui/toast";
 import styles from "./name-picker.module.css";
@@ -44,6 +44,14 @@ const PICK_SCALE = [1, 1, 0.72, 0.54, 0.4, 0.32];
 
 function pickScale(count: number): number {
   return PICK_SCALE[Math.min(count, PICK_SCALE.length - 1)] ?? 1;
+}
+
+/** The stored count, inside the backend's range. Applied to the value READ
+ *  from the config as well as to the new one: a config written by a newer
+ *  build (or by hand) must not let a press carry an out-of-range number one
+ *  step further out. */
+function clampCount(n: number): number {
+  return Math.min(Math.max(n, LIMITS.PICK_N_MIN), LIMITS.PICK_N_MAX);
 }
 
 export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
@@ -81,6 +89,20 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
   // a dead button in front of a waiting class.
   const noNames = pool.length === 0;
   const allAway = !noNames && present.length === 0;
+  /**
+   * FOUR emptinesses now, and the fourth is a lie the board used to tell
+   * (R4-funn E1-L10). `loadMembers` empties `members` when `members_get`
+   * REJECTS — deliberately, so nothing can write a list it never read — and
+   * an empty pool reached the widget as «Legg inn navn i klassen først». On a
+   * database that will not open, that sentence sends a teacher to a panel to
+   * retype a class she has already entered, in front of the class, and the
+   * panel then refuses to save it.
+   *
+   * Still a DOOR, and still to the same panel: the panel is where the failure
+   * is explained and where the list lives. Only the sentence changes, from an
+   * instruction to a fact.
+   */
+  const namesUnread = noNames && membersReadFailed.value;
   // The honest line, and ONLY when it is needed: with nobody marked away this
   // is zero pixels, and with someone marked away the teacher can see that the
   // draw is leaving people out. A silent filter would be worse than none.
@@ -109,10 +131,7 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
   const names = new Set(pool.map((m) => m.name));
   const stale = remembered.some((n) => !names.has(n));
 
-  const drawCount = Math.min(
-    Math.max(cfg.drawCount, LIMITS.PICK_N_MIN),
-    LIMITS.PICK_N_MAX,
-  );
+  const drawCount = clampCount(cfg.drawCount);
 
   const draw = async () => {
     const cls = activeClass.peek();
@@ -186,12 +205,31 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
     }
   };
 
+  /**
+   * The stepper, merged into the CURRENT config (R4-funn E1-L9, the S#6
+   * pattern). It used to spread `cfg` — the config from the render the
+   * teacher was looking at — which makes the press a REPLACE of the whole
+   * object, not an edit of one field. A draw landing in the same frame writes
+   * `lastDrawnMany`; a `{ ...cfg, drawCount }` built before it would put the
+   * previous draw straight back, so the name on the board in front of the
+   * class silently reverted to the last one. Same discipline as `draw`'s own
+   * write, and for the same reason.
+   */
   const setCount = (delta: number) => {
-    const n = Math.min(
-      Math.max(drawCount + delta, LIMITS.PICK_N_MIN),
-      LIMITS.PICK_N_MAX,
+    updateWidgetConfigBy(widget.id, (c) =>
+      c.kind === "namepicker"
+        ? { ...c, drawCount: clampCount(clampCount(c.drawCount) + delta) }
+        : c,
     );
-    updateWidgetConfig(widget.id, { ...cfg, drawCount: n });
+  };
+
+  /** «Ingen gjentak», on the same terms as the stepper above: a toggle is an
+   *  edit of ONE field, never a replace of the config a spin is about to
+   *  write into. */
+  const toggleNoRepeat = () => {
+    updateWidgetConfigBy(widget.id, (c) =>
+      c.kind === "namepicker" ? { ...c, noRepeat: !c.noRepeat } : c,
+    );
   };
 
   const shown = spinning ? (preview ?? []) : stale ? [] : remembered;
@@ -240,7 +278,7 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
             managePanelOpen.value = true;
           }}
         >
-          {t("widget.noNames")}
+          {namesUnread ? t("widget.namesReadFailed") : t("widget.noNames")}
         </button>
       )}
       {allAway && <div class={styles.hint}>{t("picker.allAway")}</div>}
@@ -270,9 +308,7 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
           data-settings-btn
           data-current={cfg.noRepeat || undefined}
           aria-pressed={cfg.noRepeat}
-          onClick={() =>
-            updateWidgetConfig(widget.id, { ...cfg, noRepeat: !cfg.noRepeat })
-          }
+          onClick={toggleNoRepeat}
         >
           {t("picker.noRepeat")}
         </button>

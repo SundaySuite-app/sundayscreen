@@ -51,6 +51,34 @@ function focusWidth(page: Page): number {
   return page.viewportSize()!.width - 48;
 }
 
+/**
+ * The scrim, by its own hook rather than by name.
+ *
+ * The scrim and the enlarged card's collapse button say the SAME sentence —
+ * «Avslutt stor visning» is the name of the command, and both of them are it.
+ * So a page-level by-name lookup matches two elements and fails Playwright's
+ * strict mode; `data-focus-scrim` is the one that is the board.
+ */
+function scrimOf(page: Page): Locator {
+  return page.locator("[data-focus-scrim]");
+}
+
+/** Who actually receives a press at the middle of `target` — the element
+ *  itself, or something lying over it. Returns the covering element's
+ *  description, or null when the target owns its own middle. */
+function coveredBy(target: Locator): Promise<string | null> {
+  return target.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      r.x + r.width / 2,
+      r.y + r.height / 2,
+    );
+    if (!hit || el.contains(hit)) return null;
+    const owner = hit.closest("button, [class]") ?? hit;
+    return `${owner.tagName}[${owner.getAttribute("aria-label") ?? owner.className}]`;
+  });
+}
+
 test("«Vis stort» fills the board, and the scrim puts the card back", async ({
   page,
 }) => {
@@ -77,18 +105,47 @@ test("«Vis stort» fills the board, and the scrim puts the card back", async ({
   // The scrim is the way out — and it is a real control, not a wash: with
   // dragging frozen, clicking a card behind the big one does nothing at all,
   // so the board would otherwise be a dead surface with one small button on
-  // it. Clicked in the top-left margin, which is scrim and not card.
-  await page
-    .getByRole("button", { name: "Avslutt stor visning" })
-    .click({ position: { x: 10, y: 10 } });
+  // it. Clicked in the BAND under the card (the chrome clearance), well clear
+  // of both the card's edge and the centred toolbar: a press within 16 px of
+  // the card is a miss, not an exit — see the edge journey further down.
+  await page.mouse.click(40, big.y + big.height + 40);
 
   await expect.poll(() => widthOf(clock)).toBe(Math.round(small.width));
   const back = (await clock.boundingBox())!;
   expect(Math.round(back.x)).toBe(Math.round(small.x));
   expect(Math.round(back.y)).toBe(Math.round(small.y));
-  await expect(
-    page.getByRole("button", { name: "Avslutt stor visning" }),
-  ).toHaveCount(0);
+  await expect(scrimOf(page)).toHaveCount(0);
+});
+
+test("a press at the enlarged card's edge is a MISS, not an exit", async ({
+  page,
+}) => {
+  // The settings row stops `--sp-2` above the card's bottom edge, so the
+  // eight pixels under «Lydvarsel» are scrim — and they used to collapse the
+  // view in front of the class. The scrim lies UNDER the card, so a click it
+  // receives is by definition outside the card: a press "on the edge" is
+  // always a missed press, never a considered one.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  await addWidget(page, "Tidtaker");
+
+  const timer = page.locator('[data-widget-kind="timer"]');
+  await timer.hover();
+  await timer.getByRole("button", { name: "Vis stort" }).click();
+  await expect.poll(() => widthOf(timer)).toBe(focusWidth(page));
+  const big = (await timer.boundingBox())!;
+
+  // Eight pixels under the bottom edge — the aim that misses the settings row.
+  await page.mouse.click(big.x + big.width / 2, big.y + big.height + 8);
+  expect(await widthOf(timer)).toBe(focusWidth(page));
+  await expect(scrimOf(page)).toHaveCount(1);
+
+  // Sixteen is the far side of the halo, and one pixel past it is the board
+  // again — the mode is still leaveable by aiming at the board rather than at
+  // the card.
+  await page.mouse.click(40, big.y + big.height + 17);
+  await expect.poll(() => widthOf(timer)).toBeLessThan(focusWidth(page));
 });
 
 test("Escape shrinks the card BEFORE it leaves fullscreen", async ({
@@ -192,7 +249,7 @@ test("dragging and resizing are inert in focus — and nothing is written", asyn
     clock.getByRole("button", { name: "Endre størrelse" }),
   ).toHaveCount(0);
 
-  await clock.getByRole("button", { name: "Tilbake til tavla" }).click();
+  await clock.getByRole("button", { name: "Avslutt stor visning" }).click();
   await expect.poll(() => widthOf(clock)).toBe(Math.round(before.width));
   const restored = (await clock.boundingBox())!;
   expect(Math.round(restored.x)).toBe(Math.round(before.x));
@@ -231,7 +288,7 @@ test("«Fjern» and «Dupliser» step aside while the card is large", async ({
   await expect(del).toHaveCount(0);
   await expect(dup).toHaveCount(0);
 
-  await clock.getByRole("button", { name: "Tilbake til tavla" }).click();
+  await clock.getByRole("button", { name: "Avslutt stor visning" }).click();
   await clock.hover();
   await expect(del).toBeVisible();
   await expect(dup).toBeVisible();
@@ -304,4 +361,182 @@ test("«ett minutt til» still works on the enlarged timer", async ({ page }) =>
   // …and it is still the same countdown, not a restarted one.
   await page.clock.fastForward(30_000);
   await expect(timer.getByText("03:30")).toBeVisible();
+});
+
+// ── What else is on the screen while a card is large ───────────────────────
+//
+// The mode puts one card where the whole board was, and everything the shell
+// anchors to an EDGE keeps its own coordinates. Three of them landed on the
+// enlarged card's own controls, and each one was invisible in review and
+// obvious under `elementFromPoint`.
+
+test("the undo bar stays off the enlarged card's settings row", async ({
+  page,
+}) => {
+  // The worst of the three (R4-funn F1). The bar is centred on
+  // `--chrome-clearance`, and that clearance IS where the enlarged card's
+  // bottom edge is cut — so the bar sat on the settings row, at `--z-toast`,
+  // and every control in it belonged to the snackbar. «Lydvarsel» hit
+  // «Angre»: reaching for the chime toggle put back the card she had just
+  // deleted.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  await addWidget(page, "Klokke");
+  await addWidget(page, "Tidtaker");
+
+  const clock = page.locator('[data-widget-kind="clock"]');
+  await clock.hover();
+  await clock.getByRole("button", { name: "Fjern" }).click();
+  const undo = page.getByRole("button", { name: "Angre" });
+  await expect(undo).toBeVisible();
+
+  const timer = page.locator('[data-widget-kind="timer"]');
+  await timer.hover();
+  await timer.getByRole("button", { name: "Vis stort" }).click();
+  await expect.poll(() => widthOf(timer)).toBe(focusWidth(page));
+  // The row is hover-revealed, and `visibility: hidden` is not hit-testable —
+  // so the measurement below is only meaningful with the pointer on the card.
+  await timer.hover();
+
+  const row = timer.locator("[data-settings-row] button");
+  const owners = await row.evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        r.x + r.width / 2,
+        r.y + r.height / 2,
+      );
+      return {
+        label: el.getAttribute("aria-label") ?? el.textContent,
+        covered:
+          hit && !el.contains(hit)
+            ? (hit.closest("button")?.textContent ?? hit.tagName)
+            : null,
+      };
+    }),
+  );
+  // Eight controls in the idle countdown row: five presets, two modes, sound.
+  expect(owners).toHaveLength(8);
+  for (const o of owners) {
+    expect(o.covered, `«${o.label}» is covered by «${o.covered}»`).toBeNull();
+  }
+
+  // …and the bar is still a bar: «Angre» is where a press reaches it.
+  expect(await coveredBy(undo)).toBeNull();
+  await undo.click();
+  await expect(clock).toHaveCount(1);
+});
+
+test("a toast keeps clear of the enlarged card's collapse button", async ({
+  page,
+}) => {
+  // The stack is pinned to the window's top-right, which is exactly where the
+  // enlarged card's ONE control lives (R4-funn F7) — and error toasts used to
+  // stay for the rest of the day, so one failed draw at 09:12 owned that
+  // corner until the machine was restarted.
+  await installFixtures(page, { memberNames: ["Ada", "Bo", "Cato"] });
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.addInitScript(() => {
+    (
+      window as unknown as Record<string, Record<string, unknown>>
+    ).__SUNDAYSCREEN_FIXTURES__.picker_draw_many = () => {
+      throw new Error("picker_draw_many: database is locked");
+    };
+  });
+  await page.goto("/");
+  await addWidget(page, "Navnetrekker");
+
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  await picker.getByRole("button", { name: "Trekk navn" }).click();
+  const toast = page.getByText("Noe gikk galt — prøv igjen.");
+  await expect(toast).toBeVisible();
+
+  await picker.hover();
+  await picker.getByRole("button", { name: "Vis stort" }).click();
+  await expect.poll(() => widthOf(picker)).toBe(focusWidth(page));
+  await picker.hover();
+
+  const collapse = picker.getByRole("button", {
+    name: "Avslutt stor visning",
+  });
+  await expect(collapse).toBeVisible();
+  expect(await coveredBy(collapse)).toBeNull();
+
+  // It is a RECEIPT, not a state — the states live in the shell's chip. Six
+  // seconds in it is still readable (an error gets twice the ordinary life);
+  // twelve seconds in the corner is the board's again.
+  await page.clock.fastForward(6_000);
+  await expect(toast).toBeVisible();
+  await page.clock.fastForward(6_500);
+  await expect(toast).toHaveCount(0);
+});
+
+test("the collapse button takes the corner the other two left", async ({
+  page,
+}) => {
+  // `.focus` is positioned THIRD from the right edge because «Fjern» and
+  // «Dupliser» stand beside it. Both are `display: none` in this mode, and
+  // the survivor kept the gap: measured 89 px in from the corner of a card
+  // that fills the board (R4-funn F15).
+  await installFixtures(page);
+  await page.goto("/");
+  await addWidget(page, "Klokke");
+
+  const clock = page.locator('[data-widget-kind="clock"]');
+  await clock.hover();
+  await clock.getByRole("button", { name: "Vis stort" }).click();
+  await expect.poll(() => widthOf(clock)).toBe(focusWidth(page));
+
+  const card = (await clock.boundingBox())!;
+  const btn = (await clock
+    .getByRole("button", { name: "Avslutt stor visning" })
+    .boundingBox())!;
+  // `--sp-2` in from the card's right edge — the corner «Fjern» had. Nine,
+  // not eight: `boundingBox` measures the BORDER box and the card has a 1px
+  // border, which is also why the finding measured 89 rather than 88.
+  expect(Math.round(card.x + card.width - (btn.x + btn.width))).toBe(9);
+  expect(Math.round(btn.y - card.y)).toBe(9);
+
+  // …and on the way back it is third from the corner again, because the two
+  // it stepped into the place of are back beside it.
+  await clock.getByRole("button", { name: "Avslutt stor visning" }).click();
+  await expect.poll(() => widthOf(clock)).toBeLessThan(focusWidth(page));
+  await clock.hover();
+  const small = (await clock.boundingBox())!;
+  const back = (await clock
+    .getByRole("button", { name: "Vis stort" })
+    .boundingBox())!;
+  expect(Math.round(small.x + small.width - (back.x + back.width))).toBe(89);
+});
+
+test("adding a tool while a card is enlarged delivers a VISIBLE card", async ({
+  page,
+}) => {
+  // A new widget is born at `nextZ()` — z ≈ 2 on a small board — while the
+  // scrim sits at 40 and the enlarged card at 41 (R4-funn F3). So «Legg til
+  // verktøy» landed a card that was 100 % hidden, with nothing on screen to
+  // say anything had happened, and the teacher pressed it again.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  await addWidget(page, "Klokke");
+
+  const clock = page.locator('[data-widget-kind="clock"]');
+  await clock.hover();
+  await clock.getByRole("button", { name: "Vis stort" }).click();
+  await expect.poll(() => widthOf(clock)).toBe(focusWidth(page));
+
+  await addWidget(page, "Tidtaker");
+
+  // The view is over — the board is a board again …
+  await expect(scrimOf(page)).toHaveCount(0);
+  await expect.poll(() => widthOf(clock)).toBeLessThan(focusWidth(page));
+
+  // … and the card that was asked for is on the board, selected, and takes a
+  // press in its own middle rather than handing it to a scrim.
+  const timer = page.locator('[data-widget-kind="timer"]');
+  await expect(timer).toHaveCount(1);
+  await expect(timer).toHaveAttribute("data-selected", "true");
+  expect(await coveredBy(timer)).toBeNull();
 });

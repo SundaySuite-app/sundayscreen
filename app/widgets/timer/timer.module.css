@@ -1,3 +1,17 @@
+/* The hover row is `position: absolute; bottom: var(--sp-2)` on the shell, so
+   the card has to RESERVE that strip — the same reserve `groups` carries, and
+   the timer was the one narrow widget without it (R4-funn F14). Measured at
+   the timer's own floor, 260×180: `elementFromPoint` in the middle of «Start»
+   returned «Sett til 10 minutter». That is the button the whole widget is
+   for, under a row that only appears when the teacher reaches for the card —
+   so she reaches for the card, and the card takes the press away from her.
+
+   The reserve is one row (--sp-1 + 36px min-height + --sp-1 = 44px), its
+   `bottom: var(--sp-2)` offset, AND the row's own `box-shadow` plate, which
+   paints --sp-2 of card colour beyond its box and would otherwise erase the
+   bottom edge of the gold «Start» pill. Same three terms `groups` reserves,
+   and they are all three load-bearing — 52px instead of 60 leaves the plate
+   sitting on seven pixels of the button. */
 .timer {
   width: 100%;
   height: 100%;
@@ -7,19 +21,53 @@
   justify-content: center;
   gap: var(--sp-2);
   padding: var(--sp-3);
+  padding-bottom: calc(44px + var(--sp-2) + var(--sp-2));
 }
 
 /* Like the clock: cqmin measured the short side, which on a landscape timer
    card is the height, so the widget under-used the width it actually has.
    40cqmin is +21 % on the default card; the 20cqw term is what keeps the
-   eight glyphs of «10:00:00» inside the box all the way down to 172px wide. */
+   eight glyphs of «10:00:00» inside the box all the way down to 172px wide.
+   The THIRD term is the reserve above, in reverse: 12 (top padding) + 60
+   (reserve) + 8 (gap) + 35 («Start») = 115, so `100cqh - 115px` is literally
+   the height the column has left for digits. Without it the reserve simply
+   pushed the number out of the box on a SHORT card and the shell's own
+   `overflow: hidden` cut the top off it — a worse bug than the one the
+   reserve fixes. It binds only where the card is SHORT: past ~190px of height
+   the 40cqmin term is the smaller one anyway, so the default card, «Vis
+   stort» and every ordinary board are untouched. The --fs-base floor keeps
+   the value positive if a restored layout ever hands this widget a card below
+   its own 260×180 minimum. */
 .display {
-  font-size: min(40cqmin, 20cqw);
+  font-size: max(var(--fs-base), min(40cqmin, 20cqw, calc(100cqh - 115px)));
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   color: var(--ink);
   line-height: 1;
+}
+
+/* …and the reserve DOUBLES once the row breaks onto two lines.
+   The arithmetic, so the next person does not have to re-measure it: the row
+   is eight 36px buttons with seven --sp-1 gaps and its own --sp-1 padding =
+   324px border-box, against a max-width of `100% - var(--sp-4)`. So it fits
+   down to a 340px card and wraps below that. The query measures the CONTAINER
+   box, i.e. the card less its 1px borders, so `344px` here catches cards up to
+   346px wide — five pixels high of the real edge, on purpose and the way
+   `groups` is: under-reserving puts the row back on «Start», over-reserving
+   costs a little digit height in a band nobody sits in for long. Two lines are
+   4 + 36 + 4 + 36 + 4 = 84px, plus the same offset and plate as above.
+
+   AFTER `.display`, deliberately: a container query adds no specificity, so
+   the two font-size declarations are settled by source order alone. */
+@container (max-width: 344px) {
+  .timer {
+    padding-bottom: calc(84px + var(--sp-2) + var(--sp-2));
+  }
+
+  .display {
+    font-size: max(var(--fs-base), min(40cqmin, 20cqw, calc(100cqh - 155px)));
+  }
 }
 
 /* --warn-ink, not --warn: amber is a fill (2.21:1 as text) and this is the

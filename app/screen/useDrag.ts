@@ -9,7 +9,7 @@ import type { WidgetInstance } from "../bindings/WidgetInstance";
 import {
   bringToFront,
   commitWidgetRect,
-  focusedWidgetId,
+  focusedWidget,
   widgets,
 } from "../state/layout";
 import { settings } from "../state/settings";
@@ -121,9 +121,16 @@ function beginTracking(
  * is persisted), and the enlarged card's own rect is a view, not its stored
  * one. Dragging it would collapse it back to normal size under the finger and
  * commit a position the teacher never saw — promise 2, broken silently.
+ *
+ * Read through the CROSSED computed, not the raw id (R4-funn E2-12): the
+ * keyboard layer deliberately asks `focusedWidget`, and the two must agree
+ * about what «in focus» means. A STALE id — a card removed under the view, a
+ * board swapped out from under it — draws no big card and swallows no Escape,
+ * so it must not freeze the board either; the raw id said "frozen" and left
+ * every card on a live board unmovable with nothing on screen to explain it.
  */
 function frozenForFocus(): boolean {
-  return focusedWidgetId.peek() !== null;
+  return focusedWidget.peek() !== null;
 }
 
 /** Pointerdown on the widget body: select, raise, and maybe drag. */

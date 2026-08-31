@@ -9,7 +9,7 @@ import type { TimerState } from "../../bindings/TimerState";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { LIMITS } from "@lib/limits.generated";
 import { t, tf, tn } from "../../i18n";
-import { formatMin, minutesOfDay } from "../../planner/date-core";
+import { formatMin } from "../../planner/date-core";
 import { updateWidgetConfig } from "../../state/layout";
 import { runningLessonEndMin } from "../../state/planner";
 import { Icon } from "../../ui/Icon";
@@ -131,6 +131,39 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
 
   const setDuration = (minutes: number) => setDurationMs(minutes * MINUTE_MS);
 
+  /**
+   * «Til timen slutter», computed the only way it can be right (R4-funn F4).
+   *
+   * Two bugs lived in the one-liner this replaces, and both of them put a
+   * WRONG number on the board in front of a class:
+   *
+   *   - `lessonEndMin - minutesOfDay(new Date())` is minute arithmetic on a
+   *     truncated clock. Pressed at 09:00:50 with the lesson ending at 09:15
+   *     it answered 15 minutes — so the chime rang at 09:15:50, fifty seconds
+   *     after the label on the pill said the lesson was over. Whole minutes in,
+   *     whole minutes out, and the seconds silently rounded the wrong way.
+   *   - the pill's own visibility comes from `runningLessonEndMin`, which
+   *     reads the planner's 30 s tick. For up to half a minute after a lesson
+   *     ends the button is still on the row, and pressing it asked for a
+   *     NEGATIVE remainder — which the clamp turned into `TIMER_MIN_MS`, i.e.
+   *     a five-second countdown starting the instant she pressed it.
+   *
+   * So: the end is an EPOCH built from the wall clock at click time (`setHours`
+   * on today's date, which is DST-correct in a way midnight + minutes is not),
+   * the remainder is milliseconds and is used as milliseconds — 14:10 left
+   * means 14:10 on the board — and a pill that has outlived its lesson does
+   * NOTHING AT ALL rather than something wrong. Doing nothing is the honest
+   * answer: within 30 s the button disappears on its own.
+   */
+  const setDurationToLessonEnd = (endMin: number) => {
+    const now = new Date();
+    const end = new Date(now);
+    end.setHours(Math.floor(endMin / 60), endMin % 60, 0, 0);
+    const restMs = end.getTime() - now.getTime();
+    if (restMs < TIMER_MIN_MS) return;
+    setDurationMs(restMs);
+  };
+
   const setMode = (mode: "countdown" | "stopwatch") => {
     if (mode === cfg.mode) return;
     setState({ phase: "idle" });
@@ -239,8 +272,9 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
          *
          * It sets `durationMs` and nothing else (ADR-003): a timer that is
          * already counting is never touched — this branch is idle-only —
-         * and the minutes are read from the wall clock at CLICK time, not
-         * from the render that drew the pill.
+         * and the remainder is read from the wall clock at CLICK time, not
+         * from the render that drew the pill (see `setDurationToLessonEnd`,
+         * which also refuses a pill that has outlived its lesson).
          */}
         {state.phase === "idle" &&
           cfg.mode === "countdown" &&
@@ -253,11 +287,7 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
               title={tf("timer.untilLessonEnd", {
                 time: formatMin(lessonEndMin),
               })}
-              onClick={() =>
-                setDurationMs(
-                  (lessonEndMin - minutesOfDay(new Date())) * MINUTE_MS,
-                )
-              }
+              onClick={() => setDurationToLessonEnd(lessonEndMin)}
             >
               {formatMin(lessonEndMin)}
             </button>

@@ -91,7 +91,7 @@
 }
 
 /* No separate `[aria-pressed="true"]` tint: the GLYPH and the label are the
-   state (arrows out ⇄ arrows in, «Vis stort» ⇄ «Tilbake til tavla»), and the
+   state (arrows out ⇄ arrows in, «Vis stort» ⇄ «Avslutt stor visning»), and the
    gold on/off grammar is a whole-toolbar question deliberately left for after
    the projector rig test. */
 .duplicate:hover,
@@ -144,6 +144,17 @@
 .shell[data-focused] .delete,
 .shell[data-focused] .duplicate {
   display: none;
+}
+
+/* …and the survivor takes the corner they left (R4-funn F15). `.focus` is
+   positioned THIRD from the right edge — `--sp-2 + 2×36 + 2×--sp-1`, i.e.
+   88 px — which is where it belongs while «Fjern» and «Dupliser» stand beside
+   it. With both of them `display: none` the button kept the gap anyway and
+   measured 89 px in from the enlarged card's corner: the only control left in
+   the mode, parked in the middle of nowhere, with the pointer arriving at the
+   corner every time. */
+.shell[data-focused] .focus {
+  right: var(--sp-2);
 }
 
 /* The SE resize handle: a generous 44px touch target whose visible part is a

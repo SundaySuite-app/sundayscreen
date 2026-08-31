@@ -10,7 +10,11 @@ import { t, tf, tn } from "../../i18n";
 import { LIMITS } from "@lib/limits.generated";
 import { localDateStr } from "../../planner/date-core";
 import { openAttendance, presentOn } from "../../state/attendance";
-import { managePanelOpen, members } from "../../state/classes";
+import {
+  managePanelOpen,
+  members,
+  membersReadFailed,
+} from "../../state/classes";
 import {
   activeClass,
   updateWidgetConfig,
@@ -30,6 +34,11 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
   const present = presentOn(pool, today);
   const noNames = pool.length === 0;
   const allAway = !noNames && present.length === 0;
+  // «Kunne ikke leses» is not «finnes ikke» (R4-funn E2-20) — the picker
+  // carries the same distinction and the same reasoning: a failed
+  // `members_get` empties the pool on purpose, and telling a teacher to add
+  // names she already has sends her to a panel that will refuse to save them.
+  const namesUnread = noNames && membersReadFailed.value;
   const showPresence = present.length > 0 && present.length < pool.length;
 
   // A split that belongs to another class must not stand in front of this
@@ -95,7 +104,9 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
                   managePanelOpen.value = true;
                 }}
               >
-                {t("widget.noNames")}
+                {namesUnread
+                  ? t("widget.namesReadFailed")
+                  : t("widget.noNames")}
               </button>
             ) : allAway ? (
               t("groups.allAway")

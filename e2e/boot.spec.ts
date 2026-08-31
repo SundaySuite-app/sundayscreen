@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The browser tier's first journey: the shell boots with NO backend. The
 // fixture seam answers the boot commands — proof the whole chain (shim →
@@ -145,8 +145,9 @@ test("a downgrade says so, names no version number, and points at the file", asy
 
   const chip = page.locator('[data-status="error"]');
   await expect(chip).toHaveText(
-    "Denne databasen er laget av en nyere SundayScreen. Installer den " +
-      `nyeste versjonen igjen — fila er urørt: ${DB_PATH}`,
+    "Denne databasen er laget av en nyere SundayScreen. Installer nyeste " +
+      "versjon fra nedlastingssiden — ingenting blir lagret før det er " +
+      `gjort. Fila er urørt: ${DB_PATH}.`,
   );
   await expect(chip).not.toContainText("5");
   // …and the app is USABLE: the surface that carries the sentence is the
@@ -159,7 +160,8 @@ test("a downgrade says so, names no version number, and points at the file", asy
 test("a stopped schema update is its own sentence", async ({ page }) => {
   await withBootFault(page, "schemaUpdateStopped", 5);
   await expect(page.locator('[data-status="error"]')).toHaveText(
-    `Skjemaoppdateringen stoppet. Fila er urørt: ${DB_PATH}`,
+    "Databaseoppdateringen stoppet. Dette er en feil i appen, ikke noe du " +
+      `gjorde — nyeste versjon kan ha rettet den. Fila er urørt: ${DB_PATH}.`,
   );
 });
 
@@ -170,8 +172,9 @@ test("a quarantined database says the app started empty — and where to look", 
   // the teacher stared at a board with none of her classes on it.
   await withBootFault(page, "startedEmpty");
   await expect(page.locator('[data-status="error"]')).toHaveText(
-    "Databasen var ødelagt, så SundayScreen startet tom. Den gamle fila og " +
-      `forrige sikkerhetskopi (sundayscreen.backup-1.sqlite) ligger ved siden av ${DB_PATH}`,
+    "Navnene dine er ikke borte. Databasen var ødelagt, så SundayScreen " +
+      "startet tom. Den gamle fila (.corrupt-…) og sikkerhetskopien " +
+      `sundayscreen.backup-1.sqlite ligger ved siden av ${DB_PATH} — begge kan brukes.`,
   );
 });
 
@@ -185,6 +188,40 @@ test("after a quarantine the chip stops claiming the file is untouched", async (
   const chip = page.locator('[data-status="error"]');
   await expect(chip).toContainText("Ingenting er slettet");
   await expect(chip).not.toContainText("urørt");
+});
+
+test("«startet tom» steps aside for a failure that is happening NOW", async ({
+  page,
+}) => {
+  // The chip is ONE slot, and it was priority-ordered with every boot fault
+  // above everything else — which is right for four of the five and wrong for
+  // this one (R4-funn F6). `startedEmpty` says the app could not read the old
+  // file and started on a fresh one: the app WORKS after it, and the sentence
+  // is about something that already finished. Ranked first it owned the slot
+  // for the rest of the day, so a save that stopped landing at 10:40 had
+  // nowhere to say so — the one message a teacher can still act on, hidden
+  // behind the one she cannot.
+  await withBootFault(page, "startedEmpty");
+  const chip = page.locator('[data-status="error"]');
+  await expect(chip).toContainText("SundayScreen startet tom");
+
+  // Now the store stops accepting writes, the way a disk filling up or a
+  // second copy of the app taking the lock does.
+  await page.evaluate(() => {
+    const fixtures = (window as unknown as Record<string, unknown>)
+      .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    fixtures.layout_save = () => {
+      throw new Error("layout_save: database is locked");
+    };
+  });
+  await addWidget(page, "Klokke");
+
+  // The chip is the LIVE failure. Exact text, not a substring: the point is
+  // which of the two sentences won the slot.
+  await expect(chip).toHaveText(
+    "Klarte ikke å lagre tavla — siste endringer kan gå tapt.",
+  );
+  await expect(chip).toHaveCount(1);
 });
 
 // Without fixtures every wired command legitimately rejects — the shell must

@@ -130,6 +130,18 @@ function nextZ(): number {
   return widgets.value.reduce((max, w) => Math.max(max, w.z), -1) + 1;
 }
 
+/**
+ * Adding a card ENDS the enlarged view — the one line at the bottom of the
+ * batch, and the reason it is there (R4-funn F3):
+ *
+ * a new widget is born at `nextZ()`, i.e. `z + 1 ≈ 2` on a small board, while
+ * the focus scrim sits at 40 and the enlarged card at 41. So «Legg til
+ * verktøy» while something is shown large delivered a card that was 100 %
+ * invisible, under the scrim, with no hint that anything had happened — and
+ * the teacher pressed it again, and again. Every board swap already clears the
+ * focus in `adoptSnapshot`; this is the same rule for the other way a board
+ * changes under a view.
+ */
 export function addWidget(kind: WidgetKind): void {
   const def = WIDGET_REGISTRY[kind];
   const rect = placeNew(
@@ -144,8 +156,11 @@ export function addWidget(kind: WidgetKind): void {
     z: nextZ(),
     config: def.defaultConfig(),
   };
-  widgets.value = [...widgets.value, inst];
-  selectedWidgetId.value = inst.id;
+  batch(() => {
+    widgets.value = [...widgets.value, inst];
+    selectedWidgetId.value = inst.id;
+    focusedWidgetId.value = null;
+  });
   saveNow();
 }
 
@@ -172,8 +187,16 @@ export function duplicateWidget(id: string): void {
     z: nextZ(),
     config: structuredClone(source.config),
   };
-  widgets.value = [...widgets.value, inst];
-  selectedWidgetId.value = inst.id;
+  // Same guard as `addWidget`: the copy is born below the scrim, so a
+  // duplicate made while a card is shown large would be invisible. The button
+  // is `display: none` in focus mode today, which makes this belt AND braces
+  // — but "the control is currently hidden" is a CSS fact, and the invariant
+  // «a new card is always visible» belongs where the card is made.
+  batch(() => {
+    widgets.value = [...widgets.value, inst];
+    selectedWidgetId.value = inst.id;
+    focusedWidgetId.value = null;
+  });
   saveNow();
 }
 

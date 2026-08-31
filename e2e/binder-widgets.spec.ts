@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { LIMITS } from "../app/lib/limits.generated";
 import { addWidget, installFixtures } from "./harness";
 
 // «Dagens time» and «Dagen i dag»: planned in the planner in advance, shown
@@ -204,6 +205,76 @@ test("a failed read locks the board's field instead of replacing the plan", asyn
   ).toHaveCount(0);
   await expect(
     agenda.getByRole("button", { name: "Gjennomgang" }),
+  ).toBeVisible();
+});
+
+test("each source's field carries its OWN store's text ceiling", async ({
+  page,
+}) => {
+  // One `AddRow`, two stores (R4-funn E2-15). A manual line is clamped by
+  // `layout.rs`; a planner line is clamped by `schedule.rs`. The shared
+  // component handed the MANUAL ceiling to both, and the bug was invisible
+  // because the two constants happen to read the same number today — which is
+  // exactly what makes it worth a test: the day one of them moves, the field
+  // must move with the store it writes into, not with the other one.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+  await planMondayLesson(page);
+
+  await addWidget(page, "Dagens time");
+  const agenda = page.locator('[data-widget-kind="agenda"]');
+  const field = agenda.getByLabel("Ny aktivitet …");
+  await expect(field).toHaveAttribute(
+    "maxlength",
+    String(LIMITS.TEXT_MAX_CHARS),
+  );
+
+  await agenda.hover();
+  await agenda.getByRole("button", { name: "Manuell" }).click();
+  await expect(agenda.getByLabel("Ny aktivitet …")).toHaveAttribute(
+    "maxlength",
+    String(LIMITS.MANUAL_AGENDA_TEXT_MAX_CHARS),
+  );
+});
+
+test("the agenda and the timer read the SAME clock", async ({ page }) => {
+  // «Dagens time» used to subscribe to the planner's 30 s tick and then do
+  // its arithmetic on `new Date()` — a subscription to one clock and an
+  // answer from another (R4-funn E2-10). Between two ticks the two disagree,
+  // and the timer's «resten av timen» pill derives from the tick, so the two
+  // widgets could name different lessons at a period boundary while each was
+  // internally consistent.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T09:14:00") });
+  await planMondayLesson(page);
+
+  await addWidget(page, "Dagens time");
+  await addWidget(page, "Tidtaker");
+  const agenda = page.locator('[data-widget-kind="agenda"]');
+  const timer = page.locator('[data-widget-kind="timer"]');
+  await expect(agenda).toContainText("Norsk");
+  await timer.hover();
+  await expect(
+    timer.getByRole("button", { name: /resten av timen/ }),
+  ).toBeVisible();
+
+  // The lesson ends under both of them. `setSystemTime` moves the wall clock
+  // WITHOUT firing timers, which is precisely the gap: the planner's tick has
+  // not landed yet, so anything reading `new Date()` is already in the next
+  // minute while anything reading the tick is not.
+  await page.clock.setSystemTime(new Date("2026-08-31T09:16:00"));
+  // …and something makes the board re-render, the way any click does.
+  await agenda.hover();
+  await agenda.getByRole("button", { name: "Tider" }).click();
+
+  // ONE answer, from one clock: the agenda still shows the lesson the pill
+  // still offers the rest of. Before, the agenda flipped to «Ingen time nå»
+  // while the pill on the card beside it went on saying «til 09:15».
+  await expect(agenda).toContainText("Norsk");
+  await expect(agenda).not.toContainText("Ingen time nå");
+  await timer.hover();
+  await expect(
+    timer.getByRole("button", { name: /resten av timen/ }),
   ).toBeVisible();
 });
 

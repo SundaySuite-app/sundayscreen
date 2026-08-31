@@ -181,6 +181,67 @@ test("at its SMALLEST the timer keeps the five presets on one line", async ({
   expect(new Set(tops).size).toBe(1);
 });
 
+test("at its SMALLEST «Start» is still the button under the pointer", async ({
+  page,
+}) => {
+  // The row DOES wrap onto two lines at the timer's floor — that is allowed,
+  // and the test above is what keeps the break out of the digits. What is not
+  // allowed is where those two lines landed: `.timer` was the one narrow
+  // widget with no bottom reserve, so the row printed itself over «Start» and
+  // `elementFromPoint` in the middle of the button returned «Sett til 10
+  // minutter» (R4-funn F14). The row appears exactly when the teacher reaches
+  // for the card, so reaching for the card took the button away from her.
+  await installFixtures(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+
+  await addWidget(page, "Tidtaker");
+  const timer = page.locator('[data-widget-kind="timer"]');
+  await timer.hover();
+
+  const hb = (await timer
+    .getByRole("button", { name: "Endre størrelse" })
+    .boundingBox())!;
+  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hb.x - 500, hb.y - 500, { steps: 10 });
+  await page.mouse.up();
+
+  const card = (await timer.boundingBox())!;
+  expect(Math.round(card.width)).toBe(260);
+  expect(Math.round(card.height)).toBe(180);
+
+  // With the row REVEALED — `visibility: hidden` is not hit-testable, so the
+  // measurement is only worth anything while the pointer is on the card.
+  await timer.hover();
+  await expect(timer.getByRole("button", { name: /^Sett til/ })).toHaveCount(5);
+  const covered = await timer
+    .getByRole("button", { name: "Start" })
+    .evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        r.x + r.width / 2,
+        r.y + r.height / 2,
+      );
+      return hit && !el.contains(hit)
+        ? (hit.closest("button")?.getAttribute("aria-label") ?? hit.tagName)
+        : null;
+    });
+  expect(covered).toBeNull();
+
+  // …and the price was paid in digit height, not in clipped digits: the
+  // number is wholly inside the card (the shell's `overflow: hidden` would
+  // simply have cut the top off it) and still twice the size of body text.
+  const digits = timer.getByText("05:00");
+  const box = (await digits.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(card.y);
+  expect(box.y + box.height).toBeLessThanOrEqual(card.y + card.height);
+  const px = await digits.evaluate((el) =>
+    parseFloat(getComputedStyle(el).fontSize),
+  );
+  expect(px).toBeGreaterThanOrEqual(20);
+});
+
 // ── «Til timen slutter» ─────────────────────────────────────────────────────
 //
 // The app has known when the lesson ends since the planner landed and has
@@ -213,9 +274,15 @@ test("«resten av timen» is one click, and it replaces the 15", async ({
   page,
 }) => {
   await installFixtures(page);
-  // A Monday, 08:35 — five minutes into the lesson planned below.
-  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+  // A Monday, inside the lesson planned below.
+  await page.clock.install({ time: new Date("2026-08-31T08:34:00") });
   await planMondayLesson(page);
+  // …and PAUSED exactly on the minute for the press. `install` alone leaves
+  // the fake clock drifting, which used not to matter: the old pill answered
+  // in whole minutes off a truncated clock, so a press at 08:35:00.9 and one
+  // at 08:35:00.0 gave the same number. It counts SECONDS now (R4-funn F4),
+  // and this journey asks its question in whole minutes.
+  await page.clock.pauseAt(new Date("2026-08-31T08:35:00"));
 
   await addWidget(page, "Tidtaker");
   const timer = page.locator('[data-widget-kind="timer"]');
@@ -238,10 +305,19 @@ test("«resten av timen» is one click, and it replaces the 15", async ({
   await pill.click();
   await expect(timer.getByText("40:00")).toBeVisible();
 
-  // And it is a real countdown from there.
+  // And it is a real countdown from there: a minute later the board is inside
+  // the 39th minute.
+  //
+  // Two deliberate looseneses, both of them about the FAKE clock rather than
+  // the widget. `runFor`, not `fastForward`: on a PAUSED clock a jump fires
+  // each due timer once at its own due time and then stops, so the 200 ms
+  // re-derive would paint the frame it was scheduled for and never the one
+  // the journey jumped to. And the seconds are matched loosely, because the
+  // LAST re-derive inside the window lands up to one tick before its end —
+  // which the display's `ceil` turns into 39:01 as readily as 39:00.
   await timer.getByRole("button", { name: "Start" }).click();
-  await page.clock.fastForward(60_000);
-  await expect(timer.getByText("39:00")).toBeVisible();
+  await page.clock.runFor(60_000);
+  await expect(timer.getByText(/^39:\d\d$/)).toBeVisible();
 });
 
 test("at its SMALLEST the lesson pill still shares the preset line", async ({
@@ -303,12 +379,56 @@ test("the lesson pill is absent on a Saturday and before the lesson starts", asy
   await expect(pill).toHaveCount(0);
   await expect(timer.getByRole("button", { name: /^Sett til/ })).toHaveCount(5);
 
-  // 08:30:30 — inside it now, and 09:15 − 08:30 = 45 minutes.
-  await page.clock.fastForward(90 * 60_000);
+  // 08:30:30 — inside it now, and 09:15:00 − 08:30:30 is 44 minutes and
+  // THIRTY SECONDS. The old pill answered 45:00 here, because it subtracted
+  // whole minutes off a truncated clock (R4-funn F4) — and then rang thirty
+  // seconds after the lesson it was named for had ended. `pauseAt` rather
+  // than `fastForward`: the fake clock keeps drifting after a jump, and half
+  // a second of drift is now visible on the board.
+  await page.clock.pauseAt(new Date("2026-09-07T08:30:30"));
   await timer.hover();
   await expect(pill).toBeVisible();
   await pill.click();
-  await expect(timer.getByText("45:00")).toBeVisible();
+  await expect(timer.getByText("44:30")).toBeVisible();
+});
+
+test("the lesson pill counts the SECONDS, and refuses once it is stale", async ({
+  page,
+}) => {
+  // Two bugs in one press (R4-funn F4), and both put a wrong number on the
+  // board.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T09:00:00") });
+  await planMondayLesson(page);
+  // 09:00:50 — fifty seconds past the minute, inside the 08:30–09:15 lesson,
+  // and FROZEN there: the seconds are the whole point of this journey, so the
+  // fake clock must not drift through the press.
+  await page.clock.pauseAt(new Date("2026-08-31T09:00:50"));
+
+  await addWidget(page, "Tidtaker");
+  const timer = page.locator('[data-widget-kind="timer"]');
+  await timer.hover();
+  const pill = timer.getByRole("button", { name: /resten av timen/ });
+  await expect(pill).toBeVisible();
+
+  // 09:15:00 − 09:00:50 is fourteen minutes and ten seconds. The old
+  // arithmetic was `endMin - minutesOfDay(now)` — whole minutes against a
+  // truncated clock — which answered 15:00 and rang the chime at 09:15:50,
+  // fifty seconds after the time printed on the pill's own face.
+  await pill.click();
+  await expect(timer.getByText("14:10")).toBeVisible();
+
+  // Now the lesson ends UNDER the pill. `setSystemTime` moves the wall clock
+  // without firing timers, which is exactly the real gap: the pill's
+  // visibility comes from the planner's 30 s tick, so for up to half a minute
+  // it is still on the row after the lesson is over. Pressing it asked for a
+  // negative remainder, and the clamp turned that into a five-second
+  // countdown starting there and then, in front of the class.
+  await page.clock.setSystemTime(new Date("2026-08-31T09:15:10"));
+  await expect(pill).toBeVisible();
+  await pill.click();
+  await expect(timer.getByText("14:10")).toBeVisible();
+  await expect(timer.getByText("00:05")).toHaveCount(0);
 });
 
 test("the clock shows the mocked time, digital and analog", async ({
@@ -355,7 +475,7 @@ test("a running countdown survives «Vis stort» and the way back", async ({
   await expect(timer.getByText("03:00")).toBeVisible();
 
   // …and back to the board, still the same countdown running.
-  await timer.getByRole("button", { name: "Tilbake til tavla" }).click();
+  await timer.getByRole("button", { name: "Avslutt stor visning" }).click();
   await page.clock.fastForward(60_000);
   await expect(timer.getByText("02:00")).toBeVisible();
   await expect(timer.getByRole("button", { name: "Pause" })).toBeVisible();

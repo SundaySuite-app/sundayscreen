@@ -408,7 +408,11 @@ test("a class switch drops the enlarged card", async ({ page }) => {
   const small = (await text.boundingBox())!;
   await text.hover();
   await text.getByRole("button", { name: "Vis stort" }).click();
-  const scrim = page.getByRole("button", { name: "Avslutt stor visning" });
+  // BY ITS HOOK, not by name: the scrim and the card's own collapse button
+  // say the same sentence — «Avslutt stor visning» is the name of the
+  // command, and both of them are it — so a page-level by-name lookup matches
+  // two elements and fails strict mode.
+  const scrim = page.locator("[data-focus-scrim]");
   await expect(scrim).toBeVisible();
 
   await page.getByRole("button", { name: "Bytt klasse" }).click();
@@ -443,9 +447,7 @@ test("the toolbar still slips away while a card is enlarged", async ({
   const text = page.locator('[data-widget-kind="text"]');
   await text.hover();
   await text.getByRole("button", { name: "Vis stort" }).click();
-  await expect(
-    page.getByRole("button", { name: "Avslutt stor visning" }),
-  ).toBeVisible();
+  await expect(page.locator("[data-focus-scrim]")).toBeVisible();
 
   await page.clock.fastForward(6_000);
   await expect(page.locator("footer")).toHaveAttribute("data-hidden", "true");
@@ -464,14 +466,10 @@ test("an enlarged card does not survive a restart", async ({ page }) => {
   const small = (await text.boundingBox())!;
   await text.hover();
   await text.getByRole("button", { name: "Vis stort" }).click();
-  await expect(
-    page.getByRole("button", { name: "Avslutt stor visning" }),
-  ).toBeVisible();
+  await expect(page.locator("[data-focus-scrim]")).toBeVisible();
 
   await page.reload();
-  await expect(
-    page.getByRole("button", { name: "Avslutt stor visning" }),
-  ).toHaveCount(0);
+  await expect(page.locator("[data-focus-scrim]")).toHaveCount(0);
   const restored = (await page
     .locator('[data-widget-kind="text"]')
     .boundingBox())!;

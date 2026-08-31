@@ -32,31 +32,54 @@ import styles from "./agenda.module.css";
  *  drift; the manual list and the planner list keep SEPARATE constants on
  *  purpose (the Rust side says so too — different storage, free to drift). */
 const MANUAL_AGENDA_MAX = LIMITS.MANUAL_AGENDA_MAX_ITEMS;
-const AGENDA_TEXT_MAX = LIMITS.MANUAL_AGENDA_TEXT_MAX_CHARS;
 const PLANNER_AGENDA_MAX = LIMITS.AGENDA_MAX_ITEMS;
+
+/**
+ * TWO text ceilings, because there are two stores (R4-funn E2-15).
+ *
+ * A manual line is clamped by `layout.rs` on its way into the widget config;
+ * a planner line is clamped by `schedule.rs` on its way into the plan. Both
+ * constants read 500 today, which is exactly why the shared `AddRow` could
+ * quietly hand the manual ceiling to the planner branch and no test could
+ * tell. The Rust side says out loud that the two are free to drift (different
+ * storage, different reasons) — so the day one of them moves, the field the
+ * teacher types in must move with it, not with the other one's number.
+ */
+const MANUAL_TEXT_MAX = LIMITS.MANUAL_AGENDA_TEXT_MAX_CHARS;
+const PLANNER_TEXT_MAX = LIMITS.TEXT_MAX_CHARS;
 
 export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
   const [addDraft, setAddDraft] = useState("");
-  // Re-derive the marker once a minute even without store updates.
-  const [, force] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => force((n) => n + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
 
-  void plannerNowMs.value; // subscribe to the 30 s planner tick
-  const nowMin = minutesOfDay(new Date());
+  /**
+   * ONE clock (R4-funn E2-10). This read used to be
+   * `void plannerNowMs.value` for the subscription and
+   * `minutesOfDay(new Date())` for the answer — a subscription to one clock
+   * and an arithmetic on another, with a private 60 s interval re-rendering
+   * on top of both.
+   *
+   * Between two planner ticks the wall clock moves and `plannerNowMs` does
+   * not, so «Dagens time» and the timer's «til timen slutter» pill —
+   * `runningLessonEndMin`, which derives from `plannerNowMs` — could name
+   * different lessons at a period boundary, each of them internally
+   * consistent. That is the seam shape this house keeps finding, and the
+   * cheapest cure is to stop having two clocks: the 30 s tick IS the widget's
+   * now, so it is what the marker, the shown lesson and the draft key are all
+   * derived from. It is also FINER than the minute-resolution answer it
+   * feeds, so the private interval it replaces bought nothing.
+   */
+  const nowMin = minutesOfDay(new Date(plannerNowMs.value));
   const plan = todayPlan.value;
   const shown = shownLesson(plan, nowMin);
 
   // A half-typed line belongs to the LESSON it was typed under, and BOTH
   // halves of that key move while the widget stands untouched on a board: the
-  // 60 s re-derive above flips `shown` the minute a lesson ends, and midnight
-  // (or any planner write) swaps the date. `addDraft` lives in useState and
-  // would survive both — and be committed to a lesson the teacher never had
-  // in front of her. It is cleared where the key changes, not where the
-  // component happens to re-render.
+  // 30 s planner tick above flips `shown` the minute a lesson ends, and
+  // midnight (or any planner write) swaps the date. `addDraft` lives in
+  // useState and would survive both — and be committed to a lesson the
+  // teacher never had in front of her. It is cleared where the key changes,
+  // not where the component happens to re-render.
   //
   // The manual list has no lesson to belong to, and its draft is written into
   // the widget's own config: it keeps the EMPTY key, so a period boundary
@@ -207,6 +230,7 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
           <AddRow
             draft={addDraft}
             setDraft={setAddDraft}
+            maxLength={PLANNER_TEXT_MAX}
             disabled={readFailed || listFull}
             blockedTitle={readFailed ? t("planner.readFailed") : undefined}
             onAdd={(text) =>
@@ -294,6 +318,7 @@ function ManualAgenda(props: {
       <AddRow
         draft={props.addDraft}
         setDraft={props.setAddDraft}
+        maxLength={MANUAL_TEXT_MAX}
         // The backend clamps at MANUAL_AGENDA_MAX_ITEMS; letting the board
         // show a 31st line it would drop on restart is a lie (F-funn F10).
         disabled={items.length >= MANUAL_AGENDA_MAX}
@@ -323,6 +348,10 @@ function AddRow(props: {
   draft: string;
   setDraft: (v: string) => void;
   disabled: boolean;
+  /** The caller's OWN store's text ceiling — see the two constants at the
+   *  top. Passed in rather than read here: this component has no way to know
+   *  which of the two stores its `onAdd` writes to. */
+  maxLength: number;
   /** Why the field is dead, when it is not simply a full list. */
   blockedTitle?: string;
   onAdd: (text: string) => void;
@@ -344,7 +373,7 @@ function AddRow(props: {
         placeholder={t("agenda.addPlaceholder")}
         aria-label={t("agenda.addPlaceholder")}
         title={props.blockedTitle}
-        maxLength={AGENDA_TEXT_MAX}
+        maxLength={props.maxLength}
         disabled={props.disabled}
         value={props.draft}
         onInput={(e) => props.setDraft((e.target as HTMLInputElement).value)}

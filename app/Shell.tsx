@@ -16,6 +16,7 @@ import { bootFault } from "./state/boot";
 import { managePanelOpen } from "./state/classes";
 import { anyOverlayOpen, chromeActivity, chromeVisible } from "./state/chrome";
 import {
+  focusedWidget,
   layoutHydrated,
   saveError,
   undoRemove,
@@ -55,14 +56,24 @@ function bootFaultText(fault: BootFault): string {
 /** The one persistent error chip — priority-ordered so the shell never
  *  stacks several (and the degraded browser boot shows exactly one). */
 function chipText(): string | null {
-  // FIRST, above everything: the other three are consequences of this one
-  // whenever it is set (no database means no settings, no layout, no save),
-  // and the shell must name the cause, not the symptom.
   const fault = bootFault.value;
-  if (fault) return bootFaultText(fault);
+  // FIRST, above everything: the other three are consequences of a boot fault
+  // whenever one is set (no database means no settings, no layout, no save),
+  // and the shell must name the cause, not the symptom.
+  //
+  // …with ONE exception, and it is the whole of R4-funn F6. `startedEmpty`
+  // says «the old file could not be read, so we started on a fresh one» — the
+  // app WORKS after it, for the rest of the day, and the chip is the single
+  // slot the shell has. Ranked with the other four it masked every failure
+  // that came later: a save that stopped landing at 10:40 had no way to reach
+  // the screen, because a message about the boot was still sitting in its
+  // place. The four below are CAUSES of what the teacher is seeing right now;
+  // `startedEmpty` is information about something that already finished.
+  if (fault && fault.kind !== "startedEmpty") return bootFaultText(fault);
   if (hydrateError.value) return t("boot.hydrateError");
   if (!layoutHydrated.value && hydrated.value) return t("layout.loadFailed");
   if (saveError.value) return t("layout.saveFailed");
+  if (fault) return bootFaultText(fault);
   return null;
 }
 
@@ -92,8 +103,18 @@ export function Shell() {
         )}
         <SuggestionBanner />
       </div>
+      {/* The undo bar steps into the RIGHT CORNER while a card is shown large
+          (R4-funn F1). Centred on `--chrome-clearance` it lands exactly on the
+          enlarged card's own settings row — the row is centred in the card's
+          bottom edge, and the card's bottom edge IS that clearance — so with
+          the snackbar at `--z-toast` every control in the row belonged to the
+          snackbar: «Lydvarsel» hit «Angre», and the card the teacher had just
+          deleted came back. */}
       {undoSlot.value && (
-        <div class={styles.snackbar}>
+        <div
+          class={styles.snackbar}
+          data-focused={focusedWidget.value ? true : undefined}
+        >
           <span>{t("undo.removed")}</span>
           <button class={styles.snackbarAction} onClick={undoRemove}>
             {t("undo.action")}

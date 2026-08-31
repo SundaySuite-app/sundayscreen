@@ -9,6 +9,17 @@
   max-width: min(420px, calc(100vw - 2 * var(--sp-4)));
 }
 
+/* Below the enlarged card's collapse button (R4-funn F7). That button is the
+   mode's ONLY on-screen control and it sits at the card's top-right: 24 px of
+   focus margin + `--sp-2` of inset + 36 px of button = 68 px down the window,
+   in the same corner this stack is pinned to. 76 px clears it with eight
+   pixels of air. `--sp-4 + 60px` rather than a bare 76: the `--sp-4` is the
+   same top inset the stack has when nothing is enlarged, so the two rules
+   move together. */
+.stack[data-focused] {
+  top: calc(var(--sp-4) + 60px);
+}
+
 .toast {
   display: flex;
   align-items: flex-start;

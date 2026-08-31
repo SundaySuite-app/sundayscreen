@@ -15,9 +15,14 @@ import {
   widgets,
 } from "../state/layout";
 import { surfaceSize } from "../state/surface";
+import { focusRect } from "./coords-core";
 import styles from "./Surface.module.css";
 import { activeDrag } from "./useDrag";
 import { WidgetShell } from "./WidgetShell";
+
+/** How far outside the enlarged card a click still counts as a MISS rather
+ *  than as «put it back» — see the scrim's handler below. */
+const FOCUS_MISS_PAD_PX = 16;
 
 export function Surface() {
   const ref = useRef<HTMLDivElement>(null);
@@ -86,8 +91,38 @@ export function Surface() {
       {focusedWidget.value && (
         <button
           class={styles.focusScrim}
+          // The scrim and the card's own collapse button carry the SAME
+          // sentence — they are the same command, and «Avslutt stor visning»
+          // is what it is called. That makes them indistinguishable by
+          // accessible name, which is fine for a reader (two doors, one room)
+          // and ambiguous for every by-name test selector, so the scrim
+          // carries a hook. Named for what it IS, not for a test.
+          data-focus-scrim
           aria-label={t("board.focusExit")}
-          onClick={clearFocus}
+          onClick={(e) => {
+            // A HALO, not a hard edge (R4-funn F8). The scrim lies UNDER the
+            // enlarged card, so every click it ever receives is already
+            // outside the card — which means a click on the card's own edge
+            // is not a click on the board, it is a MISS. And the miss that
+            // matters is eight pixels tall: the settings row sits `--sp-2`
+            // above the card's bottom edge, so an aim just under «Lydvarsel»
+            // or a preset lands on the scrim and collapses the view in front
+            // of the class. Sixteen pixels of forgiveness around
+            // `focusRect` — the same rect the card is drawn to — turns that
+            // press into nothing at all, while the rest of the board (and
+            // Escape, and the collapse button) still put the card back.
+            const r = focusRect(surfaceSize.value);
+            const box = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - box.left;
+            const y = e.clientY - box.top;
+            const near =
+              x >= r.x - FOCUS_MISS_PAD_PX &&
+              x <= r.x + r.w + FOCUS_MISS_PAD_PX &&
+              y >= r.y - FOCUS_MISS_PAD_PX &&
+              y <= r.y + r.h + FOCUS_MISS_PAD_PX;
+            if (near) return;
+            clearFocus();
+          }}
         />
       )}
       {widgets.value.map((w) => (

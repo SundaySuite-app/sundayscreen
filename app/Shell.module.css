@@ -93,6 +93,23 @@
   color: var(--ink-2);
 }
 
+/* While a card is shown large the bar leaves the centre (R4-funn F1).
+   `--chrome-clearance` is the SAME measurement the enlarged card's bottom
+   edge is cut to (`focusRect` in coords-core.ts), and the standard settings
+   row is centred in that edge — so a centred snackbar at `--z-toast` sat
+   exactly on top of every control in it. Measured on a focused timer:
+   `elementFromPoint` returned the snackbar for all five, and «Lydvarsel»
+   returned the «Angre» BUTTON — one press restored the card she had just
+   removed. The corner is out of the row's way at every card width, and the
+   bar keeps its clearance so it never covers the toolbar either.
+   All three properties are needed: `left: auto` alone leaves the centring
+   transform pulling it half its own width off the edge. */
+.snackbar[data-focused] {
+  left: auto;
+  right: var(--sp-4);
+  transform: none;
+}
+
 /* «Angre» is the app's ONLY undo, it lives on a timer, and it was gold text
    on a --raised plate: 1.80:1, i.e. a word you have to already know is there.
    As a filled pill it carries --on-gold at 9.00:1 and reads as the button it

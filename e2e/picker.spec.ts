@@ -160,6 +160,54 @@ test("without names the picker is disabled and says why", async ({ page }) => {
   await expect(picker.getByText("Legg inn navn i klassen først")).toBeVisible();
 });
 
+test("a name list that could not be READ says so, in both widgets", async ({
+  page,
+}) => {
+  // «Legg inn navn i klassen først» is an instruction, and it was the answer
+  // to two completely different situations (R4-funn E1-L10/E2-20): a class
+  // with no names yet, and a class whose names could not be read at all.
+  // `loadMembers` empties the pool when `members_get` rejects — deliberately,
+  // so nothing downstream can write over a list it never got — and the
+  // widgets took the empty pool at face value. On a database that will not
+  // open, the board therefore sent a teacher to retype a class she already
+  // has, in front of the class, into a panel that would then refuse to save
+  // it.
+  await installFixtures(page, { memberNames: NAMES });
+  await page.addInitScript(() => {
+    (
+      window as unknown as Record<string, Record<string, unknown>>
+    ).__SUNDAYSCREEN_FIXTURES__.members_get = () => {
+      throw new Error("members_get: database is locked");
+    };
+  });
+  await page.goto("/");
+
+  await addWidget(page, "Navnetrekker");
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  await expect(picker.getByText("Navnelista kunne ikke leses")).toBeVisible();
+  await expect(picker.getByText("Legg inn navn i klassen først")).toHaveCount(
+    0,
+  );
+
+  await wakeChrome(page);
+  await addWidget(page, "Grupper");
+  const groups = page.locator('[data-widget-kind="groups"]');
+  await expect(groups.getByText("Navnelista kunne ikke leses")).toBeVisible();
+  await expect(groups.getByText("Legg inn navn i klassen først")).toHaveCount(
+    0,
+  );
+
+  // Still a DOOR, and still to the same panel: that is where the failure is
+  // explained and where the list lives. Only the sentence changed, from an
+  // instruction to a fact.
+  await picker
+    .getByRole("button", { name: "Navnelista kunne ikke leses" })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Klasser og navn" }),
+  ).toBeVisible();
+});
+
 // ── Several names in one draw ───────────────────────────────────────────────
 //
 // The harness draw is deterministic (first undrawn wins) AND mirrors the
@@ -302,7 +350,7 @@ test("the count stepper stops at one and at five", async ({ page }) => {
 
   // Below the floor is not a draw at all — the board would go blank.
   for (let i = 0; i < 3; i++) {
-    await picker.getByRole("button", { name: "Ett navn mindre" }).click();
+    await picker.getByRole("button", { name: "Ett navn færre" }).click();
   }
   await expect(count).toHaveAttribute("data-draw-count", "1");
 

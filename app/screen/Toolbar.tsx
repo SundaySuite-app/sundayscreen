@@ -12,6 +12,7 @@ import {
   toggleFullscreen,
 } from "../state/chrome";
 import { t, tf } from "../i18n";
+import { settings } from "../state/settings";
 import { Icon } from "../ui/Icon";
 import { openPlanner } from "../state/planner";
 import { AddMenu } from "./AddMenu";
@@ -86,7 +87,9 @@ export function Toolbar() {
             <span
               class={styles.updateMark}
               title={
-                updateStaged.value
+                // Both facts, same as the panel: the exit hook re-reads the
+                // switch, so staged bytes alone are not a promise to install.
+                updateStaged.value && settings.value.autoUpdate
                   ? tf("update.pendingAuto", { v: updateReady.value })
                   : tf("update.pendingTitle", { v: updateReady.value })
               }

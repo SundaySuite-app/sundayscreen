@@ -594,7 +594,13 @@ export function ManagePanel() {
                 class={styles.updGood}
                 title={tf("update.pendingTitle", { v: updateReady.value })}
               >
-                {updateStaged.value
+                {/* «installeres når du lukker appen» only while BOTH facts
+                    hold: bytes staged AND the switch on. The exit hook reads
+                    the switch fresh (update/mod.rs), so staged bytes with the
+                    switch off will NOT install — a promise gated on the stage
+                    alone would be the same lie mirrored. Reactive on the
+                    settings signal: flipping the switch rewrites the line. */}
+                {updateStaged.value && settings.value.autoUpdate
                   ? tf("update.pendingAuto", { v: updateReady.value })
                   : tf("update.pending", { v: updateReady.value })}
               </span>

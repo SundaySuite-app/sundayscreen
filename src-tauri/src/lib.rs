@@ -335,10 +335,16 @@ pub fn run() {
     //
     // Nothing here may keep the window open: `install_staged_at_exit` logs
     // every outcome, waits at most 30 s, and returns.
+    //
+    // The handle goes in with the slot, and it is not decoration: the
+    // automatic-update switch is read from the database HERE, at closing
+    // time, rather than trusted from the copy handed to `spawn_boot_check`
+    // at launch (R5-funn M3). A teacher who turns the switch off after the
+    // download has already been staged must get what the switch says.
     app.run(move |_app, _event| {
         #[cfg(feature = "updater")]
         if matches!(_event, tauri::RunEvent::Exit) {
-            update::install_staged_at_exit(&staged);
+            update::install_staged_at_exit(_app, &staged);
         }
     });
 }

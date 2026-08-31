@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 #[cfg(feature = "updater")]
-use sundayscreen_core::settings::UpdateChannel;
+use sundayscreen_core::settings::{Settings, UpdateChannel};
 use tauri::State;
 use ts_rs::TS;
 
@@ -87,11 +87,21 @@ pub fn stage_after_check(status: &UpdateStatus, auto_update: bool) -> bool {
 
 /// Should the closing app install what it has staged?
 ///
-/// ONLY [`StagePhase::Ready`]. `Downloading` is the case that matters: an app
-/// closed mid-download has bytes that were never verified and half a file —
-/// it must close, not install.
-pub fn install_at_exit(phase: StagePhase) -> bool {
-    matches!(phase, StagePhase::Ready)
+/// TWO facts have to be true, and only the first is about the bytes.
+///
+/// [`StagePhase::Ready`] is the older half. `Downloading` is the case that
+/// matters there: an app closed mid-download has bytes that were never
+/// verified and half a file — it must close, not install.
+///
+/// `auto_update` is the half R5 found missing. It used to be read ONCE, at
+/// boot, and handed to the background download — so a teacher who read
+/// «v0.5.0 installeres når du lukker appen» and then turned the switch off
+/// got the install anyway, which is the exact opposite of what the switch
+/// says it does. Staged bytes are not a decision that has already been taken;
+/// the setting AT CLOSING TIME is the decision, and it is a veto in both
+/// directions (off again before she closes, on again before she closes).
+pub fn install_at_exit(phase: StagePhase, auto_update: bool) -> bool {
+    auto_update && matches!(phase, StagePhase::Ready)
 }
 
 /// What the mailbox should say about a version this machine has found.
@@ -229,6 +239,14 @@ impl Staged {
     /// «the exit hook installs it» mutually exclusive. `app.restart()` runs
     /// the exit hook too, and an install repeated on the way out would unpack
     /// an archive over an app directory that is already being replaced.
+    ///
+    /// The take happens BEFORE the install, which has a price worth naming:
+    /// an `update_install` the teacher cancels at the admin prompt throws
+    /// away a download the exit hook could have used, and the next boot
+    /// fetches the same archive again. One boot's bandwidth, once — and it
+    /// buys the double-install guard outright, whereas a take-on-success
+    /// would have to know which failures left the app directory untouched
+    /// and which did not.
     fn take_ready(&self) -> Option<(String, Box<tauri_plugin_updater::Update>, Vec<u8>)> {
         let mut slot = self.0.lock().ok()?;
         match std::mem::replace(&mut *slot, Slot::Idle) {
@@ -254,9 +272,20 @@ impl Staged {
 /// `run_on_main_thread(…)` + `rx.recv().unwrap()`. `run_on_main_thread` posts
 /// to the event loop — which, under `RunEvent::Exit`, is already destroyed.
 /// The closure would never run and the receive would never return: an app
-/// that refuses to close. Nothing is half-done when that happens, because the
+/// that refuses to close. Nothing is half-done on THAT path, because the
 /// AppleScript branch is only reached AFTER `rename` failed, i.e. before
 /// anything has moved.
+///
+/// The deadlock is not the only way to reach the bound, though, and the
+/// other way is not as clean. A slow but PROGRESSING install — a large
+/// archive, a virus scanner reading every file as it is unpacked — can still
+/// be inside `install` when the 30 s run out, and nothing cancels it: the
+/// thread below is detached, and the process exits from under it mid-unpack.
+/// That window is narrow and it is ACCEPTED rather than closed, because the
+/// alternative is an unbounded wait — a projector holding a window that will
+/// not close, in front of a class. 30 s rather than 3 is the size of the
+/// concession; the rig line in NEEDS-RICHARD is where a real archive on a
+/// real machine gets to say whether it was enough.
 #[cfg(feature = "updater")]
 const INSTALL_AT_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -267,11 +296,39 @@ const INSTALL_AT_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_s
 /// macOS Cmd+Q goes `NSApp terminate:` → `applicationWillTerminate` →
 /// `LoopDestroyed`, so no window is ever `Destroyed` and `ExitRequested` is
 /// never sent — see ADR-014.
+///
+/// Takes the `AppHandle` for ONE reason: the automatic-update switch is read
+/// here, now, from the database — see [`auto_update_now`].
 #[cfg(feature = "updater")]
-pub fn install_staged_at_exit(staged: &Staged) {
+pub fn install_staged_at_exit(app: &tauri::AppHandle, staged: &Staged) {
+    install_staged_when(staged, || auto_update_now(app));
+}
+
+/// [`install_staged_at_exit`] with the setting as a THUNK.
+///
+/// Two things fall out of that, and both were wanted. The ordinary close —
+/// nothing staged, which is every close on all but one launch in a term —
+/// never touches the database at all, because the phase is asked first. And
+/// the decision becomes testable without an `AppHandle`, a window or a
+/// network.
+#[cfg(feature = "updater")]
+fn install_staged_when(staged: &Staged, auto_update: impl FnOnce() -> bool) {
     let phase = staged.phase();
-    if !install_at_exit(phase) {
+    // Is there anything to decide about? Asked before the setting, so a close
+    // with an empty slot costs no read; the phase is then half of the
+    // decision itself, one line down.
+    if phase != StagePhase::Ready {
         tracing::info!(?phase, "closing with nothing staged to install");
+        return;
+    }
+    if !install_at_exit(phase, auto_update()) {
+        // The bytes STAY in the slot. She may turn the switch back on before
+        // the next close, and «Installer nå» in the manage panel installs
+        // them either way — clearing a verified download here would be the
+        // app making a point about a setting at the teacher's expense.
+        tracing::info!(
+            "automatic updates are off — the staged update stays where it is, uninstalled"
+        );
         return;
     }
     // The phase said Ready; the take is what makes it true.
@@ -400,6 +457,46 @@ async fn channel_of(app: &tauri::AppHandle) -> UpdateChannel {
     use tauri::Manager;
     let db = app.try_state::<Db>();
     channel_for(db.as_deref().map(|d| d.pool())).await
+}
+
+/// Is the automatic half switched on, according to the database as it stands
+/// NOW? The same shape and the same fallback as [`channel_for`].
+///
+/// `None` (no database on this boot) and a failed read both land on the
+/// stored default, which for `auto_update` is ON — and that is deliberately
+/// the behaviour this app had before the setting was consulted at all. Bytes
+/// only exist in the slot because the switch was on when the boot check ran;
+/// "we could not read the setting" is not the teacher turning it off, and
+/// answering `false` there would silently strand a download she asked for.
+#[cfg(feature = "updater")]
+async fn auto_update_for(pool: Option<&sqlx::SqlitePool>) -> bool {
+    let Some(pool) = pool else {
+        tracing::info!("no database on this boot — using the default update setting");
+        return Settings::default().auto_update;
+    };
+    match settings::load(pool).await {
+        Ok(s) => s.auto_update,
+        Err(e) => {
+            tracing::warn!("reading the automatic-update setting failed — using the default: {e}");
+            Settings::default().auto_update
+        }
+    }
+}
+
+/// The switch, read FRESH on the way out — the whole of the R5 fix.
+///
+/// Two things about WHERE this runs, because both are easy to get wrong.
+/// `RunEvent::Exit` fires on the event-loop thread and NOT inside the async
+/// runtime, so `block_on` here is the same move `setup` makes three times in
+/// `lib.rs` — and it is not the worker thread the install itself is handed
+/// to below, which is a different thread with a different bound. And
+/// `try_state`, never a `State<'_, Db>` argument: this is called from the run
+/// closure, where a boot fault means there is simply no `Db` to find.
+#[cfg(feature = "updater")]
+fn auto_update_now(app: &tauri::AppHandle) -> bool {
+    use tauri::Manager;
+    let db = app.try_state::<Db>();
+    tauri::async_runtime::block_on(auto_update_for(db.as_deref().map(|d| d.pool())))
 }
 
 /// The silent boot check: log the outcome, POST it to `slot`, swallow
@@ -600,12 +697,41 @@ mod decision_tests {
 
     #[test]
     fn only_ready_bytes_are_installed_on_the_way_out() {
-        assert!(install_at_exit(StagePhase::Ready));
+        assert!(install_at_exit(StagePhase::Ready, true));
         // The one that matters: closing mid-download must close, not install
         // an unverified half file.
-        assert!(!install_at_exit(StagePhase::Downloading));
-        assert!(!install_at_exit(StagePhase::Idle));
-        assert!(!install_at_exit(StagePhase::Failed));
+        assert!(!install_at_exit(StagePhase::Downloading, true));
+        assert!(!install_at_exit(StagePhase::Idle, true));
+        assert!(!install_at_exit(StagePhase::Failed, true));
+    }
+
+    /// R5-funn M3. The panel said «v0.5.0 installeres når du lukker appen»,
+    /// she turned the switch off, and the app installed it anyway — the
+    /// staged bytes had outvoted the setting for the rest of the session.
+    #[test]
+    fn the_switch_still_vetoes_an_update_that_is_already_staged() {
+        // Downloaded, verified, sitting in the slot — and switched off since.
+        assert!(!install_at_exit(StagePhase::Ready, false));
+        // …and switched back ON before she closes: the same bytes install.
+        // The veto is a reading, not a latch.
+        assert!(install_at_exit(StagePhase::Ready, true));
+
+        // It cannot RESCUE anything either: a half download is not
+        // installable just because the switch is on.
+        for phase in [
+            StagePhase::Idle,
+            StagePhase::Downloading,
+            StagePhase::Failed,
+        ] {
+            assert!(
+                !install_at_exit(phase, true),
+                "{phase:?} with the switch on"
+            );
+            assert!(
+                !install_at_exit(phase, false),
+                "{phase:?} with the switch off"
+            );
+        }
     }
 
     #[test]
@@ -662,10 +788,32 @@ mod slot_tests {
         assert!(staged.take_ready().is_none());
     }
 
-    /// The exit hook on the ordinary boot: no update, no work, no delay.
+    /// The exit hook on the ordinary boot: no update, no work, no delay —
+    /// and no database read either. The panic IS the assertion: the setting
+    /// is only worth opening the settings blob for once there is something
+    /// staged to decide about, and every close in a term but one is this one.
     #[test]
-    fn closing_with_nothing_staged_returns_immediately() {
-        install_staged_at_exit(&Staged::default());
+    fn closing_with_nothing_staged_returns_immediately_without_reading_anything() {
+        install_staged_when(&Staged::default(), || {
+            panic!("an ordinary close must not go to the database")
+        });
+    }
+
+    /// A download still in flight is not installable, and the switch does not
+    /// make it so in either direction — nor may the hook empty the slot on
+    /// its way past.
+    #[test]
+    fn a_download_in_flight_survives_the_close_whatever_the_switch_says() {
+        for on in [true, false] {
+            let staged = Staged::default();
+            staged.mark_downloading();
+            install_staged_when(&staged, || on);
+            assert_eq!(
+                staged.phase(),
+                StagePhase::Downloading,
+                "the exit hook disturbed a slot it had no business in"
+            );
+        }
     }
 
     /// Clones share one slot — the background task's handle and the run
@@ -700,6 +848,39 @@ mod tests {
     #[tokio::test]
     async fn without_a_database_the_check_still_has_a_ring_to_ask() {
         assert_eq!(channel_for(None).await, UpdateChannel::Stable);
+    }
+
+    /// R5-funn M3, the half no pure function can hold: the answer the exit
+    /// hook uses has to come from the database AS IT IS NOW, never from the
+    /// copy `spawn_boot_check` was handed five seconds after launch.
+    #[tokio::test]
+    async fn the_automatic_switch_is_read_fresh_and_flips_both_ways() {
+        let (pool, _d) = temp_pool().await;
+        assert!(
+            auto_update_for(Some(&pool)).await,
+            "an untouched install has automatic updates on"
+        );
+
+        // The journey: the panel says it installs when she closes the app,
+        // and she turns the switch off.
+        settings::update(&pool, |s| s.auto_update = false)
+            .await
+            .unwrap();
+        assert!(!auto_update_for(Some(&pool)).await);
+
+        // …and off-then-ON again before she closes must install after all.
+        settings::update(&pool, |s| s.auto_update = true)
+            .await
+            .unwrap();
+        assert!(auto_update_for(Some(&pool)).await);
+    }
+
+    /// The degraded boot again: no database, so no setting to read. The
+    /// fallback is the stored DEFAULT, which is ON — a read we could not do
+    /// is not a teacher who opted out.
+    #[tokio::test]
+    async fn without_a_database_the_exit_hook_keeps_the_default() {
+        assert!(auto_update_for(None).await);
     }
 
     #[tokio::test]

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0-beta.3] — 2026-08-31
+
+- **Appen oppdaterer seg selv.** Når en ny versjon finnes, lastes den ned
+  i bakgrunnen ved oppstart og installeres i det du lukker appen — aldri
+  midt i en time, null klikk. Neste morgen starter du den nye versjonen
+  uten å ha gjort noe. Kan slås av i panelet («Installer oppdateringer
+  automatisk»). På Windows starter appen seg selv én gang etter en stille
+  installasjon — det er forventet.
+- Kjører du fortsatt den aller første betaen (0.9.0-beta.1): installer
+  denne manuelt ÉN gang — deretter er alt automatisk.
+
 ## [0.4.0-beta.2] — 2026-08-31
 
 - **Terningen er blitt fysisk** (eierønske): hver terning har nå tykkelse

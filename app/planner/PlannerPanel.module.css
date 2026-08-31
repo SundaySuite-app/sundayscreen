@@ -150,9 +150,18 @@
   cursor: pointer;
 }
 
-.secondary:hover {
+.secondary:hover:not(:disabled) {
   border-color: var(--gold-line);
   color: var(--ink);
+}
+
+/* «Legg til aktivitet» and «Legg til beskjed» go dead at the backend's own
+   count limits (E2-16). A button that is dead and still looks alive reads as
+   a broken app; the same dimming the rest of the suite uses says the limit is
+   the reason. */
+.secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .rowAction {

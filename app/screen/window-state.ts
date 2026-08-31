@@ -6,6 +6,7 @@
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 import { isTauri } from "@lib/api-shim";
+import type { WindowState } from "../bindings/WindowState";
 import { fullscreen } from "../state/chrome";
 import { settings } from "../state/settings";
 
@@ -22,19 +23,24 @@ async function saveGeometry(): Promise<void> {
     // would otherwise persist the MONITOR rect as windowed geometry and
     // clobber the toggle's own save.
     if (fullscreen.peek()) return;
-    const s = settings.peek();
-    const next = {
-      ...s,
-      window: {
-        x: pos.x,
-        y: pos.y,
-        w: size.width,
-        h: size.height,
-        fullscreen: false,
-      },
+    const measured: WindowState = {
+      x: pos.x,
+      y: pos.y,
+      w: size.width,
+      h: size.height,
+      fullscreen: false,
     };
-    settings.value = next;
-    await window.api.saveSettings(next);
+    // ONE column, not the whole blob (R4-spor 3.3). This save fires half a
+    // second after every drag of the window, and `settings_save` wrote back a
+    // snapshot of EVERY setting taken before the three awaits above — so a
+    // language or channel the teacher changed while the window was being
+    // moved was quietly reverted by the move.
+    //
+    // The answer is the CLAMPED geometry, and adopting it is the point: what
+    // the signal holds is then exactly what the disk holds, including the
+    // cases where the backend refused the rect we measured.
+    const stored = await window.api.settingsSetWindow(measured);
+    settings.value = { ...settings.peek(), window: stored };
   } catch (e) {
     console.warn("[window-state] save failed", e);
   }

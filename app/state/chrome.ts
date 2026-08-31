@@ -127,12 +127,18 @@ export async function toggleFullscreen(): Promise<void> {
   fullscreen.value = next;
 
   try {
-    const s = settings.peek();
-    const win = baseline ?? s.window;
+    const win = baseline ?? settings.peek().window;
     if (win) {
-      const withFlag = { ...s, window: { ...win, fullscreen: next } };
-      settings.value = withFlag;
-      await window.api.saveSettings(withFlag);
+      // The window column ALONE (R4-spor 3.3): the blob this used to write
+      // was read before the geometry capture and the toggle above, so F11
+      // could hand back a language or an update channel the teacher had
+      // changed in between. Adopt the CLAMPED answer, so the signal says what
+      // the disk says.
+      const stored = await window.api.settingsSetWindow({
+        ...win,
+        fullscreen: next,
+      });
+      settings.value = { ...settings.peek(), window: stored };
     }
   } catch (e) {
     // The window state itself is correct — only the persistence failed.

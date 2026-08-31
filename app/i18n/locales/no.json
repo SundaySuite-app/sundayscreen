@@ -7,11 +7,11 @@
     "loading": "Laster …",
     "hydrateError": "Innstillingene kunne ikke leses — appen bruker standardvalg.",
     "fault": {
-      "databaseTooNew": "Denne databasen er laget av en nyere SundayScreen. Installer den nyeste versjonen igjen — fila er urørt: {path}",
-      "schemaUpdateStopped": "Skjemaoppdateringen stoppet. Fila er urørt: {path}",
-      "unreadable": "Databasen kunne ikke åpnes, så SundayScreen kjører uten den. Fila er urørt: {path}",
-      "startedEmpty": "Databasen var ødelagt, så SundayScreen startet tom. Den gamle fila og forrige sikkerhetskopi (sundayscreen.backup-1.sqlite) ligger ved siden av {path}",
-      "rescueFailed": "Databasen var ødelagt, og SundayScreen fikk ikke laget en ny. Ingenting er slettet — de gamle filene ligger ved siden av {path}"
+      "databaseTooNew": "Denne databasen er laget av en nyere SundayScreen. Installer nyeste versjon fra nedlastingssiden — ingenting blir lagret før det er gjort. Fila er urørt: {path}.",
+      "schemaUpdateStopped": "Databaseoppdateringen stoppet. Dette er en feil i appen, ikke noe du gjorde — nyeste versjon kan ha rettet den. Fila er urørt: {path}.",
+      "unreadable": "Databasen kunne ikke åpnes, så ingenting kan lagres nå — det du endrer i dag er borte når du lukker appen. Fila er urørt: {path}.",
+      "startedEmpty": "Navnene dine er ikke borte. Databasen var ødelagt, så SundayScreen startet tom. Den gamle fila (.corrupt-…) og sikkerhetskopien sundayscreen.backup-1.sqlite ligger ved siden av {path} — begge kan brukes.",
+      "rescueFailed": "Databasen var ødelagt, og SundayScreen fikk ikke laget en ny. Ingenting er slettet. Lukk appen, kopier filene ved siden av {path} et trygt sted, og start på nytt."
     }
   },
   "class": {
@@ -45,7 +45,8 @@
     "resize": "Endre størrelse",
     "noNames": "Legg inn navn i klassen først",
     "focus": "Vis stort",
-    "focusExit": "Tilbake til tavla"
+    "focusExit": "Avslutt stor visning",
+    "namesReadFailed": "Navnelista kunne ikke leses"
   },
   "board": {
     "emptyTitle": "Tavla er tom",
@@ -79,7 +80,8 @@
     "savedReceipt": "Lagret",
     "actionFailed": "Noe gikk galt — prøv igjen.",
     "confirmName": "Lagre navnet",
-    "renamePlaceholder": "Nytt navn … (Enter lagrer)"
+    "renamePlaceholder": "Nytt navn … (Enter lagrer)",
+    "tooManyNames": "Maks {n} navn i en klasse — fjern noen før du lagrer."
   },
   "attendance": {
     "title": "Hvem er her i dag?",
@@ -127,7 +129,7 @@
     "noRepeat": "Ingen gjentak",
     "allAway": "Alle er borte i dag",
     "increase": "Ett navn til",
-    "decrease": "Ett navn mindre",
+    "decrease": "Ett navn færre",
     "drewFewer": {
       "one": "Trakk {n} — det er alle som er her i dag",
       "other": "Trakk {n} — det er alle som er her i dag"
@@ -147,7 +149,9 @@
     "roll": "Kast",
     "more": "Én terning til",
     "fewer": "Én terning færre",
-    "sum": "Sum: {n}"
+    "sum": "Sum: {n}",
+    "faces": "Terningtype — trykk for å bytte",
+    "facesLabel": "D{n}"
   },
   "traffic": {
     "red": "Rødt lys — stille",
@@ -321,10 +325,10 @@
   },
   "transfer": {
     "title": "Flytt oppsettet",
-    "note": "Eksport lager én fil med klassene dine, elevnavnene i klartekst, skjermene og timeoppsettet — aldri fraværsmarkeringer. Import legger alltid til som NYE klasser og skjermer; ingenting du har fra før blir endret eller overskrevet. Timeoppsettet importeres bare hvis maskinen ikke har et fra før.",
+    "note": "Eksport lager én fil med klassene dine, elevnavnene i klartekst, skjermene, timeoppsettet og ukeplanen — hvilken klasse, hvilket fag og hvilken skjerm hver økt har. Fraværsmarkeringer blir aldri med.",
     "export": "Eksporter oppsett …",
     "import": "Importer oppsett …",
-    "exportDialog": "Lagre oppsettet som fil",
+    "exportDialog": "Lagre oppsettet — fila inneholder elevnavn",
     "importDialog": "Velg en SundayScreen-oppsettfil",
     "fileStem": "sundayscreen-oppsett",
     "exported": "Lagret: {path}",
@@ -347,6 +351,9 @@
     "tooNew": "Fila er laget med SundayScreen {v}. Oppdater appen for å lese den. Ingenting ble endret.",
     "tooNewUnknown": "Fila er laget med en nyere SundayScreen. Oppdater appen for å lese den. Ingenting ble endret.",
     "tooLarge": "Fila er for stor til å importeres. Ingenting ble endret.",
-    "unreadable": "Fila kunne ikke leses. Ingenting ble endret."
+    "unreadable": "Fila kunne ikke leses. Ingenting ble endret.",
+    "noteAdds": "Import legger alltid til som nye klasser og skjermer; ingenting du har fra før blir endret eller overskrevet.",
+    "notePlanner": "Timeoppsettet og ukeplanen importeres bare hvis maskinen ikke har noe fra før.",
+    "boardUnsaved": "Tavla kunne ikke lagres, så fila ble ikke skrevet. Prøv igjen om litt."
   }
 }

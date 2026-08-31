@@ -449,9 +449,15 @@ function CellEditor(props: {
         </label>
         <label class={styles.field}>
           {t("planner.subject")}
+          {/* The cap the EXPORT enforces (`slotSubject` ≤ LABEL_MAX_CHARS in
+              transfer.rs), so a subject typed past it here would make the
+              teacher's own «Eksporter oppsett …» refuse the whole file later,
+              naming a field she has long forgotten (E2-2). Stop it at the
+              keyboard instead. */}
           <input
             value={subject}
             placeholder={t("planner.subjectPlaceholder")}
+            maxLength={LIMITS.LABEL_MAX_CHARS}
             onInput={(e) => setSubject((e.target as HTMLInputElement).value)}
           />
         </label>
@@ -670,8 +676,11 @@ function OverrideEditor(props: {
           </label>
           <label class={styles.field}>
             {t("planner.subject")}
+            {/* Same cap as the week grid's subject: one field, one limit,
+                whichever tab it is typed in. */}
             <input
               value={subject}
+              maxLength={LIMITS.LABEL_MAX_CHARS}
               onInput={(e) => setSubject((e.target as HTMLInputElement).value)}
             />
           </label>
@@ -820,8 +829,14 @@ function AgendaEditor(props: {
         </div>
       ))}
       <div class={styles.actions}>
+        {/* The board's agenda widget stops at AGENDA_MAX_ITEMS and says so by
+            going dead (F-funn F10). The PANEL let the teacher type line 31 and
+            press save, and `planner_agenda_set` truncated it away without a
+            word — the same lie, one surface further from the pupils (E2-16).
+            Same limit, same disabled pattern. */}
         <button
           class={styles.secondary}
+          disabled={rows.length >= LIMITS.AGENDA_MAX_ITEMS}
           onClick={() => {
             setDrafts([
               ...rows,
@@ -905,8 +920,11 @@ function NotesEditor(props: {
         </div>
       ))}
       <div class={styles.actions}>
+        {/* `planner_notes_set` keeps the first NOTES_MAX and drops the rest,
+            silently — so the button stops where the backend does (E2-16). */}
         <button
           class={styles.secondary}
+          disabled={rows.length >= LIMITS.NOTES_MAX}
           onClick={() => {
             setDrafts([...rows, { id: null, body: "" }]);
             setReceipt(false);

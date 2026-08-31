@@ -11,16 +11,14 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 
-import type { ImportReceipt } from "../bindings/ImportReceipt";
 import type { UpdateStatus } from "../bindings/UpdateStatus";
 import { t, tf, tn } from "../i18n";
-import { localDateStr } from "../planner/date-core";
+import { LIMITS } from "@lib/limits.generated";
 import { appVersion, updateReady } from "../state/app-info";
 import {
   classes,
   createClass,
   deleteClass,
-  loadClasses,
   loadMembers,
   managePanelOpen,
   members,
@@ -31,10 +29,14 @@ import {
   saveMembers,
   switchClass,
 } from "../state/classes";
-import { activeClass, flushPending } from "../state/layout";
-import { refreshPlanner, refreshToday } from "../state/planner";
-import { loadScenes } from "../state/scenes";
+import { activeClass } from "../state/layout";
 import { settings } from "../state/settings";
+import {
+  runExport,
+  runImport,
+  transferBusy,
+  transferMessage,
+} from "../state/transfer";
 import styles from "./ManagePanel.module.css";
 import { Icon } from "../ui/Icon";
 import { namesToText, parseNameList } from "./name-list-core";
@@ -89,11 +91,24 @@ export function ManagePanel() {
   const [updStatus, setUpdStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
-  /** The transfer section's own receipt line, and its own busy flag: a native
-   *  file dialog is open for as long as the teacher takes, and both buttons
-   *  must be dead while it is. */
-  const [transferReceipt, setTransferReceipt] = useState<string | null>(null);
-  const [transferBusy, setTransferBusy] = useState(false);
+
+  /* The transfer section's line — success AND failure — lives in
+     `state/transfer`, so it survives the panel being closed over a running
+     import (E2-17). Here it is only read, and scrolled to. */
+  const transferMsg = transferMessage.value;
+  const transferMsgRef = useRef<HTMLParagraphElement | null>(null);
+
+  // The panel scrolls (it grew a third band in R4), and a message can
+  // therefore be rendered outside the viewport — which is how a REFUSED
+  // import became invisible and got pressed again (F5). `block: "nearest"`
+  // scrolls the least that makes it readable, and does nothing at all when it
+  // is already on screen.
+  useEffect(() => {
+    const el = transferMsgRef.current;
+    if (transferMsg && el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest" });
+    }
+  }, [transferMsg?.kind, transferMsg?.text]);
 
   useEffect(() => {
     const id = current?.id ?? null;
@@ -124,6 +139,12 @@ export function ManagePanel() {
   };
 
   const parsedCount = parseNameList(namesDraft).length;
+  /** More names than a class can hold. `members_set` TRUNCATES rather than
+   *  refusing, so a 1200-name paste used to be answered with «1200 navn» and
+   *  «Lagret» while 1000 rows existed — the count came from the draft, the
+   *  receipt from a write that had quietly dropped 200 pupils (E2-4). Say the
+   *  limit before the write, and refuse it. */
+  const tooManyNames = parsedCount > LIMITS.MEMBERS_MAX;
   const deletingClass = classes.value.find((c) => c.id === deletingId);
 
   const setChannel = (channel: "stable" | "beta") => {
@@ -154,107 +175,6 @@ export function ManagePanel() {
       setError(t("manage.actionFailed"));
     } finally {
       setInstalling(false);
-    }
-  };
-
-  /**
-   * «Eksporter oppsett …» — the board on screen IS what goes in the file.
-   *
-   * `flushPending()` first (the B7 lesson): the layout store debounces, so a
-   * widget the teacher moved two seconds ago is still only in memory. Without
-   * this the file would record a screen she is not looking at.
-   */
-  const doExport = async () => {
-    setTransferBusy(true);
-    setError(null);
-    setTransferReceipt(null);
-    try {
-      await flushPending();
-      const path = await window.api.transferExport(
-        t("transfer.exportDialog"),
-        `${t("transfer.fileStem")}-${localDateStr(new Date())}.json`,
-      );
-      // `null` is the teacher closing the dialog — not a failure, and not a
-      // receipt either. Silence is the honest answer.
-      if (path !== null) setTransferReceipt(tf("transfer.exported", { path }));
-    } catch (e) {
-      console.warn("[manage] setup export failed", e);
-      setError(t("manage.actionFailed"));
-    } finally {
-      setTransferBusy(false);
-    }
-  };
-
-  /** The sentence for an import that LANDED: what came, and what the school
-   *  day did — the part a teacher must not have to discover on Monday. */
-  const importedText = (r: ImportReceipt): string => {
-    const what = [
-      tn("transfer.classCount", r.classes),
-      tn("transfer.sceneCount", r.scenes),
-      tn("transfer.nameCount", r.members),
-    ].join(", ");
-    const planner = r.plannerImported
-      ? ` ${t("transfer.plannerImported")}`
-      : r.plannerSkipped
-        ? ` ${t("transfer.plannerSkipped")}`
-        : "";
-    return `${tf("transfer.imported", { what })}${planner}`;
-  };
-
-  /** …and for one that did not. Every refusal wrote NOTHING, and each has
-   *  its own remedy, so they may not collapse into one message. */
-  const refusedText = (r: ImportReceipt): string => {
-    if (r.outcome === "notOurFile") return t("transfer.notOurFile");
-    if (r.outcome === "tooLarge") return t("transfer.tooLarge");
-    if (r.outcome === "tooNew") {
-      return r.fileAppVersion
-        ? tf("transfer.tooNew", { v: r.fileAppVersion })
-        : t("transfer.tooNewUnknown");
-    }
-    return t("transfer.unreadable");
-  };
-
-  /**
-   * «Importer oppsett …» — always ADDS. Nothing is overwritten, and the
-   * settings blob (which class and screen are on the board) is not touched,
-   * so importing mid-lesson changes nothing the pupils can see.
-   *
-   * The reloads afterwards are not optional: `classes`/`scenes` are signals
-   * the backend cannot push to, so without them the new classes exist in the
-   * database and in no menu.
-   */
-  const doImport = async () => {
-    setTransferBusy(true);
-    setError(null);
-    setTransferReceipt(null);
-    try {
-      // Same sequencing discipline as every other write that reaches past
-      // the board (`switchClass`, `saveCurrentAsScene`): let the debounced
-      // layout write land BEFORE a long transaction opens, rather than have
-      // it arrive somewhere in the middle of one.
-      await flushPending();
-      const receipt = await window.api.transferImport(
-        t("transfer.importDialog"),
-      );
-      if (receipt.outcome === "cancelled") return;
-      if (receipt.outcome !== "imported") {
-        setError(refusedText(receipt));
-        return;
-      }
-      await loadClasses();
-      await loadScenes();
-      if (receipt.plannerImported) {
-        // The panel's own week AND the board's today: this machine had no
-        // school day a moment ago, and now it has one.
-        await refreshPlanner();
-        await refreshToday();
-      }
-      setTransferReceipt(importedText(receipt));
-    } catch (e) {
-      console.warn("[manage] setup import failed", e);
-      setError(t("manage.actionFailed"));
-    } finally {
-      setTransferBusy(false);
     }
   };
 
@@ -476,6 +396,11 @@ export function ManagePanel() {
                   <span class={styles.nameCount}>
                     {tn("manage.nameCount", parsedCount)}
                   </span>
+                  {tooManyNames && (
+                    <span class={styles.nameLimit}>
+                      {tf("manage.tooManyNames", { n: LIMITS.MEMBERS_MAX })}
+                    </span>
+                  )}
                   {savedReceipt && (
                     <span class={styles.receipt}>
                       {t("manage.savedReceipt")}
@@ -483,19 +408,24 @@ export function ManagePanel() {
                   )}
                   {/* Disabled until the names have LANDED: the draft is empty
                       until then, and saving it would be a replace-all with a
-                      list nobody read. */}
+                      list nobody read. And disabled over the limit: a write
+                      that silently keeps a thousand of twelve hundred names
+                      is worse than one that does not happen. */}
                   <button
                     class={styles.saveNames}
-                    disabled={!hydrated}
+                    disabled={!hydrated || tooManyNames}
                     onClick={() =>
                       run(
-                        saveMembers(parseNameList(namesDraft)).then(() => {
-                          // The stored list IS the draft now.
+                        saveMembers(parseNameList(namesDraft)).then((saved) => {
+                          // Re-seed from THE ANSWER, not from the draft: a
+                          // finished save is exactly the moment the
+                          // never-overwrite-what-she-typed rule stops
+                          // applying, and it is the only moment the panel can
+                          // show what is actually stored — a name cut to 120
+                          // characters becomes visible here or nowhere.
                           seeded.current = true;
                           edited.current = false;
-                          setNamesDraft(
-                            namesToText(members.peek().map((m) => m.name)),
-                          );
+                          setNamesDraft(namesToText(saved.map((m) => m.name)));
                           setSavedReceipt(true);
                         }),
                       )
@@ -516,26 +446,58 @@ export function ManagePanel() {
             nytt» — two irreversible-looking buttons, one row apart. */}
         <div class={styles.transfer}>
           <h3 class={styles.transferTitle}>{t("transfer.title")}</h3>
-          <p class={styles.transferNote}>{t("transfer.note")}</p>
+          {/* Three whole sentences, not one paragraph with a SHOUTED word in
+              it: «NYE» in capitals read as a warning about the import when it
+              is the opposite — the promise that nothing existing is touched.
+              The emphasis belongs on that promise, and `<strong>` says it
+              without raising its voice. Each key stays a complete sentence,
+              so a translator is never handed half of one. */}
+          <p class={styles.transferNote}>
+            {t("transfer.note")} <strong>{t("transfer.noteAdds")}</strong>{" "}
+            {t("transfer.notePlanner")}
+          </p>
           <div class={styles.transferRow}>
             <button
               class={styles.transferBtn}
-              disabled={transferBusy}
-              onClick={() => void doExport()}
+              disabled={transferBusy.value}
+              onClick={() => void runExport()}
             >
               {t("transfer.export")}
             </button>
+            {/* Quieter than the export it stands next to, and deliberately:
+                the import is the app's ONE irreversible mass write, and it has
+                no confirmation dialog — the file picker IS the confirmation.
+                A button that looks like the safe one beside it invites the
+                click that cannot be taken back (F17). */}
             <button
-              class={styles.transferBtn}
-              disabled={transferBusy}
-              onClick={() => void doImport()}
+              class={styles.transferImportBtn}
+              disabled={transferBusy.value}
+              onClick={() => void runImport()}
             >
               {t("transfer.import")}
             </button>
-            {transferReceipt && (
-              <span class={styles.transferReceipt}>{transferReceipt}</span>
-            )}
           </div>
+          {/* On its own line, BELOW the buttons — where the teacher is
+              already looking — and never in the panel's top error band, which
+              on a scrolled panel is off screen entirely (F5). The icon is what
+              separates this receipt from «Oppdateringen er klar» three lines
+              down (F16). */}
+          {transferMsg && (
+            <p
+              ref={transferMsgRef}
+              class={
+                transferMsg.kind === "error"
+                  ? styles.transferError
+                  : styles.transferReceipt
+              }
+              data-transfer={transferMsg.kind}
+            >
+              {transferMsg.kind === "receipt" && (
+                <Icon name="save" size="sm" class={styles.transferIcon} />
+              )}
+              {transferMsg.text}
+            </p>
+          )}
         </div>
 
         {/* ── About / updates ─────────────────────────────────────────── */}

@@ -294,6 +294,14 @@
   font-weight: 600;
 }
 
+/* Over the class limit: the reason «Lagre navneliste» is dead, said next to
+   the count it contradicts. */
+.nameLimit {
+  color: var(--bad);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
 .saveNames {
   padding: var(--sp-2) var(--sp-5);
   border-radius: var(--r-pill);
@@ -357,12 +365,22 @@
   color: var(--ink);
 }
 
+/* The privacy sentence — the one paragraph in the app that says the file
+   holds pupil names in the clear. It was set in the app's smallest type in
+   its faintest ink, which is how fine print is styled when nobody is meant to
+   read it (F21). Body size, body ink: this is the text the whole section is
+   about. */
 .transferNote {
   margin: 0;
   max-width: 68ch;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-base);
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-2);
+}
+
+.transferNote strong {
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .transferRow {
@@ -394,10 +412,62 @@
   cursor: not-allowed;
 }
 
-.transferReceipt {
-  color: var(--good);
+/* «Importer oppsett …»: the app's one irreversible mass write, and the only
+   button here with no confirmation dialog behind it (the file picker is the
+   confirmation). It must not read as the twin of «Eksporter oppsett …» — no
+   filled surface, no gold hover promising it is the obvious next step (F17). */
+.transferImportBtn {
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-4);
+  border-radius: var(--r-pill);
+  border: 1px dashed var(--line);
+  background: none;
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.transferImportBtn:hover:not(:disabled) {
+  border-style: solid;
+  color: var(--ink);
+}
+
+.transferImportBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Both outcomes of a transfer land HERE, on their own line under the buttons
+   — never in the panel's top error band, which a scrolled panel puts off
+   screen (F5). The icon is the differentiator from the update receipt further
+   down the panel (F16). */
+.transferReceipt,
+.transferError {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
   font-size: var(--fs-sm);
   font-weight: 600;
+  line-height: 1.4;
+}
+
+.transferReceipt {
+  color: var(--good);
+}
+
+.transferError {
+  align-self: flex-start;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--bad-line);
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+
+.transferIcon {
+  flex-shrink: 0;
 }
 
 .about {

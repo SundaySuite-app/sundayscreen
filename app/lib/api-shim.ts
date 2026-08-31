@@ -31,6 +31,7 @@ import type { Member } from "../bindings/Member";
 import type { Settings } from "../bindings/Settings";
 import type { UpdateStatus } from "../bindings/UpdateStatus";
 import type { WidgetInstance } from "../bindings/WidgetInstance";
+import type { WindowState } from "../bindings/WindowState";
 import {
   FIXTURE_GLOBAL,
   FIXTURE_QUERY_PARAM,
@@ -237,6 +238,30 @@ const api = {
   // stays honest).
   saveSettings: async (settings: Settings): Promise<Settings> =>
     invoke<Settings>("settings_save", { settings }),
+
+  /**
+   * Persist JUST the window geometry, and answer with what was actually
+   * STORED.
+   *
+   * `settings_save` is the wrong tool for the two writers that follow the
+   * window (the debounced move/resize save, and the fullscreen toggle). Both
+   * read the whole settings blob, then `await` — a scale-factor read, a
+   * fullscreen toggle — and then wrote that stale snapshot back whole. A
+   * language, channel or auto-switch change made in between was silently
+   * reverted, by a save the teacher never asked for and cannot see
+   * (R4-spor 3.3). This command touches one column.
+   *
+   * A WRITE, so the rejection travels (promise 4) — and through `write()`, so
+   * a failed geometry save is REMEMBERED in the ring. It is precisely the
+   * save nobody is watching when it fails.
+   *
+   * The answer is the CLAMPED state (`Settings::validate` refuses a
+   * zero-width window and a rect off every monitor). Callers ADOPT it rather
+   * than keeping what they sent, so the signal and the disk cannot drift
+   * apart until the next boot.
+   */
+  settingsSetWindow: async (state: WindowState): Promise<WindowState> =>
+    write<WindowState>("settings_set_window", { window: state }),
 
   // ── Classes / layout ─────────────────────────────────────────────────────
   // Read-or-bootstrap: outside Tauri there is nothing to bootstrap IN, so

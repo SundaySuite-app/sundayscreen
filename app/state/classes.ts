@@ -141,8 +141,13 @@ export async function deleteClass(id: string): Promise<void> {
  * never seeded from a real read deletes every pupil in the class. The panel
  * already hides the button in that state; this is the same refusal one layer
  * down, where it cannot be routed around.
+ *
+ * Answers with the list that was actually STORED — names truncated to
+ * `NAME_MAX_CHARS`, and no more than `MEMBERS_MAX` of them. The panel re-seeds
+ * its textarea from this answer, so what it shows after a save is the stored
+ * truth rather than what was typed (E2-4).
  */
-export async function saveMembers(names: string[]): Promise<void> {
+export async function saveMembers(names: string[]): Promise<Member[]> {
   const cls = activeClass.peek();
   if (!cls) throw new Error("saveMembers: ingen aktiv klasse");
   if (membersHydratedFor.peek() !== cls.id) {
@@ -156,4 +161,5 @@ export async function saveMembers(names: string[]): Promise<void> {
     membersHydratedFor.value = cls.id;
     membersReadFailed.value = false;
   });
+  return saved;
 }

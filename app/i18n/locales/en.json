@@ -7,11 +7,11 @@
     "loading": "Loading …",
     "hydrateError": "Settings could not be read — the app is using defaults.",
     "fault": {
-      "databaseTooNew": "This database was made by a newer SundayScreen. Install the newest version again — the file is untouched: {path}",
-      "schemaUpdateStopped": "The schema update stopped. The file is untouched: {path}",
-      "unreadable": "The database could not be opened, so SundayScreen is running without it. The file is untouched: {path}",
-      "startedEmpty": "The database was damaged, so SundayScreen started empty. The old file and the previous backup (sundayscreen.backup-1.sqlite) are beside {path}",
-      "rescueFailed": "The database was damaged, and SundayScreen could not make a new one. Nothing was deleted — the old files are beside {path}"
+      "databaseTooNew": "This database was made by a newer SundayScreen. Install the latest version from the download page — nothing is saved until that is done. The file is untouched: {path}.",
+      "schemaUpdateStopped": "The database update stopped. This is a fault in the app, not something you did — the latest version may have fixed it. The file is untouched: {path}.",
+      "unreadable": "The database could not be opened, so nothing can be saved now — whatever you change today is gone when you close the app. The file is untouched: {path}.",
+      "startedEmpty": "Your names are not lost. The database was damaged, so SundayScreen started empty. The old file (.corrupt-…) and the backup sundayscreen.backup-1.sqlite are next to {path} — both can be used.",
+      "rescueFailed": "The database was damaged, and SundayScreen could not make a new one. Nothing has been deleted. Close the app, copy the files next to {path} somewhere safe, and start again."
     }
   },
   "class": {
@@ -45,7 +45,8 @@
     "resize": "Resize",
     "noNames": "Add names to the class first",
     "focus": "Show large",
-    "focusExit": "Back to the board"
+    "focusExit": "Exit large view",
+    "namesReadFailed": "The name list could not be read"
   },
   "board": {
     "emptyTitle": "The board is empty",
@@ -79,7 +80,8 @@
     "savedReceipt": "Saved",
     "actionFailed": "Something went wrong — try again.",
     "confirmName": "Save the name",
-    "renamePlaceholder": "New name … (Enter saves)"
+    "renamePlaceholder": "New name … (Enter saves)",
+    "tooManyNames": "At most {n} names in one class — remove some before saving."
   },
   "attendance": {
     "title": "Who is here today?",
@@ -127,7 +129,7 @@
     "noRepeat": "No repeats",
     "allAway": "Everyone is away today",
     "increase": "One more name",
-    "decrease": "One fewer name",
+    "decrease": "One name fewer",
     "drewFewer": {
       "one": "Drew {n} — that is everyone here today",
       "other": "Drew {n} — that is everyone here today"
@@ -147,7 +149,9 @@
     "roll": "Roll",
     "more": "One more die",
     "fewer": "One fewer die",
-    "sum": "Sum: {n}"
+    "sum": "Sum: {n}",
+    "faces": "Die type — press to change",
+    "facesLabel": "D{n}"
   },
   "traffic": {
     "red": "Red light — silence",
@@ -321,10 +325,10 @@
   },
   "transfer": {
     "title": "Move the setup",
-    "note": "Exporting makes one file with your classes, the pupils' names in plain text, your screens and your school day — never absence marks. Importing always ADDS new classes and screens; nothing you already have is changed or overwritten. The school day is only imported when this machine has none.",
+    "note": "Export makes one file with your classes, the pupil names in the clear, the screens, the school day and the week plan — which class, which subject and which screen each period has. Attendance marks are never included.",
     "export": "Export setup …",
     "import": "Import setup …",
-    "exportDialog": "Save the setup as a file",
+    "exportDialog": "Save the setup — the file contains pupil names",
     "importDialog": "Choose a SundayScreen setup file",
     "fileStem": "sundayscreen-setup",
     "exported": "Saved: {path}",
@@ -347,6 +351,9 @@
     "tooNew": "The file was made with SundayScreen {v}. Update the app to read it. Nothing was changed.",
     "tooNewUnknown": "The file was made with a newer SundayScreen. Update the app to read it. Nothing was changed.",
     "tooLarge": "The file is too large to import. Nothing was changed.",
-    "unreadable": "The file could not be read. Nothing was changed."
+    "unreadable": "The file could not be read. Nothing was changed.",
+    "noteAdds": "Import always adds new classes and screens; nothing you already have is changed or overwritten.",
+    "notePlanner": "The school day and the week plan are only imported if this machine does not already have them.",
+    "boardUnsaved": "The board could not be saved, so the file was not written. Try again in a moment."
   }
 }

@@ -156,6 +156,18 @@ pub struct Settings {
     /// Which release feed this install follows.
     #[serde(default, deserialize_with = "lenient_channel")]
     pub update_channel: UpdateChannel,
+    /// Fetch a found update in the background and install it when the app
+    /// CLOSES. On by default (ADR-014): a classroom machine nobody
+    /// administers is safer up to date than pinned to whatever shipped on it,
+    /// and the install is deferred to the one moment where a restart costs
+    /// nothing. Turning it off leaves the marker and the manual button
+    /// exactly as they were.
+    ///
+    /// `lenient_true`, not `lenient`: `bool::default()` is `false`, and a
+    /// value we could not read must never be recorded as "the teacher turned
+    /// automatic updates off".
+    #[serde(default = "default_true", deserialize_with = "lenient_true")]
+    pub auto_update: bool,
     /// Opt-in: switch class+scene automatically when a planned lesson
     /// starts. Off by default — the banner suggests, the teacher decides.
     #[serde(default, deserialize_with = "lenient")]
@@ -185,6 +197,7 @@ impl Default for Settings {
             snap_enabled: true,
             window: None,
             update_channel: UpdateChannel::Stable,
+            auto_update: true,
             auto_switch_scenes: false,
             extra: Default::default(),
         }
@@ -403,11 +416,44 @@ mod tests {
                 fullscreen: true,
             }),
             update_channel: UpdateChannel::Beta,
+            auto_update: false,
             auto_switch_scenes: true,
             extra: Default::default(),
         };
         let json = serde_json::to_string(&s).unwrap();
         assert_eq!(Settings::from_json_merged(&json), s);
+    }
+
+    /// ADR-014. The asymmetry is the whole test: absent and garbage must both
+    /// read as ON (an older client's blob, or a hand-edited one, is not a
+    /// decision), while an explicit `false` is a decision and survives.
+    #[test]
+    fn auto_update_is_on_unless_it_was_deliberately_turned_off() {
+        assert!(Settings::default().auto_update, "default is ON");
+
+        // A blob written by a build that predates the field.
+        let older = Settings::from_json_merged(r#"{ "language": "no" }"#);
+        assert!(older.auto_update, "an absent field is not an opt-out");
+
+        // Garbage costs the field, and the field's own default is `true` —
+        // the generic `lenient` would land on `bool::default()` = false here.
+        assert!(Settings::from_json_merged(r#"{ "autoUpdate": "banana" }"#).auto_update);
+        assert!(Settings::from_json_merged(r#"{ "autoUpdate": 42 }"#).auto_update);
+        assert!(Settings::from_json_merged(r#"{ "autoUpdate": null }"#).auto_update);
+
+        // …and one bad value still costs nothing else.
+        let s = Settings::from_json_merged(r#"{ "autoUpdate": [], "activeClassId": "keep" }"#);
+        assert!(s.auto_update);
+        assert_eq!(s.active_class_id.as_deref(), Some("keep"));
+
+        // The deliberate OFF round-trips, camelCased.
+        let off = Settings {
+            auto_update: false,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&off).unwrap();
+        assert!(json.contains("\"autoUpdate\":false"));
+        assert_eq!(Settings::from_json_merged(&json), off);
     }
 
     /// ADR-007: settings keys a NEWER version wrote must survive this

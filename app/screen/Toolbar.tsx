@@ -3,7 +3,7 @@
 // chrome-core.ts) and comes back when the pointer reaches for it — never
 // while one of its own menus is open.
 
-import { appVersion, updateReady } from "../state/app-info";
+import { appVersion, updateReady, updateStaged } from "../state/app-info";
 import {
   anyOverlayOpen,
   chromeActivity,
@@ -76,10 +76,20 @@ export function Toolbar() {
               not a marker. It never interrupts, never opens anything and
               never pulls the hidden toolbar back up: the teacher meets it the
               next time she reaches for the line herself. */}
+          {/* The PILL text is the same either way, on purpose: `.meta` is a
+              no-wrap flex row that already carries the brand, the planner, the
+              scene, the class, fullscreen and the version, and «v0.5.0
+              installeres når du lukker appen» in it is a real overflow on the
+              1024 px projector ADR-011 sizes for. Only the tooltip changes,
+              and the whole sentence lives in the manage panel. */}
           {updateReady.value !== null && (
             <span
               class={styles.updateMark}
-              title={tf("update.pendingTitle", { v: updateReady.value })}
+              title={
+                updateStaged.value
+                  ? tf("update.pendingAuto", { v: updateReady.value })
+                  : tf("update.pendingTitle", { v: updateReady.value })
+              }
             >
               {tf("update.pending", { v: updateReady.value })}
             </span>

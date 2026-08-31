@@ -35,7 +35,22 @@ reinstallasjonen TRYGG: en versjonskonflikt rører aldri databasen lenger,
 appen forklarer seg selv på skjermen i stedet for å boote tomt, og en
 sikkerhetskopi finnes uansett — se docs/ROLLBACK.md.
 
-- [ ] **Riggtest Runde 4 (nyest):** fire punkter, ingen forutsetter en
+- [ ] **Riggtest automatisk oppdatering (ADR-014, nyest):** med en oppdatering
+      klar — lukk appen, både med krysset og med Cmd+Q (macOS), og se at NESTE
+      oppstart er den nye versjonen. Panelet skal si «v… installeres når du
+      lukker appen» så snart nedlastingen er ferdig; sier det fortsatt «v…
+      klar», er den ikke lastet ned ennå, og da er det den manuelle knappen
+      som gjelder. **På Windows starter appen seg selv opp igjen én gang etter
+      installasjonen — det er forventet** (NSIS-installeren kjører med `/R`;
+      eneste alternativ er full installer-GUI med klikk, se ADR-014). Prøv
+      også å skru avkryssingen «Installer oppdateringer automatisk» av og på:
+      av skal oppføre seg nøyaktig som før. ⚠️ **Maskiner som fikk
+      v0.9.0-beta.1 ser aldri en 0.4 fra updateren** — den tilbyr aldri et
+      lavere versjonsnummer, og det endrer seg ikke av at oppdateringen nå er
+      automatisk. Installer 0.4 manuelt ÉN gang; deretter holder maskinen seg
+      selv oppdatert.
+
+- [ ] **Riggtest Runde 4:** fire punkter, ingen forutsetter en
       spesiell dag. Eksportér oppsettet fra én maskin («Klasser og navn» →
       «Eksporter oppsett …») og importér fila på en ANNEN maskin — se at
       klassene, skjermene og navnene faktisk kommer over, og at ukeplanen

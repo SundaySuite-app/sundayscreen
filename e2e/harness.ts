@@ -224,6 +224,12 @@ export async function installFixtures(
               snapEnabled: true,
               window: null,
               updateChannel: "stable",
+              // Rust's default is ON (ADR-014), and this base is spelled out
+              // field by field — leave it out and `undefined` would render the
+              // checkbox as OFF across the WHOLE e2e tier, i.e. the one place
+              // that could have caught a defaults drift shows the drift as
+              // normal.
+              autoUpdate: true,
               ...(db.settings ?? {}),
               activeClassId: db.activeClassId,
               activeSceneId: db.activeSceneId,

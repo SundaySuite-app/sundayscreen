@@ -14,6 +14,11 @@ export const appVersion = signal<string>("");
  *  state, and the only honest one until an answer has actually landed. */
 export const updateReady = signal<string | null>(null);
 
+/** …and is it already downloaded and verified, waiting only for the app to
+ *  close? Then there is nothing for the teacher to DO, and the manage panel
+ *  says so instead of asking her to press anything. */
+export const updateStaged = signal(false);
+
 /**
  * How long after boot the mailbox is opened. The backend's check sleeps 5 s
  * before touching the network and gives the request a 15 s timeout, so ~20 s
@@ -31,16 +36,40 @@ export async function loadAppInfo(): Promise<void> {
   appVersion.value = info.version;
 }
 
+/**
+ * Read the mailbox once and mirror what it says.
+ *
+ * ONLY a found version becomes a mark. "Up to date" and "could not check" are
+ * answers the manage panel gives on request; putting either on the toolbar
+ * would be noise on a projector. That is also why nothing here CLEARS the
+ * signals: an answer that has already landed is not un-said by a later read.
+ *
+ * `available` and `downloaded` are the same news told at two different
+ * moments — a version is waiting — and they differ only in whether anything
+ * is left for the teacher to do. The read never rejects (`updatePending` goes
+ * through the shim's typed fallback), so there is nothing to catch.
+ */
+export async function readUpdatePending(): Promise<void> {
+  const status = await window.api.updatePending();
+  if (status?.phase === "available") {
+    updateReady.value = status.version;
+    updateStaged.value = false;
+  } else if (status?.phase === "downloaded") {
+    updateReady.value = status.version;
+    updateStaged.value = true;
+  }
+}
+
 /** Open the mailbox once, later. No polling and no retry: a check that did
- *  not answer within its own timeout has answered — with silence. */
+ *  not answer within its own timeout has answered — with silence.
+ *
+ *  One read at 20 s is no longer the whole story: with automatic updates on,
+ *  the backend posts `available` first and `downloaded` only when the bytes
+ *  have landed, so this read can legitimately catch the middle of a download.
+ *  The manage panel therefore reads AGAIN when it opens (ManagePanel.tsx) —
+ *  a lookup on request, not a poller. */
 export function scheduleUpdateRead(): void {
   setTimeout(() => {
-    void (async () => {
-      const status = await window.api.updatePending();
-      // ONLY `available` becomes a mark. "Up to date" and "could not check"
-      // are answers the manage panel gives on request; putting either on the
-      // toolbar would be noise on a projector.
-      if (status?.phase === "available") updateReady.value = status.version;
-    })();
+    void readUpdatePending();
   }, UPDATE_READ_DELAY_MS);
 }

@@ -237,3 +237,71 @@ en reell mulighet. Da er avveiningen fortsatt den samme — permanent degradert
 boot med en forklaring på skjermen er bedre enn en automatisk omdøping som
 kan ha vært vår egen feil — men den skal tas med åpne øyne, og
 utrullingssjekken av 0006 bør inkludere hva en ekte korrupt fil gjør.
+
+## ADR-014 — Appen oppdaterer seg selv: last ned ved oppstart, installer ved LUKKING (2026-08-31)
+
+Oppstartssjekken har funnet oppdateringer siden v0.1 og etterlatt et merke
+ingen nødvendigvis har handlet på. Fra nå henter den dem også — men
+installasjonen legges til det ene øyeblikket i en skoledag hvor en omstart
+ikke koster noe: når læreren lukker appen.
+
+**Hvorfor ikke bare `download_and_install()`.** Pluginens
+`Update::download_and_install` laster ned OG installerer i ett kall, og på
+Windows ender `install_inner` i `std::process::exit(0)`
+(`tauri-plugin-updater-2.10.1/src/updater.rs:786–863`). En bakgrunnsjobb som
+kaller den ville drept appen midt i en time, uten et ord. Derfor er
+`download()` og `install()` holdt fra hverandre: nedlastingen (som også gjør
+minisign-verifiseringen, l. 707) skjer i bakgrunnen, byte-ene ligger i minnet i
+`update::Staged`, og `install()` kalles først på vei ut.
+
+**Kroken er `RunEvent::Exit`, ikke `ExitRequested`.** Dette er rundens
+viktigste funn, og det er en skjøtefeil av samme familie som SundayRec sin:
+`ExitRequested` sendes fra nøyaktig to steder i `tauri-runtime-wry-2.11.4`
+— `TaoWindowEvent::Destroyed` når vinduskartet blir tomt (l. 4316) og
+`Message::RequestExit`, altså `app.exit()`/`app.restart()` (l. 4356). macOS
+Cmd+Q treffer INGEN av dem: `NSApp terminate:` går rett i
+`applicationWillTerminate` (`tao-0.35.3/.../macos/app_delegate.rs:131`) →
+`AppState::exit()` → `Event::LoopDestroyed` → `RunEvent::Exit`. Ikke ett vindu
+blir noensinne `Destroyed`. `Exit` dekker BEGGE veiene, fyrer nøyaktig én
+gang, og kjører rett før `cleanup_before_exit()`
+(`tauri-2.11.5/src/app.rs:1430`). Det koster omleggingen
+`.run(generate_context!())` → `.build(...)?.run(closure)` i `lib.rs` — som er
+det samme kallet: `Builder::run` ER `build(ctx)?.run(|_, _| {})` (app.rs:2449).
+
+**Installasjonen har et 30 s-tak, og taket er ikke pyntet.** macOS-installeren
+faller tilbake på admin-passord via AppleScript når `rename` gir
+`PermissionDenied` (en `.app` IT har lagt i `/Applications` for en
+standardbruker). Den veien gjør `(self.run_on_main_thread)(...)` +
+`rx.recv().unwrap()` (updater.rs l. 1281–1290). `run_on_main_thread` poster
+til event-loopen — som under `RunEvent::Exit` alt er destruert. Closuren
+kjører aldri og mottaket returnerer aldri: **en app som nekter å lukke**.
+Derfor kjøres installasjonen på en arbeidstråd og ventes på med
+`recv_timeout(30 s)`; timeout er `warn` + normal avslutning. Ingenting er
+halvgjort da — AppleScript-grenen nås kun ETTER at `rename` feilet, altså før
+noe er flyttet.
+
+**Windows kommer tilbake én gang, og det er med vilje ikke fjernet.**
+`tauri.conf.json` setter ingen `plugins.updater.windows.installMode`, så
+default er `passive` → NSIS-flaggene `/P /R`, og `/R` er Restart
+(`.../src/config.rs:36–44`). Appen relanseres altså av installeren etter en
+stille oppdatering. Eneste modus uten `/R` er `basicUi`, som gir full
+installer-GUI med klikk — verre for en lærer som nettopp lukket appen. Vi
+dokumenterer oppførselen (NEEDS-RICHARD) og rører ikke `tauri.conf.json`.
+
+**Default PÅ.** En klasseromsmaskin ingen administrerer er tryggere oppdatert
+enn låst til det som lå på den da den ble satt opp. Avkryssingen står i
+Oppsett-panelet; skrus den av, oppfører merket, den manuelle sjekken og den
+manuelle installasjonen seg nøyaktig som før.
+
+**Feil koster kun automatikken.** Slår nedlastingen feil, blir det en `warn`
+— postkassa beholder `Available`, og merket + «Oppdater og start på nytt»
+virker som de alltid har gjort. Lukkes appen midt i en nedlasting, hoppes
+installasjonen over (`StagePhase::Downloading` ⇒ nei): ubekreftede byte
+installeres aldri.
+
+**`update_install` tømmer slissen.** Den manuelle knappen tar de staged
+byte-ene via `try_state` (ALDRI `State<'_, Staged>` som argument — samme felle
+`channel_for` dokumenterer: `databaseTooNew` er nettopp feilen denne knappen
+skal kurere). At det er et TAK og ikke en lesing er det som gjør «manuelt
+installert» og «installert ved lukking» gjensidig utelukkende: `app.restart()`
+utløser `RunEvent::Exit` den også.

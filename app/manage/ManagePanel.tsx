@@ -14,7 +14,12 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { UpdateStatus } from "../bindings/UpdateStatus";
 import { t, tf, tn } from "../i18n";
 import { LIMITS } from "@lib/limits.generated";
-import { appVersion, updateReady } from "../state/app-info";
+import {
+  appVersion,
+  readUpdatePending,
+  updateReady,
+  updateStaged,
+} from "../state/app-info";
 import {
   classes,
   createClass,
@@ -127,6 +132,18 @@ export function ManagePanel() {
     setSavedReceipt(false);
   }, [current?.id, hydrated]);
 
+  // Ask the mailbox again, now that the panel is open.
+  //
+  // The shell's single read fires ~20 s after boot, and with automatic
+  // updates on that is a moment the answer can still be MOVING: the backend
+  // posts «funnet» first and «lastet ned» only when the bytes have landed. A
+  // panel that showed the 20 s answer would tell a teacher to press
+  // «Oppdater og start på nytt» for something the app was already handling
+  // by itself. One lookup, when she opens the panel — no polling, no retry.
+  useEffect(() => {
+    void readUpdatePending();
+  }, []);
+
   // Escape is handled centrally (screen/keyboard.ts): text field first, then
   // the class menu, then this panel, then fullscreen — one layer per press.
 
@@ -161,6 +178,20 @@ export function ManagePanel() {
     // that lies is worse than the error.
     window.api.saveSettings(next).catch((e) => {
       console.warn("[manage] channel save failed", e);
+      settings.value = prev;
+      setError(t("manage.actionFailed"));
+    });
+  };
+
+  /** The one switch in ADR-014. Optimistic, with the same rollback the
+   *  channel buttons use — a receipt that lies is worse than the error. */
+  const setAutoUpdate = (on: boolean) => {
+    const prev = settings.peek();
+    const next = { ...prev, autoUpdate: on };
+    settings.value = next;
+    setError(null);
+    window.api.saveSettings(next).catch((e) => {
+      console.warn("[manage] auto-update save failed", e);
       settings.value = prev;
       setError(t("manage.actionFailed"));
     });
@@ -529,15 +560,43 @@ export function ManagePanel() {
               {t("update.channelBeta")}
             </button>
           </span>
+          {/* ADR-014's switch. Default ON, and it is the ONLY thing the
+              teacher can turn off here — the marker, the manual check and the
+              manual install all behave exactly as before either way. */}
+          <label class={styles.autoRow}>
+            <input
+              type="checkbox"
+              checked={settings.value.autoUpdate}
+              onChange={(e) =>
+                setAutoUpdate((e.target as HTMLInputElement).checked)
+              }
+            />
+            {t("update.auto")}
+          </label>
+          <span class={styles.autoHint}>{t("update.autoHint")}</span>
           {/* The boot check's mark, mirrored from the toolbar: when a new
               version is already known, say so here too and offer the install
               directly — without making the teacher press «Se etter
               oppdatering» to learn what the app already knows. Hidden as soon
-              as a manual check has produced its own, fresher answer. */}
+              as a manual check has produced its own, fresher answer.
+
+              This is where the LONG sentence lives. The toolbar pill keeps the
+              short one (the .meta row is already full at 1024 px), and the
+              panel is where she actually reads. `update.install` stays offered
+              in both states: «installeres når du lukker appen» is a promise
+              about later, and wanting it NOW is a legitimate answer to it.
+
+              `tf`, not `t`, for the tooltip: it carries a `{v}`, and until now
+              this one call rendered the placeholder literally. */}
           {updateReady.value !== null && updStatus === null && (
             <>
-              <span class={styles.updGood} title={t("update.pendingTitle")}>
-                {tf("update.pending", { v: updateReady.value })}
+              <span
+                class={styles.updGood}
+                title={tf("update.pendingTitle", { v: updateReady.value })}
+              >
+                {updateStaged.value
+                  ? tf("update.pendingAuto", { v: updateReady.value })
+                  : tf("update.pending", { v: updateReady.value })}
               </span>
               <button
                 class={styles.installBtn}

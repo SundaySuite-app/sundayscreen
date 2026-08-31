@@ -38,6 +38,19 @@ window: WindowState | null,
  */
 updateChannel: UpdateChannel, 
 /**
+ * Fetch a found update in the background and install it when the app
+ * CLOSES. On by default (ADR-014): a classroom machine nobody
+ * administers is safer up to date than pinned to whatever shipped on it,
+ * and the install is deferred to the one moment where a restart costs
+ * nothing. Turning it off leaves the marker and the manual button
+ * exactly as they were.
+ *
+ * `lenient_true`, not `lenient`: `bool::default()` is `false`, and a
+ * value we could not read must never be recorded as "the teacher turned
+ * automatic updates off".
+ */
+autoUpdate: boolean, 
+/**
  * Opt-in: switch class+scene automatically when a planned lesson
  * starts. Off by default — the banner suggests, the teacher decides.
  */

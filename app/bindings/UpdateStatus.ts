@@ -3,4 +3,4 @@
 /**
  * What a manual check answers.
  */
-export type UpdateStatus = { "phase": "upToDate" } | { "phase": "available", version: string, } | { "phase": "disabled" } | { "phase": "error", message: string, };
+export type UpdateStatus = { "phase": "upToDate" } | { "phase": "available", version: string, } | { "phase": "downloaded", version: string, } | { "phase": "disabled" } | { "phase": "error", message: string, };

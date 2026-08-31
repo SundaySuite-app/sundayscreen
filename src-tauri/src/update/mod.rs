@@ -6,6 +6,14 @@
 //! The channel is per-machine state in the settings, which is why every
 //! check builds its endpoint at call time (`core::update::channel_feed_url`)
 //! instead of trusting tauri.conf.json's single static URL.
+//!
+//! Since ADR-014 the boot check has a SECOND half: when the teacher has left
+//! automatic updates on (the default), a found update is DOWNLOADED in the
+//! background and held in memory, and the bytes are installed at
+//! `RunEvent::Exit` — the one moment in a school day where a restart costs
+//! nothing. The split is deliberate and load-bearing:
+//! `Update::download_and_install` would have restarted the app mid-lesson,
+//! and on Windows the plugin's installer ends in `std::process::exit(0)`.
 
 use std::sync::{Arc, Mutex};
 
@@ -36,11 +44,71 @@ pub enum UpdateStatus {
     Available {
         version: String,
     },
+    /// Downloaded AND signature-verified; it installs when the app closes.
+    ///
+    /// Posted ONLY by the boot check, and only after `Update::download`
+    /// returned (minisign verification happens inside it). A manual check
+    /// never answers this: it asks the feed, and the feed knows nothing about
+    /// what this machine has already fetched.
+    Downloaded {
+        version: String,
+    },
     /// Built without the updater feature.
     Disabled,
     Error {
         message: String,
     },
+}
+
+/// How far the background download has got. Kept as a plain enum — separate
+/// from the [`Slot`] that holds the actual bytes — so the two decisions below
+/// are unit-testable without a running Tauri app or a network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StagePhase {
+    /// Nothing found, or automatic updates are off.
+    Idle,
+    /// The bytes are on their way.
+    Downloading,
+    /// Downloaded and verified — installable.
+    Ready,
+    /// The download failed. The mailbox still says `Available`, so the marker
+    /// and the manual button carry on as before.
+    Failed,
+}
+
+/// Should the boot check follow its answer up with a background download?
+///
+/// Only an `Available` answer is worth fetching, and only when the teacher
+/// has left automatic updates on. Every other status — including
+/// `Downloaded`, which the boot check itself posts afterwards — is a no.
+pub fn stage_after_check(status: &UpdateStatus, auto_update: bool) -> bool {
+    auto_update && matches!(status, UpdateStatus::Available { .. })
+}
+
+/// Should the closing app install what it has staged?
+///
+/// ONLY [`StagePhase::Ready`]. `Downloading` is the case that matters: an app
+/// closed mid-download has bytes that were never verified and half a file —
+/// it must close, not install.
+pub fn install_at_exit(phase: StagePhase) -> bool {
+    matches!(phase, StagePhase::Ready)
+}
+
+/// What the mailbox should say about a version this machine has found.
+///
+/// `downloaded = false` deliberately keeps the OLD sentence: a failed
+/// download must leave the marker and the manual «Oppdater og start på nytt»
+/// exactly as they were, because that route still works.
+pub fn staged_status(version: &str, downloaded: bool) -> UpdateStatus {
+    if downloaded {
+        UpdateStatus::Downloaded {
+            version: version.to_string(),
+        }
+    } else {
+        UpdateStatus::Available {
+            version: version.to_string(),
+        }
+    }
 }
 
 /// Where the silent boot check leaves its answer.
@@ -82,16 +150,177 @@ pub fn update_pending(pending: State<'_, BootUpdate>) -> Option<UpdateStatus> {
     pending.read()
 }
 
+/// The staged update: verified bytes waiting for the app to close.
+///
+/// Same «carry your own handle» discipline as [`BootUpdate`], and for the
+/// same reason — it is managed before anything can spawn into it, and the
+/// background task holds a clone rather than looking it up. A panic here
+/// would be a crash caused by the one feature that must fail silently.
+///
+/// It lives in memory only. A machine shut down between the download and the
+/// next launch simply downloads again; nothing half-written is ever left on
+/// disk for a later boot to trip over.
 #[cfg(feature = "updater")]
-async fn check_feed(app: &tauri::AppHandle, channel: UpdateChannel) -> UpdateStatus {
+#[derive(Clone, Default)]
+pub struct Staged(Arc<Mutex<Slot>>);
+
+#[cfg(feature = "updater")]
+#[derive(Default)]
+enum Slot {
+    #[default]
+    Idle,
+    Downloading,
+    Ready {
+        version: String,
+        // Boxed: `Update` is a wide struct and this enum sits behind a mutex
+        // every phase check touches.
+        update: Box<tauri_plugin_updater::Update>,
+        bytes: Vec<u8>,
+    },
+    Failed,
+}
+
+#[cfg(feature = "updater")]
+impl Staged {
+    /// A poisoned lock is logged and dropped — exactly like [`BootUpdate`].
+    /// The consequence is only that an update installs one launch later.
+    fn set(&self, next: Slot) {
+        match self.0.lock() {
+            Ok(mut slot) => *slot = next,
+            Err(e) => tracing::warn!("the staged-update slot could not be written: {e}"),
+        }
+    }
+
+    fn mark_downloading(&self) {
+        self.set(Slot::Downloading);
+    }
+
+    fn mark_failed(&self) {
+        self.set(Slot::Failed);
+    }
+
+    fn set_ready(&self, version: String, update: tauri_plugin_updater::Update, bytes: Vec<u8>) {
+        self.set(Slot::Ready {
+            version,
+            update: Box::new(update),
+            bytes,
+        });
+    }
+
+    fn phase(&self) -> StagePhase {
+        match self.0.lock() {
+            Ok(slot) => match &*slot {
+                Slot::Idle => StagePhase::Idle,
+                Slot::Downloading => StagePhase::Downloading,
+                Slot::Ready { .. } => StagePhase::Ready,
+                Slot::Failed => StagePhase::Failed,
+            },
+            // Unreadable is not installable.
+            Err(e) => {
+                tracing::warn!("the staged-update slot is unreadable: {e}");
+                StagePhase::Failed
+            }
+        }
+    }
+
+    /// Take the verified bytes, leaving the slot empty.
+    ///
+    /// TAKE, not read: it is what makes «the manual button installed it» and
+    /// «the exit hook installs it» mutually exclusive. `app.restart()` runs
+    /// the exit hook too, and an install repeated on the way out would unpack
+    /// an archive over an app directory that is already being replaced.
+    fn take_ready(&self) -> Option<(String, Box<tauri_plugin_updater::Update>, Vec<u8>)> {
+        let mut slot = self.0.lock().ok()?;
+        match std::mem::replace(&mut *slot, Slot::Idle) {
+            Slot::Ready {
+                version,
+                update,
+                bytes,
+            } => Some((version, update, bytes)),
+            other => {
+                *slot = other;
+                None
+            }
+        }
+    }
+}
+
+/// How long the closing app waits for the installer before giving up.
+///
+/// The bound exists for ONE path, and it is a real one: on macOS the
+/// plugin's installer falls back to an admin prompt via AppleScript when
+/// `rename` is denied (a `.app` that IT installed into `/Applications` for a
+/// standard user), and that fallback does
+/// `run_on_main_thread(…)` + `rx.recv().unwrap()`. `run_on_main_thread` posts
+/// to the event loop — which, under `RunEvent::Exit`, is already destroyed.
+/// The closure would never run and the receive would never return: an app
+/// that refuses to close. Nothing is half-done when that happens, because the
+/// AppleScript branch is only reached AFTER `rename` failed, i.e. before
+/// anything has moved.
+#[cfg(feature = "updater")]
+const INSTALL_AT_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Install the staged bytes on the way out. Every outcome is a log line —
+/// nothing here may keep the window open.
+///
+/// Called from the `RunEvent::Exit` arm in `lib.rs`. NOT `ExitRequested`:
+/// macOS Cmd+Q goes `NSApp terminate:` → `applicationWillTerminate` →
+/// `LoopDestroyed`, so no window is ever `Destroyed` and `ExitRequested` is
+/// never sent — see ADR-014.
+#[cfg(feature = "updater")]
+pub fn install_staged_at_exit(staged: &Staged) {
+    let phase = staged.phase();
+    if !install_at_exit(phase) {
+        tracing::info!(?phase, "closing with nothing staged to install");
+        return;
+    }
+    // The phase said Ready; the take is what makes it true.
+    let Some((version, update, bytes)) = staged.take_ready() else {
+        return;
+    };
+
+    // A worker thread, so the bounded wait below is possible at all: the
+    // install is synchronous and, on the macOS admin path, can block forever.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let installing = version.clone();
+    std::thread::spawn(move || {
+        // On Windows this never returns: the plugin's installer ends in
+        // `std::process::exit(0)` (ADR-014 — that is also why this cannot run
+        // in the background during a lesson).
+        let outcome = update.install(&bytes).map_err(|e| e.to_string());
+        let _ = tx.send(outcome);
+    });
+
+    match rx.recv_timeout(INSTALL_AT_EXIT_TIMEOUT) {
+        Ok(Ok(())) => tracing::info!(version = %installing, "installed on the way out"),
+        Ok(Err(e)) => tracing::warn!(version = %installing, "the staged install failed: {e}"),
+        Err(e) => tracing::warn!(
+            version = %installing,
+            "the staged install did not finish in {}s — closing anyway: {e}",
+            INSTALL_AT_EXIT_TIMEOUT.as_secs()
+        ),
+    }
+}
+
+/// Ask the feed, and KEEP the handle. `check_feed` throws the handle away,
+/// which is fine for a status but useless for a download — and the plugin
+/// gives no way to reconstruct an `Update` from a version string.
+#[cfg(feature = "updater")]
+async fn check_feed_update(
+    app: &tauri::AppHandle,
+    channel: UpdateChannel,
+) -> (UpdateStatus, Option<tauri_plugin_updater::Update>) {
     use tauri_plugin_updater::UpdaterExt;
 
     let url = match sundayscreen_core::update::channel_feed_url(channel).parse() {
         Ok(url) => url,
         Err(e) => {
-            return UpdateStatus::Error {
-                message: format!("feed url: {e}"),
-            }
+            return (
+                UpdateStatus::Error {
+                    message: format!("feed url: {e}"),
+                },
+                None,
+            )
         }
     };
     let updater = match app
@@ -104,20 +333,34 @@ async fn check_feed(app: &tauri::AppHandle, channel: UpdateChannel) -> UpdateSta
     {
         Ok(updater) => updater,
         Err(e) => {
-            return UpdateStatus::Error {
-                message: format!("updater build: {e}"),
-            }
+            return (
+                UpdateStatus::Error {
+                    message: format!("updater build: {e}"),
+                },
+                None,
+            )
         }
     };
     match updater.check().await {
-        Ok(Some(update)) => UpdateStatus::Available {
-            version: update.version.clone(),
-        },
-        Ok(None) => UpdateStatus::UpToDate,
-        Err(e) => UpdateStatus::Error {
-            message: e.to_string(),
-        },
+        Ok(Some(update)) => (
+            UpdateStatus::Available {
+                version: update.version.clone(),
+            },
+            Some(update),
+        ),
+        Ok(None) => (UpdateStatus::UpToDate, None),
+        Err(e) => (
+            UpdateStatus::Error {
+                message: e.to_string(),
+            },
+            None,
+        ),
     }
+}
+
+#[cfg(feature = "updater")]
+async fn check_feed(app: &tauri::AppHandle, channel: UpdateChannel) -> UpdateStatus {
+    check_feed_update(app, channel).await.0
 }
 
 /// Which ring to ask, given whatever database this boot ended up with.
@@ -161,13 +404,26 @@ async fn channel_of(app: &tauri::AppHandle) -> UpdateChannel {
 
 /// The silent boot check: log the outcome, POST it to `slot`, swallow
 /// EVERYTHING — an offline classroom must never see this fail. Spawned from
-/// setup, with the mailbox handed in (see [`BootUpdate`]).
+/// setup, with the mailbox and the staging slot handed in (see
+/// [`BootUpdate`], [`Staged`]).
+///
+/// When `auto_update` is on it also DOWNLOADS what it found, into `staged`.
+/// That work sits behind the same 5 s sleep, in the same background task, so
+/// the boot is never held up by it — and a failure costs only the automatic
+/// half: the mailbox keeps its `Available`, and the marker plus the manual
+/// button carry on unchanged.
 #[cfg(feature = "updater")]
-pub fn spawn_boot_check(app: tauri::AppHandle, channel: UpdateChannel, slot: BootUpdate) {
+pub fn spawn_boot_check(
+    app: tauri::AppHandle,
+    channel: UpdateChannel,
+    auto_update: bool,
+    slot: BootUpdate,
+    staged: Staged,
+) {
     tauri::async_runtime::spawn(async move {
         // Let the shell finish waking before touching the network.
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        let status = check_feed(&app, channel).await;
+        let (status, update) = check_feed_update(&app, channel).await;
         match &status {
             UpdateStatus::Available { version } => {
                 tracing::info!(%version, "update available on the {} ring", channel.as_tag());
@@ -177,12 +433,40 @@ pub fn spawn_boot_check(app: tauri::AppHandle, channel: UpdateChannel, slot: Boo
                 // Offline is the normal classroom state — info, not warn.
                 tracing::info!("update check did not complete: {message}");
             }
-            UpdateStatus::Disabled => {}
+            UpdateStatus::Downloaded { .. } | UpdateStatus::Disabled => {}
         }
+        let stage = stage_after_check(&status, auto_update);
         // Every outcome, not just the interesting one: "the check ran and
         // said up to date" and "the check never answered" are different
         // facts, and only the mailbox can tell them apart.
         slot.post(status);
+
+        if !stage {
+            return;
+        }
+        // `stage_after_check` said Available, so the handle is there; the
+        // `else` is belt and braces, not a path.
+        let Some(update) = update else { return };
+        let version = update.version.clone();
+        staged.mark_downloading();
+        // Signature verification (minisign) happens INSIDE `download` — the
+        // bytes that reach `set_ready` are already proven ours.
+        match update.download(|_, _| {}, || {}).await {
+            Ok(bytes) => {
+                tracing::info!(
+                    %version,
+                    "update downloaded and verified — it installs when the app closes"
+                );
+                staged.set_ready(version.clone(), update, bytes);
+                slot.post(staged_status(&version, true));
+            }
+            Err(e) => {
+                // Not an error the teacher should meet: the manual route is
+                // untouched and the mailbox still says the version is there.
+                tracing::warn!(%version, "downloading the update failed — leaving it manual: {e}");
+                staged.mark_failed();
+            }
+        }
     });
 }
 
@@ -222,7 +506,27 @@ pub async fn update_install(app: tauri::AppHandle) -> AppResult<UpdateStatus> {
     }
     #[cfg(feature = "updater")]
     {
+        use tauri::Manager;
         use tauri_plugin_updater::UpdaterExt;
+
+        // Already downloaded and verified? Install THOSE bytes: no second
+        // trip to the feed, and the take empties the slot so the exit hook
+        // cannot install the same archive again on the way out.
+        //
+        // `try_state`, never `State<'_, Staged>` as an argument — that is the
+        // exact trap `channel_for` documents. Tauri checks a `State`
+        // parameter BEFORE the body runs, and this command is the remedy the
+        // `databaseTooNew` chip points at; a build without the updater
+        // feature manages no `Staged` at all.
+        if let Some(staged) = app.try_state::<Staged>() {
+            if let Some((version, update, bytes)) = staged.take_ready() {
+                tracing::info!(%version, "installing the staged update on request");
+                update.install(bytes).map_err(|e| {
+                    crate::error::AppError::Internal(format!("update install: {e}"))
+                })?;
+                app.restart();
+            }
+        }
 
         let channel = channel_of(&app).await;
         let url = sundayscreen_core::update::channel_feed_url(channel)
@@ -246,6 +550,133 @@ pub async fn update_install(app: tauri::AppHandle) -> AppResult<UpdateStatus> {
             .await
             .map_err(|e| crate::error::AppError::Internal(format!("update install: {e}")))?;
         app.restart();
+    }
+}
+
+/// The two decisions the automatic path turns on, and the sentence it posts.
+///
+/// They are unit-testable BECAUSE they are pure: the install itself is native
+/// (a real archive, a real event loop, a real `RunEvent::Exit`) and cannot be
+/// exercised from any test tier this repo has — so what CAN be pinned down is
+/// pinned down here, and the rest is a rig-test line in NEEDS-RICHARD.
+#[cfg(test)]
+mod decision_tests {
+    use super::*;
+
+    fn available(v: &str) -> UpdateStatus {
+        UpdateStatus::Available {
+            version: v.to_string(),
+        }
+    }
+
+    #[test]
+    fn only_an_available_update_is_worth_downloading() {
+        assert!(stage_after_check(&available("9.9.9"), true));
+        // The setting is the whole veto.
+        assert!(!stage_after_check(&available("9.9.9"), false));
+    }
+
+    #[test]
+    fn nothing_else_is_ever_staged() {
+        for status in [
+            UpdateStatus::UpToDate,
+            UpdateStatus::Disabled,
+            UpdateStatus::Error {
+                message: "offline".into(),
+            },
+            // The boot check posts this one itself, right after a successful
+            // download. Re-staging it would be a second download of bytes we
+            // already hold.
+            UpdateStatus::Downloaded {
+                version: "9.9.9".into(),
+            },
+        ] {
+            assert!(
+                !stage_after_check(&status, true),
+                "{status:?} must not start a download"
+            );
+        }
+    }
+
+    #[test]
+    fn only_ready_bytes_are_installed_on_the_way_out() {
+        assert!(install_at_exit(StagePhase::Ready));
+        // The one that matters: closing mid-download must close, not install
+        // an unverified half file.
+        assert!(!install_at_exit(StagePhase::Downloading));
+        assert!(!install_at_exit(StagePhase::Idle));
+        assert!(!install_at_exit(StagePhase::Failed));
+    }
+
+    #[test]
+    fn a_failed_download_leaves_the_old_sentence_standing() {
+        // Downloaded → the panel says «installeres når du lukker appen».
+        assert!(matches!(
+            staged_status("9.9.9", true),
+            UpdateStatus::Downloaded { version } if version == "9.9.9"
+        ));
+        // Not downloaded → exactly what the mailbox said before ADR-014, so
+        // the marker and the manual button behave as they always did.
+        assert!(matches!(
+            staged_status("9.9.9", false),
+            UpdateStatus::Available { version } if version == "9.9.9"
+        ));
+    }
+
+    /// The wire shape the frontend switches on. A renamed phase is a silently
+    /// dead branch in `app-info.ts`, not a compile error.
+    #[test]
+    fn downloaded_serialises_as_its_camel_case_phase() {
+        let json = serde_json::to_string(&staged_status("9.9.9", true)).unwrap();
+        assert_eq!(json, r#"{"phase":"downloaded","version":"9.9.9"}"#);
+    }
+}
+
+#[cfg(all(test, feature = "updater"))]
+mod slot_tests {
+    use super::*;
+
+    /// A `tauri_plugin_updater::Update` cannot be constructed from outside
+    /// the plugin, so the Ready arm is unreachable here. Everything that
+    /// guards it is not.
+    #[test]
+    fn an_empty_slot_has_nothing_to_give_and_says_so() {
+        let staged = Staged::default();
+        assert_eq!(staged.phase(), StagePhase::Idle);
+        assert!(staged.take_ready().is_none());
+
+        staged.mark_downloading();
+        assert_eq!(staged.phase(), StagePhase::Downloading);
+        assert!(
+            staged.take_ready().is_none(),
+            "a download in flight is not a take"
+        );
+        assert_eq!(
+            staged.phase(),
+            StagePhase::Downloading,
+            "a refused take must not reset the phase"
+        );
+
+        staged.mark_failed();
+        assert_eq!(staged.phase(), StagePhase::Failed);
+        assert!(staged.take_ready().is_none());
+    }
+
+    /// The exit hook on the ordinary boot: no update, no work, no delay.
+    #[test]
+    fn closing_with_nothing_staged_returns_immediately() {
+        install_staged_at_exit(&Staged::default());
+    }
+
+    /// Clones share one slot — the background task's handle and the run
+    /// closure's handle must be the same mailbox, or the download would land
+    /// somewhere the exit hook never looks.
+    #[test]
+    fn every_clone_is_the_same_slot() {
+        let a = Staged::default();
+        let b = a.clone();
+        b.mark_downloading();
+        assert_eq!(a.phase(), StagePhase::Downloading);
     }
 }
 

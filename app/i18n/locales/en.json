@@ -185,7 +185,10 @@
     "error": "Could not check right now — try again when online",
     "disabled": "Updates are disabled in this build",
     "pending": "v{v} ready",
-    "pendingTitle": "Version {v} is ready — get it under “Manage classes”."
+    "pendingTitle": "Version {v} is ready — get it under “Manage classes”.",
+    "auto": "Install updates automatically",
+    "autoHint": "Downloads in the background and installs when you close the app — never mid-lesson.",
+    "pendingAuto": "v{v} installs when you close the app"
   },
   "layout": {
     "loadFailed": "Could not read the board from storage — changes will not be saved until the app restarts.",

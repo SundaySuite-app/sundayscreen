@@ -62,8 +62,16 @@ pub fn run() {
     // the plugin being unseen.
     let builder = builder.plugin(tauri_plugin_dialog::init());
 
-    builder
-        .setup(|app| {
+    // The staged update lives OUTSIDE the builder because two places need it:
+    // `setup` (which manages it and hands a clone to the boot check) and the
+    // run closure below (which installs what is in it on the way out).
+    #[cfg(feature = "updater")]
+    let staged = update::Staged::default();
+    #[cfg(feature = "updater")]
+    let staged_for_setup = staged.clone();
+
+    let app = builder
+        .setup(move |app| {
             use tauri::Manager;
 
             // The boot check's mailbox, managed BEFORE anything can spawn into
@@ -73,6 +81,14 @@ pub fn run() {
             // from state inside it.
             let boot_update = update::BootUpdate::default();
             app.manage(boot_update.clone());
+
+            // Same rule, same reason: the slot the background download writes
+            // into goes up BEFORE anything can spawn, and both the task and
+            // the run closure carry their own handle rather than looking it
+            // up. `update_install` reaches it with `try_state`, so a boot
+            // that never got here still answers instead of rejecting.
+            #[cfg(feature = "updater")]
+            app.manage(staged_for_setup.clone());
 
             // Two very different failures used to share one answer here, and
             // the wrong one won: EVERY open error moved the file aside and
@@ -204,11 +220,17 @@ pub fn run() {
                         // classroom state). Its mailbox was managed above, and
                         // it carries its own handle: nothing here can panic on
                         // unmanaged state.
+                        //
+                        // Since ADR-014 it also STAGES what it finds when the
+                        // teacher has left automatic updates on: downloaded
+                        // in the background, installed at `RunEvent::Exit`.
                         #[cfg(feature = "updater")]
                         update::spawn_boot_check(
                             app.handle().clone(),
                             loaded.update_channel,
+                            loaded.auto_update,
                             boot_update,
+                            staged_for_setup,
                         );
                     }
                     Err(e) => tracing::warn!("settings load for window restore failed: {e}"),
@@ -292,6 +314,31 @@ pub fn run() {
             update::update_install,
             update::update_pending,
         ])
-        .run(tauri::generate_context!())
+        // `build(…)?.run(closure)` rather than `run(context)` — the latter IS
+        // this, with an empty closure (tauri-2.11.5/src/app.rs:2449). The
+        // closure is the entire reason: it is the only place the app can
+        // install a staged update.
+        .build(tauri::generate_context!())
         .expect("error while running tauri application");
+
+    // ── The one hook that catches EVERY way this app closes ──────────────
+    //
+    // `RunEvent::Exit`, and deliberately not `ExitRequested` (ADR-014).
+    // `ExitRequested` is sent from exactly two places in
+    // tauri-runtime-wry — a window becoming `Destroyed` (the close box) and
+    // `Message::RequestExit` (`app.exit()`/`app.restart()`) — and macOS
+    // Cmd+Q reaches NEITHER: `NSApp terminate:` goes straight to
+    // `applicationWillTerminate` → `AppState::exit()` → `LoopDestroyed`, so no
+    // window is ever destroyed. `Exit` covers both paths, fires exactly once,
+    // and runs immediately before `cleanup_before_exit()`
+    // (tauri-2.11.5/src/app.rs:1430).
+    //
+    // Nothing here may keep the window open: `install_staged_at_exit` logs
+    // every outcome, waits at most 30 s, and returns.
+    app.run(move |_app, _event| {
+        #[cfg(feature = "updater")]
+        if matches!(_event, tauri::RunEvent::Exit) {
+            update::install_staged_at_exit(&staged);
+        }
+    });
 }

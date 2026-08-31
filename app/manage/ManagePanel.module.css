@@ -514,6 +514,23 @@
   background: var(--gold-soft);
 }
 
+/* ADR-014's switch and its one-line explanation. Both take a full row of the
+   wrapping `.about` flex: the hint is a whole sentence, and squeezed between
+   the channel buttons and «Se etter oppdatering» it would read as a caption
+   for either. */
+.autoRow {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--ink);
+}
+
+.autoHint {
+  flex-basis: 100%;
+  color: var(--ink-3);
+}
+
 .checkBtn {
   min-height: 36px;
   padding: 2px var(--sp-3);

@@ -3,14 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   dieFromU32,
   FACE_OPTIONS,
-  FACE_SHAPES,
-  nextFaces,
   PIP_FACES,
   PIPS,
   randomDie,
   snapFaces,
   u32Limit,
 } from "./dice-core";
+import { solidFor } from "./die-solids-core";
 
 describe("FACE_OPTIONS", () => {
   /** THE DRIFT PIN (TypeScript half) — see the doc on FACE_OPTIONS. Its twin
@@ -26,17 +25,13 @@ describe("FACE_OPTIONS", () => {
     expect(FACE_OPTIONS).toContain(PIP_FACES);
   });
 
-  it("draws every type: pips for the d6, a silhouette for the rest", () => {
+  it("every type offered has a body to draw", () => {
+    // The offer and the geometry are two lists in two files, and a seventh
+    // type added to one of them would otherwise render as nothing at all.
+    // `solidFor` SNAPS rather than throwing, so the check is that the body it
+    // hands back is the type that was asked for.
     for (const faces of FACE_OPTIONS) {
-      if (faces === PIP_FACES) {
-        expect(FACE_SHAPES[faces]).toBeUndefined();
-      } else {
-        expect(FACE_SHAPES[faces], `d${faces} has no silhouette`).toBeDefined();
-      }
-    }
-    // …and no silhouette is defined for a type nobody can select.
-    for (const key of Object.keys(FACE_SHAPES)) {
-      expect(FACE_OPTIONS).toContain(Number(key));
+      expect(solidFor(faces).sides, `d${faces} has no body`).toBe(faces);
     }
   });
 });
@@ -63,19 +58,6 @@ describe("snapFaces", () => {
   it("treats a non-number as the d6 everything was before this round", () => {
     expect(snapFaces(NaN)).toBe(6);
     expect(snapFaces(Infinity)).toBe(6);
-  });
-});
-
-describe("nextFaces", () => {
-  it("cycles the ring and wraps", () => {
-    expect(FACE_OPTIONS.map(nextFaces)).toEqual([6, 8, 10, 12, 20, 4]);
-  });
-
-  it("enters the ring at the nearest neighbour when the value is off-list", () => {
-    // A config written by a newer version that this build has not yet had
-    // clamped. The press must do the same thing before and after a save.
-    expect(nextFaces(100)).toBe(20);
-    expect(nextFaces(5)).toBe(4);
   });
 });
 

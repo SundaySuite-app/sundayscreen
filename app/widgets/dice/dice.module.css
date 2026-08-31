@@ -47,93 +47,333 @@
   background: none;
   cursor: pointer;
   padding: var(--sp-2);
+  /* The die is a THING the finger drags, so the roll area may not offer to
+     select text under it — a slow spin on a trackpad otherwise ends with the
+     whole widget highlighted blue. */
+  user-select: none;
+  touch-action: none;
 }
 
-.rollArea:disabled {
+.rollArea[aria-disabled="true"] {
   cursor: default;
 }
 
+/* ── The appearance carrier ───────────────────────────────────────────────
+ *
+ * `.look` is worn by TWO different things: the die card itself (so every face
+ * inside it, and the appearance button on the settings row, inherit the same
+ * family) and each swatch in the picker (so the six colours and five finishes
+ * can be shown as themselves, side by side, out of the card entirely). One
+ * class, because «what a die is made of» must mean the same thing in both
+ * places — a picker that previews a look the card then draws differently is
+ * worse than no picker.
+ *
+ * ## The ramps
+ *
+ * A family gives a BODY and the one ink allowed on it (tokens.css proves that
+ * pair at 4.5:1). A material turns that body into five flat Lambert steps by
+ * mixing it toward the house's own two poles — `--ink` for the shadow side,
+ * `--raised` for the lit side. No imported white, no imported black: a die is
+ * made of the same paper and ink as the board it lies on.
+ *
+ * ⚠️ `in srgb` and nothing else. It is not the prettiest interpolation space,
+ * it is the one the contrast guard already computes in: mixing in sRGB is
+ * exactly `A·p + B·(1−p)` per channel, which is the same arithmetic as
+ * `over()` in tokens.test.ts — so `dice-ramp.test.ts` can resolve every one of
+ * these twenty-five declarations as TEXT and prove all thirty colour ×
+ * material floors, rather than promising them. `oklch`/`lab` would make the
+ * ramps a claim nobody can check from a stylesheet.
+ *
+ * ## `--t2` is the family itself, on every material
+ *
+ * The step a face square to the class lands on is fixed by the light: the
+ * lamp stands up-left-and-in-front, so a face pointed straight at the room
+ * always resolves to the MIDDLE step (`toneFor` in die-project-core, where
+ * the number falls out as `round(0.577 × 4) = 2`). Making that step the bare
+ * body is what makes colour and material orthogonal: the class always reads
+ * the numeral off the family's own colour — the proven pair, at the proven
+ * ratio — and the finish only changes how the OTHER faces fall away from it.
+ * It is also why the appearance button can be painted `--die-body` and be
+ * telling the truth about the die beside it.
+ */
+.look[data-color="classic"] {
+  --die-body: var(--die-classic);
+  --die-ink: var(--die-classic-ink);
+}
+
+.look[data-color="gold"] {
+  --die-body: var(--die-gold);
+  --die-ink: var(--die-gold-ink);
+}
+
+.look[data-color="green"] {
+  --die-body: var(--die-green);
+  --die-ink: var(--die-green-ink);
+}
+
+.look[data-color="red"] {
+  --die-body: var(--die-red);
+  --die-ink: var(--die-red-ink);
+}
+
+.look[data-color="blue"] {
+  --die-body: var(--die-blue);
+  --die-ink: var(--die-blue-ink);
+}
+
+.look[data-color="slate"] {
+  --die-body: var(--die-slate);
+  --die-ink: var(--die-slate-ink);
+}
+
+/* Ivory: the narrowest ramp there is. A school die is bone, and bone barely
+   shades — the body reads as one object with facets rather than five tones
+   stacked up. This is the default, and it is meant to be the quiet one. */
+.look[data-material="ivory"] {
+  --t0: color-mix(in srgb, var(--die-body) 85%, var(--ink));
+  --t1: color-mix(in srgb, var(--die-body) 93%, var(--ink));
+  --t2: var(--die-body);
+  --t3: color-mix(in srgb, var(--die-body) 93%, var(--raised));
+  --t4: color-mix(in srgb, var(--die-body) 87%, var(--raised));
+}
+
+/* Casino: wider, with hard edges and a wet highlight. */
+.look[data-material="casino"] {
+  --t0: color-mix(in srgb, var(--die-body) 76%, var(--ink));
+  --t1: color-mix(in srgb, var(--die-body) 89%, var(--ink));
+  --t2: var(--die-body);
+  --t3: color-mix(in srgb, var(--die-body) 90%, var(--raised));
+  --t4: color-mix(in srgb, var(--die-body) 82%, var(--raised));
+}
+
+/* Wood: a middling ramp, because the grain is doing the work. */
+.look[data-material="wood"] {
+  --t0: color-mix(in srgb, var(--die-body) 79%, var(--ink));
+  --t1: color-mix(in srgb, var(--die-body) 90%, var(--ink));
+  --t2: var(--die-body);
+  --t3: color-mix(in srgb, var(--die-body) 91%, var(--raised));
+  --t4: color-mix(in srgb, var(--die-body) 84%, var(--raised));
+}
+
+/* Metal: the widest span in the set — a polished body throws almost the whole
+   range between its darkest and brightest facet, which is the only reason a
+   metal die looks metal and not merely grey. */
+.look[data-material="metal"] {
+  --t0: color-mix(in srgb, var(--die-body) 68%, var(--ink));
+  --t1: color-mix(in srgb, var(--die-body) 85%, var(--ink));
+  --t2: var(--die-body);
+  --t3: color-mix(in srgb, var(--die-body) 87%, var(--raised));
+  --t4: color-mix(in srgb, var(--die-body) 76%, var(--raised));
+}
+
+/* Glass: narrow, because the transparency is what reads, not the shading. */
+.look[data-material="glass"] {
+  --t0: color-mix(in srgb, var(--die-body) 83%, var(--ink));
+  --t1: color-mix(in srgb, var(--die-body) 91%, var(--ink));
+  --t2: var(--die-body);
+  --t3: color-mix(in srgb, var(--die-body) 91%, var(--raised));
+  --t4: color-mix(in srgb, var(--die-body) 84%, var(--raised));
+}
+
+/* ── The die ──────────────────────────────────────────────────────────────
+ *
+ * There are no gradients anywhere below, and that is not a rendering budget
+ * or a nod to «what survives 40 px on a projector» — it is what the physics
+ * says. A FLAT face under a distant light has one radiance across its whole
+ * area; there is nothing to gradient. The five steps are the five faces the
+ * class can see, quantised so that two neighbours are either the same tone or
+ * a visibly different one — a one-percent difference between adjacent facets
+ * reads as a printing fault at projector size, never as shading.
+ */
 .die {
   width: var(--die);
   height: var(--die);
-  /* The depth copy pokes ~4 units past the 100-grid down-right; SVGs clip
-     at the viewBox by default and would shave the thickness off. The ink
-     lands in the roll area's own padding — boundingBox() reads the layout
-     box, so the containment tests are unaffected. */
+  /* Strokes sit ON the outline, so half of every one of them falls outside
+     the 100-grid. SVG clips at the viewBox by default and would shave them
+     off. The ink lands in the roll area's own padding — boundingBox() reads
+     the layout box, so the containment tests are unaffected. */
   overflow: visible;
 }
 
 .face {
-  fill: var(--raised);
-  stroke: var(--line-2);
-  stroke-width: 4;
+  stroke: none;
 }
 
-/* The die's thickness: a flat darker whole-die copy offset down-right,
-   like a die lying on the desk. One tone — a gradient here is what turns
-   to mud at projector sizes. */
-.depth {
-  fill: var(--die-depth);
-  stroke: var(--die-depth);
-  stroke-width: 4;
+.tone0 {
+  fill: var(--t0);
 }
 
-/* The other visible faces. A single quiet tint over the base face; the
-   front facet stays --raised and pops forward. */
-.facetShade {
-  fill: var(--die-facet);
+.tone1 {
+  fill: var(--t1);
 }
 
-.facetEdge {
+.tone2 {
+  fill: var(--t2);
+}
+
+.tone3 {
+  fill: var(--t3);
+}
+
+.tone4 {
+  fill: var(--t4);
+}
+
+/*
+ * A face turned AWAY from the class.
+ *
+ * Hidden in CSS rather than by the renderer's `style.display`, and the
+ * reason is the degradation two blocks down: whether the far side is drawn
+ * depends on the MATERIAL and on the CARD'S SIZE, and neither of those is
+ * something a rAF loop should be re-deciding sixty times a second. The
+ * renderer's job is to say which faces are turned away — a class — and the
+ * stylesheet's job is to say what that means here.
+ */
+.back {
+  display: none;
+}
+
+.outline {
   fill: none;
-  stroke: var(--line-2);
+  stroke: var(--t0);
   stroke-width: 2;
-  stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.pip {
-  fill: var(--ink);
-}
-
-/* The drilled rim the pip sits in… */
-.pipRim {
-  fill: var(--die-facet);
-  stroke: var(--line-2);
-  stroke-width: 1;
-}
-
-/* …and the fleck of light on its shoulder. */
-.pipSpec {
-  fill: var(--raised);
-  opacity: 0.85;
-}
-
-/* The numeral the non-d6 types wear instead of pips. `central` baseline so
-   the shape table can place it by its OPTICAL centre — a triangle and a
-   hexagon do not want the numeral at the same height, and a shape's centre
-   is a geometry fact that belongs next to its points, not in here. */
+/* The numeral. ⚠️ NO `font-size` here, on purpose: the numeral is drawn in
+   the FACE's own coordinates and scaled onto the card by the projection's
+   affine matrix, so its size is a geometry constant (`LABEL_EM`) written as
+   a presentation attribute. A `font-size` in this rule would win over that
+   attribute — CSS beats presentation attributes — and every numeral would be
+   drawn at the same size regardless of how far away its face is. */
 .value {
-  fill: var(--ink);
-  font-size: 46px;
+  fill: var(--die-ink);
   font-family: var(--font);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   dominant-baseline: central;
+  text-anchor: middle;
 }
 
-/* The d4's triangle narrows fast; a full-size «20» would print over its two
-   sloping edges. */
-.die[data-narrow] .value {
-  font-size: 34px;
+.pip {
+  fill: var(--die-ink);
 }
 
-.unknown {
-  fill: var(--ink-3);
-  font-size: 48px;
-  font-family: var(--font);
-  font-weight: 700;
-  dominant-baseline: central;
+/* ── The finishes ─────────────────────────────────────────────────────── */
+
+/* Casino: crisp edges in a light mix of the body, and a specular window —
+   one soft ellipse clipped to whichever face is currently brightest. The
+   clip is what makes it a highlight ON the die rather than a smudge over it. */
+.look[data-material="casino"] .face {
+  stroke: var(--t3);
+  stroke-width: 1;
+}
+
+.gloss {
+  fill: var(--raised);
+  opacity: 0.3;
+  display: none;
+}
+
+.look[data-material="casino"] .gloss {
+  display: inline;
+}
+
+/* Wood: the grain. One `<pattern>` per tone step, so the stripes darken with
+   the face they are on; `patternTransform` turns the grain a different way at
+   each step, which is what keeps two facets from looking like one plank. */
+.grain {
+  fill: var(--die-ink);
+  opacity: 0.12;
+}
+
+/* Metal: the edge glint, and only where the light is. A bright facet catches
+   its own edges; a dark one does not, which is the whole difference between
+   «metal» and «a die with a light outline». */
+.look[data-material="metal"] .tone4,
+.look[data-material="metal"] .tone3 {
+  stroke: var(--t4);
+  stroke-width: 1.5;
+}
+
+/* Glass: see-through faces, and the ONLY material that draws what is turned
+   away — as thin far edges, over the front faces, exactly as they read
+   through a real glass die. */
+.look[data-material="glass"] .face {
+  fill-opacity: 0.78;
+}
+
+.look[data-material="glass"] .back {
+  display: inline;
+  fill: none;
+  stroke: var(--t1);
+  stroke-width: 1;
+  stroke-opacity: 0.55;
+}
+
+/* …and the plate that keeps the numeral off them. */
+.plate {
+  fill: var(--raised);
+  opacity: 0.72;
+  display: none;
+}
+
+.look[data-material="glass"] .plate {
+  display: inline;
+}
+
+/* ── Small cards ──────────────────────────────────────────────────────────
+ *
+ * `.shell` is `container-type: size`, so this queries the CARD the die is on.
+ * Under 260×210 a die is drawn at well under 90 px, and at that size the two
+ * most expensive finishes stop being information: the far edges of a glass
+ * die cross its own numeral rather than sitting behind it, and a 14-unit
+ * grain tile turns into noise. Both degrade to the flat tone underneath,
+ * which is the same die, quieter — never a different one.
+ *
+ * The thresholds are measured against `--die`'s own budget above, not
+ * guessed: 260 cqw is where three dice reach the size at which the grain
+ * tile stops resolving.
+ *
+ * ⚠️ `or`, not a comma. A media query list is comma-separated; a CONTAINER
+ * query is a boolean expression and takes `or` — the comma spelling parses
+ * in some engines and is a hard build error in lightningcss, which is the
+ * minifier this bundle runs.
+ */
+@container (max-width: 260px) or (max-height: 210px) {
+  .look[data-material="glass"] .back {
+    display: none;
+  }
+
+  .grain {
+    display: none;
+  }
+}
+
+/* ── The appearance button ────────────────────────────────────────────────
+ *
+ * The die-type button IS the swatch. «D20» was already on the settings row
+ * telling the teacher what she has; painting it in the family's own body and
+ * ink makes it tell her the rest too, and the row stays three buttons wide —
+ * which is the pin `e2e/dice.spec.ts` has held since the type knob landed.
+ *
+ * Specificity is deliberate, not lucky: `.dice button[data-dice-look]` is
+ * (0,2,1) against the shell's `.shell [data-settings-btn]` at (0,2,0), so
+ * this wins regardless of which stylesheet the bundler emits first. The hover
+ * rule is one step higher for the same reason — the shell has a hover rule of
+ * its own at (0,2,1), and a tie would be settled by source order.
+ */
+.dice button[data-dice-look] {
+  background: var(--die-body);
+  color: var(--die-ink);
+  border-color: var(--line-2);
+  font-weight: 600;
+}
+
+.dice button[data-dice-look]:hover,
+.dice button[data-dice-look][aria-expanded="true"] {
+  border-color: var(--gold-line);
+  color: var(--die-ink);
 }
 
 .sum {
@@ -142,4 +382,117 @@
   color: var(--ink-2);
 }
 
-/* The count buttons use the shell's standard settings row. */
+/* ── The appearance panel ─────────────────────────────────────────────────
+ *
+ * Drawn by the screen layer's overlay host (`WidgetOverlay.tsx`), OUTSIDE the
+ * card — a widget cannot open a popover of its own, because every card is
+ * `overflow: hidden` with layout containment. The host owns the box; these
+ * rules own what is in it.
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: 300px;
+  max-width: 100%;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.sectionLabel {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.pill,
+.chip,
+.finish {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+}
+
+.pill {
+  min-width: 40px;
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Six flat blocks of colour, big enough to be scanned rather than read. The
+   family's own ink sits on each one — which is also a live check on the pair:
+   a swatch whose tick cannot be seen is a pair that failed. */
+.chip {
+  width: 40px;
+  height: 36px;
+  background: var(--die-body);
+  color: var(--die-ink);
+  display: grid;
+  place-items: center;
+}
+
+/* Five real dice, drawn by the real renderer at 40 px in the type and colour
+   the card is currently set to. The difference between casino and metal IS
+   the shading — a word or a flat square could not show it, and a teacher
+   choosing «metall» from a list would be choosing blind. */
+.finish {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+}
+
+.miniDie {
+  width: 40px;
+  height: 40px;
+  overflow: visible;
+}
+
+.pill:hover,
+.chip:hover,
+.finish:hover {
+  border-color: var(--gold-line);
+}
+
+.pill[aria-checked="true"],
+.chip[aria-checked="true"],
+.finish[aria-checked="true"] {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-soft);
+}
+
+.pill[aria-checked="true"] {
+  background: var(--gold-soft);
+}
+
+/* The tick on the chosen colour: the swatch is the label, so the state has to
+   be readable ON it rather than beside it. */
+.chipMark {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: currentColor;
+  opacity: 0;
+}
+
+.chip[aria-checked="true"] .chipMark {
+  opacity: 1;
+}

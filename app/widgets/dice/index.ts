@@ -1,6 +1,7 @@
 import type { WidgetDef } from "../widget-def";
 import { PIP_FACES } from "./dice-core";
 import { DiceWidget } from "./DiceWidget";
+import { DieLookMenu } from "./DieLookMenu";
 
 export const diceWidgetDef: WidgetDef = {
   kind: "dice",
@@ -27,4 +28,10 @@ export const diceWidgetDef: WidgetDef = {
     material: "ivory",
   }),
   Component: DiceWidget,
+  // The die is the first kind to use the registry's overlay slot: its
+  // appearance panel is too big for the card and would be clipped at the
+  // card's edge if the widget tried to draw it itself. Declaring it here is
+  // the whole wiring — the screen layer places it, layers it and gives it its
+  // Escape rung (see `WidgetDef.Overlay`).
+  Overlay: DieLookMenu,
 };

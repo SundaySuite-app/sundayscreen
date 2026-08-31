@@ -54,5 +54,28 @@ describe("WIDGET_REGISTRY", () => {
     it(`${kind}: declares an icon that exists in the icon vocabulary`, () => {
       expect(ICON_PATHS[def.icon]).toBeTruthy();
     });
+
+    it(`${kind}: its overlay slot, if used, holds a component`, () => {
+      // The slot is OPTIONAL (`WidgetDef.Overlay`), so most kinds skip it —
+      // but a kind that fills it with something that is not a component gets
+      // a blank panel with a live backdrop over the board and a swallowed
+      // Escape, which is the one failure the crossed `activeWidgetOverlay`
+      // signal cannot catch: it checks that an `Overlay` EXISTS, not that it
+      // renders.
+      if (def.Overlay === undefined) return;
+      expect(typeof def.Overlay).toBe("function");
+    });
   }
+
+  it("the overlay slot is used by at least one kind", () => {
+    // The screen layer carries a whole host for this (WidgetOverlay.tsx,
+    // popover-core.ts, an Escape rung, an entry in `anyOverlayOpen`). If no
+    // kind declares one, all of that is dead code that still passes its own
+    // unit tests — and the next widget to need a popover would rediscover the
+    // clipped-card trap from scratch.
+    const withOverlay = WIDGET_KINDS.filter(
+      (kind) => WIDGET_REGISTRY[kind].Overlay !== undefined,
+    );
+    expect(withOverlay.length).toBeGreaterThan(0);
+  });
 });

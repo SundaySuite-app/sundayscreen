@@ -33,10 +33,20 @@ export const activeDrag = signal<{
   guidesH: number[];
 } | null>(null);
 
-/** One-shot click suppression: a drag ends with a pointerup that the browser
- *  follows with a CLICK on whatever is under the pointer — which would open
- *  the text editor at the end of every drag. */
-function suppressNextClick(): void {
+/**
+ * One-shot click suppression: a drag ends with a pointerup that the browser
+ * follows with a CLICK on whatever is under the pointer — which would open
+ * the text editor at the end of every drag.
+ *
+ * EXPORTED, and deliberately so. The die's trackball (R5) is a second drag
+ * that has to swallow its own trailing click — a die spun with the finger
+ * must not also be thrown — and it uses the whole recipe from this file:
+ * window listeners keyed on `pointerId`, `isDrag` as the threshold, capture
+ * taken only ON CROSSING, and this. Two copies of «which click gets
+ * swallowed» is exactly how a drag-that-also-rolls appears six months later,
+ * once one of them has been tuned and the other has not.
+ */
+export function suppressNextClick(): void {
   window.addEventListener(
     "click",
     (e) => {

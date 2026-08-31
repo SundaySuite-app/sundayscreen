@@ -139,9 +139,9 @@ test("a die is big enough to read, and three still fit at minimum size", async (
   await dice.getByRole("button", { name: "Én terning til" }).click();
 
   await roll.click();
-  // Wait for the scramble to settle: `data-value` only appears once the roll
-  // has committed three faces, which is also when the sum line joins the
-  // column and the height budget is at its tightest.
+  // Wait for the throw to land: `data-value` only appears once the roll has
+  // committed three faces, which is also when the sum line joins the column
+  // and the height budget is at its tightest.
   await expect(roll).toHaveAttribute("data-value", /^\d-\d-\d$/);
 
   await shrinkToMinimum(page, "dice");
@@ -149,6 +149,16 @@ test("a die is big enough to read, and three still fit at minimum size", async (
   const card = (await dice.boundingBox())!;
   const area = (await roll.boundingBox())!;
   await assertContained(area, card, "three dice");
+
+  // …and the number is still SQUARE to the class after all that. The die is a
+  // real body now, so «readable» is no longer a property of the drawing: it
+  // is a property of the ORIENTATION the widget rests at, and a resting pose
+  // that drifted off the answer would shrink the numeral without touching one
+  // pixel of the layout this test otherwise measures.
+  const up = await dice
+    .locator("svg[data-face-up]")
+    .evaluateAll((els) => els.map((el) => el.getAttribute("data-face-up")));
+  expect(up.join("-")).toBe(await roll.getAttribute("data-value"));
 });
 
 test("the text widget is projector-sized at its default size", async ({

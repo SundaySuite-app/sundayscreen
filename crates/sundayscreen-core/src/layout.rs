@@ -165,6 +165,50 @@ fn snap_dice_faces(faces: u8) -> u8 {
     best
 }
 
+/// The die's COLOUR FAMILY — the body tone a die is cut from. Serialised
+/// lowercase; the spelling is persisted config vocabulary, so renaming a
+/// variant is a broken database exactly like renaming a `kind`.
+///
+/// Six families and no more, because the point is telling three dice apart
+/// on a projector at eight metres, not offering a colour picker. The names
+/// are the FAMILY, never a token: `--die-red` and its ink live in
+/// `app/styles/tokens.css`, and the material ramp mixes from there.
+///
+/// ⚠️ `Classic` is not «white». It is the warm off-white of a school die,
+/// and it is the default because a teacher who never opens the appearance
+/// panel must still get the die the widget has always drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "DieColor.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum DieColor {
+    #[default]
+    Classic,
+    Red,
+    Blue,
+    Green,
+    Gold,
+    Slate,
+}
+
+/// The die's FINISH — how the same family is shaded, edged and lettered.
+/// Serialised lowercase, same persisted-vocabulary rule as [`DieColor`].
+///
+/// Colour and material are two axes ON PURPOSE (6 × 5, not 30 flat names):
+/// «a red casino die» is how a teacher describes what she wants, and a flat
+/// list would have made the panel a wall of thirty tiles nobody scans.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "DieMaterial.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum DieMaterial {
+    /// The ordinary school die: narrow tone ramp, soft edges, dark pips.
+    #[default]
+    Ivory,
+    Casino,
+    Wood,
+    Metal,
+    Glass,
+}
+
 /// How many names ONE draw may put on the board. The ceiling is a
 /// READABILITY bound, not a technical one: the picker's minimum card is
 /// 260×190 px, and six names stacked in it are smaller than the back row can
@@ -394,6 +438,13 @@ pub enum WidgetConfig {
         faces: u8,
         #[serde(default)]
         last_roll: Vec<u8>,
+        /// The colour family and the finish — APPEARANCE, not protocol. A
+        /// roll stays true across a re-colour, which is why neither field
+        /// clears `last_roll` the way `faces` does.
+        #[serde(default, deserialize_with = "lenient")]
+        color: DieColor,
+        #[serde(default, deserialize_with = "lenient")]
+        material: DieMaterial,
         #[serde(flatten)]
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
@@ -536,6 +587,8 @@ impl WidgetConfig {
                 count: default_dice_count(),
                 faces: default_dice_faces(),
                 last_roll: Vec::new(),
+                color: DieColor::default(),
+                material: DieMaterial::default(),
                 extra: Default::default(),
             }),
             "trafficlight" => Some(WidgetConfig::TrafficLight {
@@ -668,6 +721,17 @@ impl WidgetConfig {
                 for v in last_roll.iter_mut() {
                     *v = (*v).clamp(1, *faces);
                 }
+                // `color` and `material` add NO lines here, and that is the
+                // difference between an enum and a number — worth saying out
+                // loud, because `faces` sits three lines up and does need
+                // one. `faces` is a `u8`: every value in 0..=255 parses, so
+                // 100 arrives whole and only `snap_dice_faces` stops the
+                // widget being asked to draw a d100. An enum has no
+                // out-of-range value to arrive with — a spelling this build
+                // cannot read never becomes a `DieColor` at all; `lenient`
+                // already turned it into `Classic` at the deserialiser, one
+                // layer BELOW the clamp. Adding a defensive arm here would be
+                // dead code that reads like a guarantee.
             }
             WidgetConfig::TrafficLight { .. } => {}
             WidgetConfig::WorkSymbol { .. } => {}
@@ -1240,6 +1304,8 @@ mod tests {
                 count: 99,
                 faces,
                 last_roll,
+                color: DieColor::default(),
+                material: DieMaterial::default(),
                 extra: Default::default(),
             };
             cfg.clamp();
@@ -1273,6 +1339,8 @@ mod tests {
             count: once.0,
             faces: once.1,
             last_roll: once.2.clone(),
+            color: DieColor::default(),
+            material: DieMaterial::default(),
             extra: Default::default(),
         };
         cfg.clamp();
@@ -1321,6 +1389,119 @@ mod tests {
         assert_eq!(out["faces"], serde_json::json!(20));
         assert_eq!(out["lastRoll"], serde_json::json!([17, 4, 20]));
         assert_eq!(out["futureColour"], serde_json::json!("gold"));
+    }
+
+    /// A die nobody has re-coloured is a classic ivory one, and it stays
+    /// that way through parse → clamp → serialise → parse.
+    ///
+    /// The round trip is the half that matters. `default_for` alone would
+    /// pass even if the serialised spellings and the `rename_all` disagreed
+    /// — and a mismatch there is not a wrong colour on screen, it is
+    /// `lenient` quietly resetting the teacher's choice on every load.
+    #[test]
+    fn a_dies_appearance_defaults_to_classic_ivory_and_round_trips() {
+        let WidgetConfig::Dice {
+            color, material, ..
+        } = WidgetConfig::default_for("dice").unwrap()
+        else {
+            panic!("still dice");
+        };
+        assert_eq!(color, DieColor::Classic);
+        assert_eq!(material, DieMaterial::Ivory);
+
+        let mut chosen = WidgetConfig::Dice {
+            count: 2,
+            faces: 20,
+            last_roll: vec![17, 3],
+            color: DieColor::Slate,
+            material: DieMaterial::Glass,
+            extra: Default::default(),
+        };
+        chosen.clamp();
+        let written = serde_json::to_string(&chosen).expect("serialises");
+        assert!(
+            written.contains(r#""color":"slate""#) && written.contains(r#""material":"glass""#),
+            "the persisted vocabulary is lowercase: {written}"
+        );
+
+        let mut back: WidgetConfig = serde_json::from_str(&written).expect("re-reads");
+        back.clamp();
+        assert_eq!(back, chosen, "appearance survives its own round trip");
+    }
+
+    /// Both appearance fields are lenient, and they are lenient TOGETHER.
+    ///
+    /// One unreadable spelling per config is the easy case; the table above
+    /// covers it. This is the config a v0.6 writes and a v0.5 reads — two
+    /// unknown enum VALUES at once, and neither may take the roll, the die
+    /// type or the ADR-007 buffer down with it. Two independent `lenient`
+    /// fields could each pass alone and still fail here if one of them ever
+    /// lost its `deserialize_with`.
+    #[test]
+    fn two_unreadable_appearance_spellings_cost_two_fields_and_nothing_more() {
+        let inst = row_to_instance(
+            "w1",
+            "dice",
+            0.1,
+            0.1,
+            0.3,
+            0.2,
+            0,
+            r#"{"kind":"dice","count":2,"faces":12,"lastRoll":[11,4],
+               "color":"chartreuse","material":"marzipan","futureFinish":{"gloss":3}}"#,
+        )
+        .expect("neither spelling may fail the whole config");
+        let mut cfg = inst.config;
+        cfg.clamp();
+        let out = serde_json::to_value(&cfg).unwrap();
+
+        assert_eq!(out["color"], serde_json::json!("classic"));
+        assert_eq!(out["material"], serde_json::json!("ivory"));
+        assert_eq!(out["faces"], serde_json::json!(12), "the die type stands");
+        assert_eq!(
+            out["lastRoll"],
+            serde_json::json!([11, 4]),
+            "and the roll the class watched land is still on the board"
+        );
+        assert_eq!(out["count"], serde_json::json!(2));
+        assert_eq!(
+            out["futureFinish"],
+            serde_json::json!({ "gloss": 3 }),
+            "the ADR-007 buffer survives BOTH bad neighbours"
+        );
+    }
+
+    /// The clamp has no opinion about appearance — deliberately, and this
+    /// pins it. Every other Dice field is bounded (`count` by DICE_MAX,
+    /// `faces` by the snap, `last_roll` by both), so «clamp leaves it alone»
+    /// is the exception in this arm and reads like an oversight without a
+    /// test saying otherwise. An enum has no out-of-range value to clamp:
+    /// `lenient` already resolved that one layer down.
+    #[test]
+    fn clamping_a_die_never_touches_its_appearance() {
+        for color in [DieColor::Classic, DieColor::Gold, DieColor::Slate] {
+            for material in [DieMaterial::Ivory, DieMaterial::Wood, DieMaterial::Glass] {
+                let mut cfg = WidgetConfig::Dice {
+                    count: 99,
+                    faces: 17,
+                    last_roll: vec![99, 99, 99, 99],
+                    color,
+                    material,
+                    extra: Default::default(),
+                };
+                cfg.clamp();
+                let WidgetConfig::Dice {
+                    color: after_color,
+                    material: after_material,
+                    ..
+                } = cfg
+                else {
+                    panic!("still dice");
+                };
+                assert_eq!(after_color, color, "a hard clamp left the colour alone");
+                assert_eq!(after_material, material);
+            }
+        }
     }
 
     /// The internally-tagged deserializer leaves the tag in the flatten map;
@@ -1393,6 +1574,23 @@ mod tests {
                 "mode",
                 "silent",
                 vec![],
+            ),
+            (
+                // A colour family only a LATER version offers. The roll is
+                // what the class watched land — it must not cost anything.
+                r#"{"kind":"dice","color":"chartreuse","faces":20,"lastRoll":[17],"futureNote":"keep"}"#,
+                "color",
+                "classic",
+                vec![
+                    ("faces", serde_json::json!(20)),
+                    ("lastRoll", serde_json::json!([17])),
+                ],
+            ),
+            (
+                r#"{"kind":"dice","material":"marzipan","count":3,"futureNote":"keep"}"#,
+                "material",
+                "ivory",
+                vec![("count", serde_json::json!(3))],
             ),
             (
                 r#"{"kind":"agenda","source":"ical","manualItems":[{"id":"a1","text":"Les s. 40"}],"futureNote":"keep"}"#,

@@ -150,8 +150,25 @@
     "more": "Én terning til",
     "fewer": "Én terning færre",
     "sum": "Sum: {n}",
-    "faces": "Terningtype — trykk for å bytte",
-    "facesLabel": "D{n}"
+    "faces": "Terningtype",
+    "facesLabel": "D{n}",
+    "color": "Farge",
+    "look": "Utseende",
+    "colorName": {
+      "classic": "Hvit",
+      "red": "Rød",
+      "blue": "Blå",
+      "green": "Grønn",
+      "gold": "Gull",
+      "slate": "Mørk"
+    },
+    "materialName": {
+      "ivory": "Elfenben",
+      "casino": "Kasino",
+      "wood": "Tre",
+      "metal": "Metall",
+      "glass": "Glass"
+    }
   },
   "traffic": {
     "red": "Rødt lys — stille",

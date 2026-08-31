@@ -2,6 +2,8 @@
 import type { AgendaSource } from "./AgendaSource";
 import type { ChecklistItem } from "./ChecklistItem";
 import type { ClockFace } from "./ClockFace";
+import type { DieColor } from "./DieColor";
+import type { DieMaterial } from "./DieMaterial";
 import type { GroupMode } from "./GroupMode";
 import type { ManualAgendaItem } from "./ManualAgendaItem";
 import type { TextAlign } from "./TextAlign";
@@ -41,4 +43,10 @@ drawCount: number, } | { "kind": "groups", mode: GroupMode, n: number,
  * The last split, as NAMES — restored on boot so the class walks in
  * to the same groups the projector showed yesterday.
  */
-lastResult: Array<Array<string>>, } | { "kind": "dice", count: number, faces: number, lastRoll: Array<number>, } | { "kind": "trafficlight", active: TrafficColor, } | { "kind": "worksymbol", mode: WorkMode, } | { "kind": "agenda", source: AgendaSource, showTimes: boolean, manualItems: Array<ManualAgendaItem>, pinnedItemId: string | null, } | { "kind": "deadline", title: string, targetEpochMs: number, showHours: boolean, } | { "kind": "checklist", items: Array<ChecklistItem>, } | { "kind": "today", showLessons: boolean, showNotes: boolean, };
+lastResult: Array<Array<string>>, } | { "kind": "dice", count: number, faces: number, lastRoll: Array<number>, 
+/**
+ * The colour family and the finish — APPEARANCE, not protocol. A
+ * roll stays true across a re-colour, which is why neither field
+ * clears `last_roll` the way `faces` does.
+ */
+color: DieColor, material: DieMaterial, } | { "kind": "trafficlight", active: TrafficColor, } | { "kind": "worksymbol", mode: WorkMode, } | { "kind": "agenda", source: AgendaSource, showTimes: boolean, manualItems: Array<ManualAgendaItem>, pinnedItemId: string | null, } | { "kind": "deadline", title: string, targetEpochMs: number, showHours: boolean, } | { "kind": "checklist", items: Array<ChecklistItem>, } | { "kind": "today", showLessons: boolean, showNotes: boolean, };

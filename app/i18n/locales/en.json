@@ -150,8 +150,25 @@
     "more": "One more die",
     "fewer": "One fewer die",
     "sum": "Sum: {n}",
-    "faces": "Die type — press to change",
-    "facesLabel": "D{n}"
+    "faces": "Die type",
+    "facesLabel": "D{n}",
+    "color": "Colour",
+    "look": "Appearance",
+    "colorName": {
+      "classic": "White",
+      "red": "Red",
+      "blue": "Blue",
+      "green": "Green",
+      "gold": "Gold",
+      "slate": "Dark"
+    },
+    "materialName": {
+      "ivory": "Ivory",
+      "casino": "Casino",
+      "wood": "Wood",
+      "metal": "Metal",
+      "glass": "Glass"
+    }
   },
   "traffic": {
     "red": "Red light — silence",

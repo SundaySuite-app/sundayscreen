@@ -220,6 +220,106 @@ describe("the traffic light signals with brightness, not just hue", () => {
   });
 });
 
+/** A die COLOUR FAMILY is a PAIR — the body it is cut from and the one ink
+ *  allowed on it — which is why these are declared as pairs and never as a
+ *  flat colour list. The material ramps mix out of them, so a floor proved
+ *  here is a floor thirty colour × material combinations inherit.
+ *
+ *  ⚠️ These `-ink` tokens are deliberately NOT in `INKS` above, and the
+ *  reason is a number rather than a preference: `--die-slate-ink` is PALE
+ *  ink for a near-black die. `INKS` measures every entry against --surface
+ *  and --raised, so it would read that one at 1.10:1 and go red —
+ *  a false alarm about the most legible pair in the file. Ink is only ever
+ *  «readable» against the thing it is printed ON, and for a die that thing
+ *  is the die. The pairing below is what encodes that. */
+const DIE_FAMILIES = [
+  { name: "classic", body: "--die-classic", ink: "--die-classic-ink" },
+  { name: "red", body: "--die-red", ink: "--die-red-ink" },
+  { name: "blue", body: "--die-blue", ink: "--die-blue-ink" },
+  { name: "green", body: "--die-green", ink: "--die-green-ink" },
+  { name: "gold", body: "--die-gold", ink: "--die-gold-ink" },
+  { name: "slate", body: "--die-slate", ink: "--die-slate-ink" },
+];
+
+/** A die is an OBJECT on the card, not a tinted region of it. Below this
+ *  ratio against --surface the classic die stops having a visible edge. */
+const OBJECT_FLOOR = 1.35;
+
+/** The smallest relative-luminance step between two families. */
+const LADDER_STEP = 0.05;
+
+describe("terningfamiliene: a body, and the one ink it carries", () => {
+  for (const { name, body, ink } of DIE_FAMILIES) {
+    it(`${name}: its numerals clear the AA floor on its own body`, () => {
+      const b = paint(body);
+      const i = paint(ink);
+      expect(b.a, `${body} is a body — it must be opaque`).toBe(1);
+      expect(i.a, `${ink} is ink — it must be opaque`).toBe(1);
+      expect(contrast(i.rgb, b.rgb)).toBeGreaterThanOrEqual(FLOOR);
+    });
+
+    it(`${name}: the body reads as an object on --surface`, () => {
+      expect(
+        contrast(paint(body).rgb, paint("--surface").rgb),
+      ).toBeGreaterThanOrEqual(OBJECT_FLOOR);
+    });
+
+    it(`${name}: its ink is checked against the DIE, never the card`, () => {
+      // The ⚠️ above, as a guard. Adding a die ink to INKS looks like
+      // thoroughness and is the one edit that would make this file lie:
+      // three of the six are pale, and the list's floor is measured
+      // against --surface.
+      expect(INKS.map((entry) => entry.name)).not.toContain(ink);
+    });
+  }
+
+  it("no two families are the same die to a colour-blind eye", () => {
+    // The traffic light's lesson, one widget over. There the failure was a
+    // lit lamp dimmer than an unlit one; here it would be six dice a pupil
+    // can only tell apart by hue — and «take the green one» is exactly how
+    // these get used. So the six are a LADDER first and a palette second.
+    for (let i = 0; i < DIE_FAMILIES.length; i++) {
+      for (let j = i + 1; j < DIE_FAMILIES.length; j++) {
+        const a = DIE_FAMILIES[i];
+        const b = DIE_FAMILIES[j];
+        const gap = Math.abs(
+          luminance(paint(a.body).rgb) - luminance(paint(b.body).rgb),
+        );
+        expect(
+          gap,
+          `${a.name} and ${b.name} are one rung`,
+        ).toBeGreaterThanOrEqual(LADDER_STEP);
+      }
+    }
+  });
+
+  it("all six families are actually declared", () => {
+    // `paint()` throws on a missing token, so every `it` above is real —
+    // but a family DELETED from the list above would take its own guard
+    // with it and leave nothing red. Six is the enum in layout.rs.
+    expect(DIE_FAMILIES).toHaveLength(6);
+  });
+});
+
+describe("the popover layer sits between the chrome and the modals", () => {
+  const layer = (name: string) => {
+    const raw = TOKENS.get(name);
+    if (raw === undefined) throw new Error(`tokens.css has no ${name}`);
+    return Number(raw);
+  };
+
+  it("--z-popover clears the toolbar and stays under an overlay", () => {
+    // A widget's own panel must not open BEHIND the toolbar the teacher
+    // pressed to reach it, and must not float OVER a modal — a modal that
+    // something else covers has stopped being modal.
+    expect(layer("--z-popover")).toBeGreaterThan(layer("--z-chrome"));
+    expect(layer("--z-popover")).toBeLessThan(layer("--z-overlay"));
+    // And above the focused widget: a panel opened during «Vis stort» is
+    // the reason this token is not simply --z-chrome + 1.
+    expect(layer("--z-popover")).toBeGreaterThan(layer("--z-widget-active"));
+  });
+});
+
 describe("the focus ring is the system's own ink", () => {
   it("--focus is a real colour that clears 3:1 on both cards", () => {
     for (const ground of GROUNDS) {

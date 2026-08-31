@@ -16,6 +16,15 @@ export const diceWidgetDef: WidgetDef = {
     // a widget added here and one healed by the backend must be the same die.
     faces: PIP_FACES,
     lastRoll: [],
+    // The same mirror one axis over: `DieColor::default()` /
+    // `DieMaterial::default()` in layout.rs. These are the two places a die
+    // is BORN — here when the teacher adds one, and `default_for("dice")`
+    // when the backend heals a config it could not read — and a die that
+    // came back from a bad row must not look different from the one beside
+    // it. The literals are checked by the generated `WidgetConfig` union,
+    // so a renamed variant is a tsc error rather than a silent re-colour.
+    color: "classic",
+    material: "ivory",
   }),
   Component: DiceWidget,
 };

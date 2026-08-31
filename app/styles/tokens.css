@@ -33,6 +33,77 @@
   --die-depth: #cfc7b4;
   --die-facet: #f0eadd;
 
+  /* ── The six die COLOUR FAMILIES, and the ink each one carries ────────
+   *
+   * A family is a PAIR, never a colour: the body the die is cut from, and
+   * the only ink that may sit on it. The material ramps in
+   * `app/widgets/dice/dice.module.css` mix their five tone steps out of
+   * these twelve values — so this is the last place in the die's whole
+   * appearance system where a literal appears, and every one of the thirty
+   * colour × material combinations inherits its floor from here.
+   *
+   * ## Three floors, and why each exists
+   *
+   * 1. **Ink ≥ 4.5:1 against ITS OWN body.** A pip or a numeral is text a
+   *    pupil reads from the back row — the whole point of putting a die on
+   *    a projector. Which ink is the light one is a per-family FACT, not a
+   *    style: red, blue and slate are dark bodies with pale ink (a casino
+   *    die's white pips); classic, gold and green are light enough to take
+   *    dark ink. ⚠️ Consequence for the guard: three of these `-ink` tokens
+   *    are LIGHT, so they must never join the INKS list in
+   *    `tokens.test.ts` — that list measures against --surface and would
+   *    read `--die-slate-ink` as a catastrophic 1.10:1 while the die it
+   *    actually sits on is at 11.21:1.
+   *
+   * 2. **Body ≥ 1.35:1 against --surface.** A die is an OBJECT lying on the
+   *    card, and an object has an edge you can see without being told. Below
+   *    this the classic die stops being a die and becomes a hole in the
+   *    board — the same failure the traffic light had when its unlit lamp
+   *    out-shone a lit one, one layer up: not a contrast bug, a
+   *    «what am I looking at» bug. --classic is the tight one at 1.38:1 by
+   *    design; it is meant to read as warm bone, not as beige.
+   *
+   * 3. **≥ 0.05 relative-luminance apart, PAIRWISE.** This is the traffic
+   *    light's lesson generalised: six colours that differ only in HUE are
+   *    six identical dice to a colour-blind eye, and «the red one and the
+   *    green one» is exactly how a teacher hands out dice. So the six are a
+   *    LADDER first and a palette second — classic 0.711, gold 0.423,
+   *    green 0.291, red 0.157, blue 0.095, slate 0.035. The two tightest
+   *    rungs (blue–slate 0.060, red–blue 0.062) are what a squint test
+   *    actually rests on; the rest have room to spare.
+   *
+   * ## Hand-tuned, and where the hands were forced
+   *
+   * Floors 1 and 3 fight each other in the middle of the ladder: a body
+   * near 0.19 luminance can reach 4.5:1 with NEITHER a dark ink (it would
+   * have to be blacker than --ink) nor a pale one (it would have to be
+   * brighter than white). That dead band is why the ladder jumps from red
+   * 0.157 straight to green 0.291 rather than spacing all six evenly —
+   * the gap is the constraint showing through, not a missing colour.
+   *
+   * ## Gold here is CONTENT, not chrome
+   *
+   * «Gold is a surface, not ink» (above) is not suspended here — it is
+   * obeyed twice over. --die-gold IS a surface: it is the body of a die,
+   * with --die-gold-ink for the numeral on top at 6.13:1. Nothing reads
+   * text off the gold itself. And it is deliberately NOT the accent value:
+   * #ebb84b is the app's own chrome, and a gold die that matched it would
+   * make the teacher's die look like a button. This one is deeper (0.423
+   * against the accent's 0.525), which also leaves the material ramp room
+   * to put a highlight ABOVE the base without going pale. */
+  --die-classic: #e3dbc7;
+  --die-classic-ink: #2a2620;
+  --die-red: #c73d31;
+  --die-red-ink: #fdf7f4;
+  --die-blue: #2b5796;
+  --die-blue-ink: #f1f5fd;
+  --die-green: #4fa462;
+  --die-green-ink: #0b1e10;
+  --die-gold: #d9a63a;
+  --die-gold-ink: #3a2c08;
+  --die-slate: #2f3540;
+  --die-slate-ink: #f3f4f7;
+
   /* ── Ink, three levels — every one of them a READING level ───────────
    *
    * `--ink-3` is not «the third grey»; it is MUTED TEXT WITH A CONTRAST
@@ -156,9 +227,24 @@
   --fs-h1: 40px;
 
   /* ── Layers ──────────────────────────────────────────────────────────── */
+  /*
+   * A POPOVER is a panel a widget owns — the die's appearance picker is the
+   * first — and it needs a layer of its own because it belongs to neither
+   * neighbour. It must clear the toolbar (--z-chrome, 100), or opening it
+   * from the bottom row would put the teacher's choices behind the bar she
+   * just pressed. It must sit BELOW --z-overlay (300), because a modal is a
+   * conversation that owns the screen and a stray popover floating over one
+   * is how a dialog stops being modal. 200 leaves a hundred either side.
+   *
+   * The layer it also has to clear is not in this list: the focused widget
+   * rides at --z-widget-active (40) with its scrim just under it, and a
+   * popover opened during «Vis stort» must stay on top of both. 200 does
+   * that too — which is the point of a token rather than a `z-index: 5`
+   * chosen against whatever happened to be nearby. */
   --z-surface: 1;
   --z-widget-active: 40;
   --z-chrome: 100;
+  --z-popover: 200;
   --z-overlay: 300;
   --z-toast: 400;
 }

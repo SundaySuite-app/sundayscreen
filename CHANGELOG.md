@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.4.0-beta.1] — 2026-08-31
+
+Runde 4 «Veien tilbake» — den største runden siden verktøykassa ble bygd:
+databasen kan ikke lenger gå tapt, tre nye funksjoner, og en terning som
+faktisk kastes. Ingen ny migrasjon. Full historie i git-loggen (28
+commits); eierpunkter i docs/NEEDS-RICHARD.md.
+
+- **Databasen overlever alt.** Å installere en eldre beta over en nyere
+  slettet før HELE databasen (klasser, elevnavn, ukeplan) uten et ord —
+  nå røres fila aldri, og appen forklarer seg med en tydelig setning.
+  Roterende sikkerhetskopi ved hver oppstart (aldri av en tom base — en
+  kopi som kunne spist redningen din er verre enn ingen), og fem ærlige
+  feiltekster som åpner med det viktigste: «Navnene dine er ikke borte.»
+- **Flytt oppsettet.** Eksportér klasser, navnelister, skjermer og
+  timeoppsett til én fil og hent den inn på en annen maskin. Import
+  legger alltid til som nytt og overskriver aldri. Fila inneholder
+  elevnavn (dialogen sier det selv) — men aldri fravær, dagens trekning
+  eller gruppedeling.
+- **«Vis stort».** Ett trykk forstørrer en widget til nesten hele tavla —
+  tidtakeren under en prøve. En løpende nedtelling overlever både inn og
+  ut, og Escape/skrimmet tar deg tilbake.
+- **Terningen kastes.** Fysisk kast med sprett og rotasjon før den lander
+  — og seks terningtyper: D4, D6, D8, D10, D12 og D20.
+- **Trekk flere navn i ett trekk** («Trekk 3» til å dele ut roller) —
+  atomisk, uten at samme elev kan få to roller, og med ærlig telling når
+  det ikke er flere til stede.
+- **Timen på tavla:** tidtakeren tilbyr «til timen slutter» når en time
+  pågår, og agendaen kan skrives rett fra tavla (én linje = ett Enter),
+  uten å åpne planleggeren foran klassen.
+- **Oppdateringer synes:** når en ny versjon er klar, står det stille og
+  rolig ved versjonsnummeret — ingen popup, ingen avbrytelse.
+- **Feil skjuler seg ikke:** en feilet navnelesing kan ikke lenger ende
+  med at «Lagre» sletter klassen; trekk/del inn/nullstill sier fra når de
+  feiler; avviste importer vises der du ser; og «X av 1200 navn»-løgnen i
+  panelet er lukket i begge ender.
+- Pluss: vinduet skriver bare sin egen kolonne (en feilet oppstart kan
+  ikke lenger bytte oppdateringskanal i det stille), planleggerens
+  auto-bytte virker også dagen etter at maskinen sov, og 26 grensetall
+  har fått én kilde med vakt.
+
 ## [0.3.0-beta.1] — 2026-08-30
 
 Runde 3 «Bakerste pult» — kvalitetsrunde. Ingen ny modell, én ny kolonne:

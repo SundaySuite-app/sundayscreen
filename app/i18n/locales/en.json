@@ -152,6 +152,7 @@
     "sum": "Sum: {n}",
     "faces": "Die type",
     "facesLabel": "D{n}",
+    "facesLabelZero": "0–9",
     "color": "Colour",
     "material": "Material",
     "look": "Appearance",

@@ -69,7 +69,13 @@ import { isDrag } from "../../screen/interact-core";
 // see its docstring.
 import { suppressNextClick } from "../../screen/useDrag";
 import { Icon } from "../../ui/Icon";
-import { PIPS, PIP_FACES, randomDie } from "./dice-core";
+import {
+  PIPS,
+  PIP_FACES,
+  ZERO_BASED_FACES,
+  randomDie,
+  snapFaces,
+} from "./dice-core";
 import { frameAt, simulateThrow } from "./dice-physics-core";
 import {
   dieDefId,
@@ -521,7 +527,14 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
 
   const count = cfg.count;
   const faces = cfg.faces;
-  const solid = solidFor(faces);
+  // The cross mirrors `normalize` in layout.rs AT THE READ SEAM: the real
+  // store never hands out a zero-based d6, but the e2e tier's mini backend
+  // stores configs raw, and this one line is what keeps the two tiers
+  // reading the same die. Through `snapFaces`, not `faces === 10` — Rust
+  // snaps BEFORE it judges the flag, so a future d11 config is a zero-based
+  // d10 there, and the raw comparison would quietly disagree with it.
+  const zeroBased = snapFaces(faces) === ZERO_BASED_FACES && cfg.zeroBased;
+  const solid = solidFor(faces, zeroBased);
   const material = cfg.material;
 
   const [rolling, setRolling] = useState(false);
@@ -535,8 +548,14 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
    * config would keep drawing yesterday's die for a second after the teacher
    * changed it.
    */
-  const live = useRef({ faces, count, material, lastRoll: cfg.lastRoll });
-  live.current = { faces, count, material, lastRoll: cfg.lastRoll };
+  const live = useRef({
+    faces,
+    zeroBased,
+    count,
+    material,
+    lastRoll: cfg.lastRoll,
+  });
+  live.current = { faces, zeroBased, count, material, lastRoll: cfg.lastRoll };
 
   /** Each die's orientation. VIEW state — never persisted, exactly like
    *  `focusedWidgetId`: a restart shows the roll square to the class, not the
@@ -561,7 +580,7 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
   // orientations described faces that are gone. Rolled back to rest rather
   // than carried over: `setCount` and a type change both clear `lastRoll`, so
   // there is no answer for a carried-over angle to be showing.
-  const poolKey = `${faces}:${count}`;
+  const poolKey = `${faces}${zeroBased ? "z" : ""}:${count}`;
   const lastPool = useRef(poolKey);
   if (lastPool.current !== poolKey) {
     lastPool.current = poolKey;
@@ -594,7 +613,7 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
    *  landed on, or standing on its corner when there is no answer yet. */
   const restQuat = (index: number): Quat => {
     const now = live.current;
-    const body = solidFor(now.faces);
+    const body = solidFor(now.faces, now.zeroBased);
     return now.lastRoll.length === now.count &&
       now.lastRoll[index] !== undefined
       ? restOrientationForValue(body, now.lastRoll[index])
@@ -603,9 +622,9 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
 
   const paint = () => {
     const now = live.current;
-    const body = solidFor(now.faces);
+    const body = solidFor(now.faces, now.zeroBased);
     const traits = MATERIAL_TRAITS[now.material];
-    const key = `${body.sides}:${now.material}`;
+    const key = `${body.sides}${now.zeroBased ? "z" : ""}:${now.material}`;
     faceEls().forEach((svg, i) => {
       scratch.current[i] = paintDie(
         svg,
@@ -725,7 +744,9 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
     // philosophy the translation has used since R12. That is what lets the
     // tumble be honest: every face the class sees on the way is the number
     // that is really on it.
-    const final = Array.from({ length: count }, () => randomDie(faces));
+    const final = Array.from({ length: count }, () =>
+      randomDie(faces, undefined, zeroBased),
+    );
     const targets = final.map((value) => restOrientationForValue(solid, value));
     setRolling(true);
 
@@ -738,7 +759,7 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
       timers.current.interval = setInterval(() => {
         const now = live.current;
         scramble.current = Array.from({ length: now.count }, () =>
-          randomDie(now.faces),
+          randomDie(now.faces, undefined, now.zeroBased),
         );
         paint();
       }, SCRAMBLE_STEP_MS);
@@ -765,11 +786,19 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
         setRolling(false);
         // Merge into the CURRENT config (F9-funn S#6): a count or die-type
         // change made during the throw must not be reverted by this stale
-        // closure. Such a change also makes `final` the wrong length, and the
-        // shorter-or-longer list simply stops matching `count` — which is the
-        // empty state, not a wrong answer.
+        // closure. The TYPE guard is load-bearing, not belt-and-braces
+        // (0–9-gransking F1): a count change makes `final` the wrong length
+        // and falls into the empty state on its own, but a TYPE switched
+        // mid-flight keeps the length — and 0–9 ↔ 1–10 keeps the BODY too,
+        // so a committed 0 would sit under a 1–10 label as a value that die
+        // cannot even show (drawn as the «10» face by the value-lookup
+        // fallback). The roll belongs to the die it was thrown as.
         updateWidgetConfigBy(widget.id, (c) =>
-          c.kind === "dice" ? { ...c, lastRoll: final } : c,
+          c.kind === "dice" &&
+          c.faces === faces &&
+          (snapFaces(c.faces) === ZERO_BASED_FACES && c.zeroBased) === zeroBased
+            ? { ...c, lastRoll: final }
+            : c,
         );
       },
       reduced ? SCRAMBLE_MS : THROW_MS,
@@ -945,10 +974,11 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
           // changing is a different pool, and Preact rebuilding it is exactly
           // what should happen.
           <svg
-            key={`${faces}:${material}:${i}`}
+            key={`${faces}${zeroBased ? "z" : ""}:${material}:${i}`}
             class={styles.die}
             viewBox="0 0 100 100"
             data-solid={faces}
+            data-zero-based={zeroBased || undefined}
           >
             {facePool(solid, material, (part) =>
               dieDefId(`${widget.id}-${i}`, part),
@@ -995,7 +1025,9 @@ export function DiceWidget({ widget }: { widget: WidgetInstance }) {
           title={t("dice.look")}
           onClick={openLook}
         >
-          {tf("dice.facesLabel", { n: faces })}
+          {zeroBased
+            ? t("dice.facesLabelZero")
+            : tf("dice.facesLabel", { n: faces })}
         </button>
       </div>
     </div>

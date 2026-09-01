@@ -436,6 +436,18 @@ pub enum WidgetConfig {
         count: u32,
         #[serde(default = "default_dice_faces")]
         faces: u8,
+        /// The REAL ten-sided classroom die reads 0–9, not 1–10 (opposite
+        /// faces sum to 9): same body, the «10» face printed as a «0». Only
+        /// the d10 carries this flag — `normalize` clears it on every other
+        /// type, so the pair (faces, zero_based) IS the die type and there is
+        /// no such thing as a zero-based d6 in a stored layout.
+        ///
+        /// Downgrade accounting, same family as the `faces` note above: on a
+        /// pre-0.5.1 build the flag itself survives in `extra`, but that
+        /// build's roll clamp pins values to 1..=faces, so a persisted 0 is
+        /// rewritten as a 1 — value distortion, not data loss.
+        #[serde(default)]
+        zero_based: bool,
         #[serde(default)]
         last_roll: Vec<u8>,
         /// The colour family and the finish — APPEARANCE, not protocol. A
@@ -586,6 +598,7 @@ impl WidgetConfig {
             "dice" => Some(WidgetConfig::Dice {
                 count: default_dice_count(),
                 faces: default_dice_faces(),
+                zero_based: false,
                 last_roll: Vec::new(),
                 color: DieColor::default(),
                 material: DieMaterial::default(),
@@ -709,6 +722,7 @@ impl WidgetConfig {
             WidgetConfig::Dice {
                 count,
                 faces,
+                zero_based,
                 last_roll,
                 ..
             } => {
@@ -717,9 +731,21 @@ impl WidgetConfig {
                 // so snapping after the roll clamp would validate a 20 against
                 // a type that is about to become a 12.
                 *faces = snap_dice_faces(*faces);
+                // The 0–9 face set exists on the d10 alone; on any other body
+                // the flag is a stray a future or foreign writer left behind,
+                // and clearing it HERE is what lets every reader treat
+                // (faces, zero_based) as the die type without re-checking.
+                if *faces != 10 {
+                    *zero_based = false;
+                }
                 last_roll.truncate(DICE_MAX as usize);
+                let (lo, hi) = if *zero_based {
+                    (0, *faces - 1)
+                } else {
+                    (1, *faces)
+                };
                 for v in last_roll.iter_mut() {
-                    *v = (*v).clamp(1, *faces);
+                    *v = (*v).clamp(lo, hi);
                 }
                 // `color` and `material` add NO lines here, and that is the
                 // difference between an enum and a number — worth saying out
@@ -1303,6 +1329,7 @@ mod tests {
             let mut cfg = WidgetConfig::Dice {
                 count: 99,
                 faces,
+                zero_based: false,
                 last_roll,
                 color: DieColor::default(),
                 material: DieMaterial::default(),
@@ -1338,6 +1365,7 @@ mod tests {
         let mut cfg = WidgetConfig::Dice {
             count: once.0,
             faces: once.1,
+            zero_based: false,
             last_roll: once.2.clone(),
             color: DieColor::default(),
             material: DieMaterial::default(),
@@ -1348,6 +1376,59 @@ mod tests {
             serde_json::to_value(&cfg).unwrap()["faces"],
             serde_json::json!(12)
         );
+    }
+
+    /// The 0–9 die: the flag lives on the d10 alone, and the roll clamp
+    /// follows the face set — a stored 0 is a real answer there, not an
+    /// underflow to round up.
+    #[test]
+    fn the_zero_based_die_keeps_its_zero_and_no_other_type_keeps_the_flag() {
+        let clamped = |faces: u8, zero_based: bool, last_roll: Vec<u8>| {
+            let mut cfg = WidgetConfig::Dice {
+                count: 1,
+                faces,
+                zero_based,
+                last_roll,
+                color: DieColor::default(),
+                material: DieMaterial::default(),
+                extra: Default::default(),
+            };
+            cfg.clamp();
+            let WidgetConfig::Dice {
+                faces,
+                zero_based,
+                last_roll,
+                ..
+            } = cfg
+            else {
+                panic!("still dice");
+            };
+            (faces, zero_based, last_roll)
+        };
+
+        // The whole point: 0 survives on the 0–9 die, and 10 is off it.
+        assert_eq!(clamped(10, true, vec![0, 9, 10]), (10, true, vec![0, 9, 9]));
+        // Without the flag the 1..=10 rule stands, 0 and all.
+        assert_eq!(clamped(10, false, vec![0, 10]), (10, false, vec![1, 10]));
+        // A stray flag on any other body is cleared, and the roll is clamped
+        // by the rule that survives — snap first, flag next, values last.
+        assert_eq!(clamped(6, true, vec![0]), (6, false, vec![1]));
+        assert_eq!(clamped(16, true, vec![0]), (12, false, vec![1]));
+        // THE ORDER PIN. Every case above answers the same whether the flag
+        // is judged before or after the snap — a d11 is the one input that
+        // tells them apart: snapped first it IS a d10 and the flag stands.
+        // The TS read-seam mirrors (`snapFaces(faces) === 10` in DiceWidget
+        // and DieLookMenu) lean on exactly this order, so a reorder here
+        // would go green through every other case and split the tiers.
+        assert_eq!(clamped(11, true, vec![0]), (10, true, vec![0]));
+
+        // Absent in old JSON ⇒ false: yesterday's d10 is still 1–10.
+        let cfg: WidgetConfig =
+            serde_json::from_str(r#"{"kind":"dice","faces":10,"lastRoll":[10]}"#).unwrap();
+        let WidgetConfig::Dice { zero_based, .. } = cfg else {
+            panic!("still dice");
+        };
+        assert!(!zero_based);
     }
 
     /// A v0.3 config has no `faces` at all. It must read as a d6 — the type
@@ -1412,6 +1493,7 @@ mod tests {
         let mut chosen = WidgetConfig::Dice {
             count: 2,
             faces: 20,
+            zero_based: false,
             last_roll: vec![17, 3],
             color: DieColor::Slate,
             material: DieMaterial::Glass,
@@ -1484,6 +1566,7 @@ mod tests {
                 let mut cfg = WidgetConfig::Dice {
                     count: 99,
                     faces: 17,
+                    zero_based: false,
                     last_roll: vec![99, 99, 99, 99],
                     color,
                     material,

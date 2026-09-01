@@ -152,6 +152,7 @@
     "sum": "Sum: {n}",
     "faces": "Terningtype",
     "facesLabel": "D{n}",
+    "facesLabelZero": "0–9",
     "color": "Farge",
     "material": "Materiale",
     "look": "Utseende",

@@ -440,3 +440,18 @@ gjennom og tegnet ingenting (samme familie som R4s døde vakt). Nå setter
 `paintDie` attributtet FRA traiten og stilarket keyer på attributtet — traiten
 er load-bearing, og `die-paint.test.ts` pinner at DOM-en følger tabellen for
 alle fem materialene.
+
+**Terningtypen er PARET (faces, zeroBased) — 0–9-terningen (2026-09-01,
+eierønske).** Den ekte tierterningen leser 0–9, ikke 1–10. Modellert som et
+additivt bool-felt (aldri typebytte — R4-regelen), gyldig KUN på d10:
+`normalize` snapper faces FØRST og tvinger flagget av på alle andre kropper,
+og kastklemma følger tallrommet (0..=9 med flagg, ellers 1..=faces — en
+lagret 0 er et svar der, ikke en underflyt). Verdiene AVLEDES av 1–10-tabellen
+(minus én; motstående sum 9, hjørnebalansen uendret siden hvert hjørnesum
+faller med nøyaktig sitt fjesantall) — to hånd-tabeller én subtraksjon fra
+hverandre ville vært drift på vent. Bytte 0–9 ↔ 1–10 tømmer lastRoll som
+et kroppsbytte: paret ER tallrommet. Les-sømmen speiles i TS gjennom
+`snapFaces` (Rust snapper før den dømmer flagget — `faces === 10` rått
+ville vært uenig om en fremtidig d11). ⚠️ To feller runden fant: `map(solidFor)`
+sender INDEKSEN som zeroBased-argument (og indeks 3 ER d10); og 0 er falsy —
+`die-paint.test` pinner `data-face-up="0"` ved skrivesømmen.

@@ -174,10 +174,23 @@ async function openLook(page: Page, dice: Locator): Promise<Locator> {
   return panel;
 }
 
-/** Set the die type through the panel, and close it again. */
-async function setFaces(page: Page, dice: Locator, faces: number) {
+/** Set the die type through the panel, and close it again. `zero` picks the
+ *  0–9 reading — its pill shares `data-die-faces="10"` with the 1–10 one, so
+ *  the selector has to say WHICH d10 or strict mode rightly refuses. */
+async function setFaces(
+  page: Page,
+  dice: Locator,
+  faces: number,
+  zero = false,
+) {
   const panel = await openLook(page, dice);
-  await panel.locator(`[data-die-faces="${faces}"]`).click();
+  await panel
+    .locator(
+      zero
+        ? `[data-die-faces="${faces}"][data-die-zero]`
+        : `[data-die-faces="${faces}"]:not([data-die-zero])`,
+    )
+    .click();
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
 }
@@ -221,6 +234,63 @@ test("a throw lands, and the class finds the same answer after a restart", async
   await expect(
     page.locator('[data-widget-kind="dice"] svg[data-face-up]'),
   ).toHaveAttribute("data-face-up", landed!);
+});
+
+test("the 0–9 die rolls its whole range, zero included, and survives a reload", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+  await addWidget(page, "Terning");
+
+  const dice = page.locator('[data-widget-kind="dice"]');
+  const roll = dice.getByRole("button", { name: "Kast" });
+  await setFaces(page, dice, 10, true);
+
+  // The pair is the type: the body is the d10's, the reading is 0–9.
+  await expect(dice.locator("svg[data-solid]")).toHaveAttribute(
+    "data-solid",
+    "10",
+  );
+  await expect(dice.locator("svg[data-zero-based]")).toHaveCount(1);
+  // …and the trigger says so in the row.
+  await expect(dice.locator("[data-dice-look]")).toHaveText("0–9");
+
+  // Roll until the die shows a 0 — the value JavaScript calls falsy, which
+  // is exactly why THIS test insists on seeing it committed, published and
+  // reloaded rather than settling for «some value in range». Ten faces,
+  // twelve throws a run, three runs: odds of never meeting a 0 ≈ 2 %, and
+  // the loop stops at the first one.
+  let landed: string | null = null;
+  for (let i = 0; i < 36 && landed !== "0"; i++) {
+    await roll.click();
+    await expect(roll).toHaveAttribute("data-value", /^[0-9]$/);
+    landed = await roll.getAttribute("data-value");
+  }
+  expect(landed).toBe("0");
+
+  // The zero is an ANSWER: published as the up-face…
+  await expect(dice.locator("svg[data-face-up]")).toHaveAttribute(
+    "data-face-up",
+    "0",
+  );
+  // …and brought back by a restart (promise 2), still zero-based.
+  await page.reload();
+  const back = page.locator('[data-widget-kind="dice"]');
+  await expect(back.locator("[data-value]")).toHaveAttribute("data-value", "0");
+  await expect(back.locator("svg[data-face-up]")).toHaveAttribute(
+    "data-face-up",
+    "0",
+  );
+
+  // Switching the READING is a type change: 1–10 cannot show the 0 it would
+  // inherit, so the roll is cleared exactly as a body switch clears it.
+  await setFaces(page, back, 10, false);
+  await expect(back.getByRole("button", { name: "Kast" })).not.toHaveAttribute(
+    "data-value",
+    /.*/,
+  );
+  await expect(back.locator("svg[data-zero-based]")).toHaveCount(0);
 });
 
 test("the dice fly, and then hand the position back to the layout", async ({

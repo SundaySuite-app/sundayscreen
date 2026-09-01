@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ZERO_BASED_FACES,
+  DIE_TYPE_OPTIONS,
   dieFromU32,
   FACE_OPTIONS,
   PIP_FACES,
@@ -122,5 +124,37 @@ describe("PIPS", () => {
     for (let value = 1; value <= 6; value++) {
       expect(PIPS[value]).toHaveLength(value);
     }
+  });
+});
+
+describe("the 0–9 type", () => {
+  it("offers the pair list the picker draws — one zero-based entry, on the d10 alone", () => {
+    // Every Rust-pinned body appears exactly once as a 1..n type…
+    expect(
+      DIE_TYPE_OPTIONS.filter((o) => !o.zeroBased).map((o) => o.faces),
+    ).toEqual([...FACE_OPTIONS]);
+    // …and the zero-based reading exists only where a real die has one.
+    const zeroed = DIE_TYPE_OPTIONS.filter((o) => o.zeroBased);
+    expect(zeroed).toEqual([{ faces: ZERO_BASED_FACES, zeroBased: true }]);
+    expect(ZERO_BASED_FACES).toBe(10);
+  });
+
+  it("rolls 0..9 — fair shift of the fair draw, zero included", () => {
+    const seen = new Set<number>();
+    for (let raw = 0; raw < 40; raw++) {
+      const v = randomDie(10, () => raw, true);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(9);
+      seen.add(v);
+    }
+    expect(seen.size).toBe(10);
+    // The shift is the label's, not the sampler's: same draw, one apart.
+    expect(randomDie(10, () => 7, true)).toBe(randomDie(10, () => 7) - 1);
+  });
+
+  it("ignores the flag off the d10 — the snap decides the body first", () => {
+    expect(randomDie(6, () => 3, true)).toBe(randomDie(6, () => 3));
+    // A d100 config snaps to the d20 body, which has no zero-based reading.
+    expect(randomDie(100, () => 3, true)).toBe(randomDie(100, () => 3));
   });
 });

@@ -22,6 +22,35 @@ export const FACE_OPTIONS: readonly number[] = [4, 6, 8, 10, 12, 20];
  *  the back of the room recognises without reading it. */
 export const PIP_FACES = 6;
 
+/** The one body that exists in a ZERO-BASED reading: the real classroom
+ *  ten-sider is printed 0–9 (opposite faces sum to 9), and no other type has
+ *  such a convention to borrow. Mirrors `normalize` in layout.rs. */
+export const ZERO_BASED_FACES = 10;
+
+/**
+ * What the type row in the appearance panel offers, ASCENDING BY CEILING:
+ * `FACE_OPTIONS` (the Rust-pinned body list, above) crossed with the one
+ * zero-based reading. The die TYPE is the pair — a 1–10 and a 0–9 d10 share
+ * a body and nothing else about what a roll can say — which is why switching
+ * between them clears `lastRoll` exactly like switching bodies does.
+ *
+ * The 0–9 entry sits BEFORE the 1–10 one because its ceiling is lower — the
+ * same ladder logic the row already reads by.
+ */
+export interface DieTypeOption {
+  readonly faces: number;
+  readonly zeroBased: boolean;
+}
+export const DIE_TYPE_OPTIONS: readonly DieTypeOption[] = [
+  { faces: 4, zeroBased: false },
+  { faces: 6, zeroBased: false },
+  { faces: 8, zeroBased: false },
+  { faces: ZERO_BASED_FACES, zeroBased: true },
+  { faces: 10, zeroBased: false },
+  { faces: 12, zeroBased: false },
+  { faces: 20, zeroBased: false },
+];
+
 /**
  * The nearest offered type to `faces`; ties go to the LOWER one — the same
  * rule as Rust's `snap_dice_faces`, so the appearance panel ticks the same
@@ -73,7 +102,12 @@ function cryptoU32(): number {
 }
 
 /**
- * A fair die value in 1..=faces.
+ * A fair die value in 1..=faces — or 0..=faces−1 for the zero-based reading.
+ *
+ * The shift happens HERE, on the finished fair draw, not inside the sampling
+ * arithmetic: fairness is a property of the body (how many faces), the
+ * printing is a property of the label, and keeping them on separate lines is
+ * what lets the rejection maths stay untouched by the new type.
  *
  * `draw` is injectable so the rejection path is testable; the app always uses
  * OS entropy. The retry is CAPPED: the rejection tail is under one draw in
@@ -84,13 +118,15 @@ function cryptoU32(): number {
 export function randomDie(
   faces: number,
   draw: () => number = cryptoU32,
+  zeroBased = false,
 ): number {
   const sides = snapFaces(faces);
+  const shift = zeroBased && sides === ZERO_BASED_FACES ? 1 : 0;
   for (let i = 0; i < 16; i++) {
     const value = dieFromU32(draw(), sides);
-    if (value !== null) return value;
+    if (value !== null) return value - shift;
   }
-  return 1 + (Math.abs(draw()) % sides);
+  return 1 + (Math.abs(draw()) % sides) - shift;
 }
 
 // ── The face ────────────────────────────────────────────────────────────────

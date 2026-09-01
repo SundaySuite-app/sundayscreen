@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0-beta.2] — 2026-09-01
+
+- **Tierterningen 0–9** (eierønske): den ekte klasseroms-tierterningen —
+  samme kropp som D10, men fjesene leser 0 til 9 og motstående fjes
+  summerer til 9. Egen pille i utseendevelgeren («0–9», ved siden av D10);
+  bytte mellom 0–9 og 1–10 nullstiller kastet, akkurat som et kroppsbytte —
+  de to deler kropp men ikke tallrom. Null er et ekte svar: det kastes,
+  vises front-på og overlever omstart som alle andre tall.
+- Utseendevelgeren er målt om: sju typepiller på én rad (348 px panel — den
+  sjuende sto alene på egen linje).
+
 ## [0.5.0-beta.1] — 2026-08-31
 
 Runde 5 «Terningen i rommet». Der beta.2 ga terningen tykkelse, er dette

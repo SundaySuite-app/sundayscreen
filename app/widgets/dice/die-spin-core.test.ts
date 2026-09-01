@@ -373,9 +373,13 @@ describe("REST_TILT", () => {
     // The whole licence for tilting the resting die: the smallest angle
     // between two face normals is the d20's 41.8°, far beyond the ~17°
     // combined tilt — so the face the class should read stays the face
-    // pointing at them. Checked exhaustively, not trusted.
-    for (const sides of FACE_OPTIONS) {
-      const solid = solidFor(sides);
+    // pointing at them. Checked exhaustively, not trusted — the 0–9 die
+    // included, because its «0» is the value a truthiness slip would lose.
+    const bodies = [
+      ...FACE_OPTIONS.map((s) => solidFor(s)),
+      solidFor(10, true),
+    ];
+    for (const solid of bodies) {
       for (const face of solid.f) {
         const q = restOrientationForValue(solid, face.value);
         let best = -1;

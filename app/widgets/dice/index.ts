@@ -16,6 +16,7 @@ export const diceWidgetDef: WidgetDef = {
     // The ordinary school die. Mirrors `default_dice_faces()` in layout.rs —
     // a widget added here and one healed by the backend must be the same die.
     faces: PIP_FACES,
+    zeroBased: false,
     lastRoll: [],
     // The same mirror one axis over: `DieColor::default()` /
     // `DieMaterial::default()` in layout.rs. These are the two places a die

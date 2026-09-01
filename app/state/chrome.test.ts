@@ -48,6 +48,7 @@ function widget(id: string, kind: "dice" | "text"): WidgetInstance {
         ? {
             kind: "dice",
             count: 1,
+            zeroBased: false,
             faces: 6,
             lastRoll: [],
             color: "classic",

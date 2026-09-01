@@ -389,7 +389,7 @@ function canonicalOrder(planes: Plane[]): Plane[] {
   });
 }
 
-function buildSolid(sides: number): Solid {
+function buildSolid(sides: number, zeroBased = false): Solid {
   const v = verticesFor(sides);
   const planes = canonicalOrder(derivePlanes(v));
 
@@ -408,7 +408,15 @@ function buildSolid(sides: number): Solid {
         edgeDistance(c, v[ring[k]], v[ring[(k + 1) % ring.length]]),
       );
     }
-    return { v: ring, n, c, u, w, inr, value: FACE_VALUES[sides][i] };
+    return {
+      v: ring,
+      n,
+      c,
+      u,
+      w,
+      inr,
+      value: FACE_VALUES[sides][i] - (zeroBased ? 1 : 0),
+    };
   });
 
   // Every edge belongs to exactly two faces; the map is keyed on the vertex
@@ -434,7 +442,7 @@ function buildSolid(sides: number): Solid {
   return { sides, v, f, e };
 }
 
-const cache = new Map<number, Solid>();
+const cache = new Map<string, Solid>();
 
 /** The nearest offered type to `sides`; ties go to the LOWER one — the same
  *  rule `snapFaces` uses in `dice-core.ts`, so a newer version's d100 lands on
@@ -448,14 +456,28 @@ function snapSides(sides: number): number {
   return best;
 }
 
-/** The body for a die type, built on first use and kept. Everything on it is
- *  frozen in fact if not in type: callers read, never write. */
-export function solidFor(sides: number): Solid {
+/**
+ * The body for a die type, built on first use and kept. Everything on it is
+ * frozen in fact if not in type: callers read, never write.
+ *
+ * `zeroBased` is the REAL classroom ten-sider: the same trapezohedron with
+ * the «10» face printed as a «0», so every value shifts down by one and the
+ * opposite-face sum becomes 9 instead of 11. It is a RELABELLING, not a new
+ * numbering — corner balance is untouched because every vertex sum drops by
+ * exactly the vertex's own face count — which is why the values are derived
+ * from `FACE_VALUES[10]` here rather than authored a second time: two tables
+ * one subtraction apart would be a drift waiting for its round. Honoured for
+ * the d10 alone (the mirror of `normalize` in layout.rs — no other body has
+ * a zero-based convention to borrow).
+ */
+export function solidFor(sides: number, zeroBased = false): Solid {
   const key = snapSides(sides);
-  let solid = cache.get(key);
+  const zero = zeroBased && key === 10;
+  const cacheKey = zero ? `${key}z` : `${key}`;
+  let solid = cache.get(cacheKey);
   if (!solid) {
-    solid = buildSolid(key);
-    cache.set(key, solid);
+    solid = buildSolid(key, zero);
+    cache.set(cacheKey, solid);
   }
   return solid;
 }

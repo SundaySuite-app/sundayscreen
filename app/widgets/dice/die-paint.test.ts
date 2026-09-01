@@ -149,3 +149,19 @@ describe("data-face-up is only claimed by a die the class is reading", () => {
     expect("faceUp" in stub.dataset).toBe(false);
   });
 });
+
+describe("the 0–9 die's zero is an answer, not an absence", () => {
+  it('publishes data-face-up="0" when the zero face is turned at the room', () => {
+    // «0» is the one value JavaScript treats as falsy, so every truthiness
+    // shortcut between the solid and the attribute would erase exactly this
+    // die's most distinctive answer. Pinned at the paint seam, where the
+    // attribute is written.
+    const zero = solidFor(10, true);
+    const stub = stubSvg();
+    paintDie(stub.el, zero, restOrientationForValue(zero, 0), {
+      traits: MATERIAL_TRAITS.ivory,
+      poolKey: "10z:ivory",
+    });
+    expect(stub.dataset.faceUp).toBe("0");
+  });
+});

@@ -43,7 +43,20 @@ drawCount: number, } | { "kind": "groups", mode: GroupMode, n: number,
  * The last split, as NAMES — restored on boot so the class walks in
  * to the same groups the projector showed yesterday.
  */
-lastResult: Array<Array<string>>, } | { "kind": "dice", count: number, faces: number, lastRoll: Array<number>, 
+lastResult: Array<Array<string>>, } | { "kind": "dice", count: number, faces: number, 
+/**
+ * The REAL ten-sided classroom die reads 0–9, not 1–10 (opposite
+ * faces sum to 9): same body, the «10» face printed as a «0». Only
+ * the d10 carries this flag — `normalize` clears it on every other
+ * type, so the pair (faces, zero_based) IS the die type and there is
+ * no such thing as a zero-based d6 in a stored layout.
+ *
+ * Downgrade accounting, same family as the `faces` note above: on a
+ * pre-0.5.1 build the flag itself survives in `extra`, but that
+ * build's roll clamp pins values to 1..=faces, so a persisted 0 is
+ * rewritten as a 1 — value distortion, not data loss.
+ */
+zeroBased: boolean, lastRoll: Array<number>, 
 /**
  * The colour family and the finish — APPEARANCE, not protocol. A
  * roll stays true across a re-colour, which is why neither field

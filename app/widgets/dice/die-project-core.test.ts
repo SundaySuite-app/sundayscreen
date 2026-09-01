@@ -126,7 +126,10 @@ function frontFaces(view: DieView): number {
   return view.faces.filter((f) => f.front).length;
 }
 
-const all = SOLID_SIDES.map(solidFor);
+// `(s) => solidFor(s)`, never the bare reference: `map` hands the INDEX
+// as the second argument, and index 3 is exactly the d10 — the bare form
+// silently built the ZERO-BASED variant for it the day that existed.
+const all = SOLID_SIDES.map((s) => solidFor(s));
 
 describe("the camera", () => {
   it("is scaled so the WIDEST orientation exactly touches EDGE_PAD", () => {

@@ -23,7 +23,10 @@ import {
  *  real error is ~1e-16 and anything above 1e-12 is a BUG, not noise. */
 const EPS = 1e-12;
 
-const all = SOLID_SIDES.map(solidFor);
+// `(s) => solidFor(s)`, never the bare reference: `map` hands the INDEX
+// as the second argument, and index 3 is exactly the d10 — the bare form
+// silently built the ZERO-BASED variant for it the day that existed.
+const all = SOLID_SIDES.map((s) => solidFor(s));
 
 /** |a − b| as a fraction of b — the honest tolerance for a quantity whose
  *  own ulp is bigger than the absolute bound you would like to write. */
@@ -415,5 +418,75 @@ describe("the face grid — where pips and numerals actually land", () => {
     const radius = Math.hypot(halfWidth, em / 2);
     expect(radius).toBeLessThan(50);
     for (const s of all) expect(s.f[0].inr).toBeGreaterThan(0.3);
+  });
+});
+
+describe("the 0–9 die — a relabelling, not a new body", () => {
+  const one = solidFor(10);
+  const zero = solidFor(10, true);
+
+  it("prints every number 0..9 exactly once, opposite faces summing to 9", () => {
+    const values = zero.f.map((f) => f.value).sort((a, b) => a - b);
+    expect(values).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // The same opposite-pair derivation the 1–10 convention test uses:
+    // opposite = the face whose normal is the negation.
+    for (const face of zero.f) {
+      const opp = zero.f.find(
+        (g) => vLen(vAdd(face.n, g.n)) < 1e-9 && g !== face,
+      );
+      expect(opp).toBeDefined();
+      expect(face.value + opp!.value).toBe(9);
+    }
+  });
+
+  it("shares the 1–10 die's geometry vertex for vertex — only the printing differs", () => {
+    expect(zero.v.length).toBe(one.v.length);
+    zero.v.forEach((p, i) => {
+      expect(vLen(vSub(p, one.v[i]))).toBeLessThan(1e-12);
+    });
+    zero.f.forEach((f, i) => {
+      expect(f.v).toEqual(one.f[i].v);
+      expect(f.value).toBe(one.f[i].value - 1);
+    });
+  });
+
+  it("keeps the corner balance — every vertex sum drops by exactly its face count", () => {
+    // The spread (max − min of vertex sums, within one vertex degree) is
+    // invariant under a constant shift per face, so the 1–10 optimality
+    // proof carries over wholesale. Derived here rather than trusted.
+    const sums = (s: Solid) => {
+      const byVertex = new Map<number, number[]>();
+      s.f.forEach((f) => {
+        for (const vi of f.v) {
+          byVertex.set(vi, [...(byVertex.get(vi) ?? []), f.value]);
+        }
+      });
+      return byVertex;
+    };
+    const a = sums(one);
+    const b = sums(zero);
+    for (const [vi, list] of a) {
+      const shifted = b.get(vi)!;
+      expect(shifted.length).toBe(list.length);
+      expect(shifted.reduce((x, y) => x + y, 0)).toBe(
+        list.reduce((x, y) => x + y, 0) - list.length,
+      );
+    }
+  });
+
+  it("only the d10 has a zero-based reading — every other body ignores the flag", () => {
+    for (const sides of SOLID_SIDES) {
+      if (sides === 10) continue;
+      expect(solidFor(sides, true)).toBe(solidFor(sides));
+    }
+    // …and the two d10 readings are distinct cached bodies.
+    expect(zero).not.toBe(one);
+    expect(solidFor(10, true)).toBe(zero);
+  });
+
+  it("finds the zero face — the value JS treats as falsy is a real answer here", () => {
+    expect(faceForValue(zero, 0)).toBeGreaterThanOrEqual(0);
+    expect(faceForValue(zero, 10)).toBe(-1);
+    expect(faceForValue(one, 0)).toBe(-1);
   });
 });

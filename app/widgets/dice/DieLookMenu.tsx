@@ -65,7 +65,7 @@ import type { DieMaterial } from "../../bindings/DieMaterial";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tDyn, tf } from "../../i18n";
 import { updateWidgetConfigBy } from "../../state/layout";
-import { FACE_OPTIONS, snapFaces } from "./dice-core";
+import { DIE_TYPE_OPTIONS, ZERO_BASED_FACES, snapFaces } from "./dice-core";
 import { facePool, paintDie } from "./DiceWidget";
 import {
   dieDefId,
@@ -92,14 +92,20 @@ import styles from "./dice.module.css";
 function FinishSwatch({
   widgetId,
   faces,
+  zeroBased,
   material,
 }: {
   widgetId: string;
   faces: number;
+  zeroBased: boolean;
   material: DieMaterial;
 }) {
   const ref = useRef<SVGSVGElement | null>(null);
-  const solid = solidFor(faces);
+  // The zero flag travels with the body (0–9-gransking F2): the d10 idles
+  // pole-on with five faces past the mark gate, so these swatches DO show
+  // numbers — and «she is looking at the die she will get» means a 0–9
+  // teacher's swatches must not print a 10 her die does not have.
+  const solid = solidFor(faces, zeroBased);
   const traits = MATERIAL_TRAITS[material];
   const id = (part: string) => dieDefId(`${widgetId}-look-${material}`, part);
 
@@ -108,7 +114,7 @@ function FinishSwatch({
     if (!svg) return;
     paintDie(svg, solid, idleOrientationFor(solid), {
       traits,
-      poolKey: `${solid.sides}:${material}`,
+      poolKey: `${solid.sides}${zeroBased ? "z" : ""}:${material}`,
       grainId: (tone) => id(`grain${tone}`),
     });
   });
@@ -156,9 +162,14 @@ export function DieLookMenu({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
   if (cfg.kind !== "dice") return null;
   const faces = snapFaces(cfg.faces);
+  // Same read-seam mirror of layout.rs::normalize as the widget's own: the
+  // pair (faces, zeroBased) is the die type, and a stray flag on a non-d10
+  // must not tick the 0–9 pill.
+  const zeroBased = faces === ZERO_BASED_FACES && cfg.zeroBased;
 
   const write = (patch: {
     faces?: number;
+    zeroBased?: boolean;
     color?: DieColor;
     material?: DieMaterial;
   }) => {
@@ -168,11 +179,16 @@ export function DieLookMenu({ widget }: { widget: WidgetInstance }) {
             ...current,
             ...patch,
             // A TYPE change clears the roll — «5-5-6» under a D8 label is a
-            // lie about what the class just watched. Colour and finish do
-            // NOT: re-cutting the same die out of red glass does not change
-            // what it landed on, and clearing the answer would make choosing
-            // a colour a destructive act.
-            ...(patch.faces !== undefined && patch.faces !== current.faces
+            // lie about what the class just watched, and 1–10 ↔ 0–9 is a
+            // type change too: the pair is the value space, and a stored 10
+            // under a 0–9 label (or a 0 under a 1–10 one) is a number the
+            // die cannot even show. Colour and finish do NOT: re-cutting the
+            // same die out of red glass does not change what it landed on,
+            // and clearing the answer would make choosing a colour a
+            // destructive act.
+            ...((patch.faces !== undefined && patch.faces !== current.faces) ||
+            (patch.zeroBased !== undefined &&
+              patch.zeroBased !== (current.zeroBased ?? false))
               ? { lastRoll: [] }
               : {}),
           }
@@ -185,20 +201,27 @@ export function DieLookMenu({ widget }: { widget: WidgetInstance }) {
       <div class={styles.section} role="group" aria-label={t("dice.faces")}>
         <span class={styles.sectionLabel}>{t("dice.faces")}</span>
         <div class={styles.row}>
-          {FACE_OPTIONS.map((option, i) => (
+          {DIE_TYPE_OPTIONS.map((option, i) => (
             <button
-              key={option}
+              key={`${option.faces}${option.zeroBased ? "z" : ""}`}
               // Where the keyboard lands when the panel opens — the first
               // control of the first group, which is also where the eye
               // starts.
               ref={i === 0 ? firstTypeRef : undefined}
               class={styles.pill}
-              data-die-faces={option}
+              data-die-faces={option.faces}
+              data-die-zero={option.zeroBased || undefined}
               role="menuitemradio"
-              aria-checked={option === faces}
-              onClick={() => write({ faces: option })}
+              aria-checked={
+                option.faces === faces && option.zeroBased === zeroBased
+              }
+              onClick={() =>
+                write({ faces: option.faces, zeroBased: option.zeroBased })
+              }
             >
-              {tf("dice.facesLabel", { n: option })}
+              {option.zeroBased
+                ? t("dice.facesLabelZero")
+                : tf("dice.facesLabel", { n: option.faces })}
             </button>
           ))}
         </div>
@@ -253,6 +276,7 @@ export function DieLookMenu({ widget }: { widget: WidgetInstance }) {
               <FinishSwatch
                 widgetId={widget.id}
                 faces={faces}
+                zeroBased={zeroBased}
                 material={option}
               />
             </button>

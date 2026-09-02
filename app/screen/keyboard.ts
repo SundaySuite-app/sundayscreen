@@ -1,7 +1,8 @@
 // Global keys: F11 toggles fullscreen, Cmd/Ctrl+Z takes back the deletion the
 // snackbar is offering, and Escape peels ONE layer at a time (text field → a
-// widget's own popover → the add menu → class menu → an overlay panel → an
-// enlarged widget → fullscreen). Installed once from main.tsx.
+// widget's own popover → the add menu → class menu → the design session →
+// an overlay panel → an enlarged widget → fullscreen). Installed once from
+// main.tsx.
 
 import { attendancePanelOpen } from "../state/attendance";
 import { classMenuOpen, managePanelOpen } from "../state/classes";
@@ -10,6 +11,7 @@ import {
   addMenuOpen,
   closeWidgetOverlay,
 } from "../state/chrome";
+import { designSession, exitDesign } from "../state/design-session";
 import {
   clearFocus,
   focusedWidget,
@@ -17,7 +19,7 @@ import {
   undoSlot,
 } from "../state/layout";
 import { sceneMenuOpen } from "../state/scenes";
-import { plannerPanelOpen } from "../state/planner";
+import { closePlanner, plannerPanelOpen } from "../state/planner";
 import { chromeActivity, fullscreen, toggleFullscreen } from "../state/chrome";
 import { escapeTarget } from "./chrome-core";
 
@@ -73,6 +75,10 @@ export function installKeyboard(): () => void {
       widgetOverlayOpen: activeWidgetOverlay.peek() !== null,
       addMenuOpen: addMenuOpen.peek(),
       menuOpen: classMenuOpen.peek() || sceneMenuOpen.peek(),
+      // ABOVE the panel it lives in, on purpose: «gå ut av økta, bli i
+      // panelet». The ordering argument is in `chrome-core.ts`, where the
+      // rung is; here it is only a signal read.
+      designOpen: designSession.peek() !== null,
       // EVERY overlay belongs in here. An overlay the chain does not know
       // about reads as "nothing is open", and Escape then leaves
       // FULLSCREEN — the projector view goes away while the panel the
@@ -98,10 +104,20 @@ export function installKeyboard(): () => void {
         classMenuOpen.value = false;
         sceneMenuOpen.value = false;
         break;
+      case "design":
+        // The session ends; the panel stays. `exitDesign` flushes the design
+        // scene and hands the board back before it returns — the press is
+        // fire-and-forget because nothing after it depends on the answer.
+        void exitDesign();
+        break;
       case "overlay":
         managePanelOpen.value = false;
-        plannerPanelOpen.value = false;
         attendancePanelOpen.value = false;
+        // The planner has ONE door (state/planner.ts). The rung above means
+        // no session can still be running by the time we get here — but this
+        // is the second of the two closers the house knows about, and the
+        // rule is that neither of them sets the signal directly.
+        void closePlanner();
         break;
       case "focus":
         clearFocus();

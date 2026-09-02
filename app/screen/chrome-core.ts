@@ -30,8 +30,9 @@ export function shouldHide(
 }
 
 /** What one Escape press closes, in order: a widget's own popover, then the
- *  add menu, then the class menu, then the manage panel, then the enlarged
- *  widget, then fullscreen — one layer per press, innermost first.
+ *  add menu, then the class menu, then the design session, then the manage
+ *  panel, then the enlarged widget, then fullscreen — one layer per press,
+ *  innermost first.
  *
  *  «widgetoverlay» is OUTERMOST-first, above even the add menu, because it is
  *  the only layer that can be open over any of the others: it belongs to a
@@ -40,6 +41,23 @@ export function shouldHide(
  *  which clears both the focus scrim and the toolbar). Anywhere lower in this
  *  chain, the first Escape would have taken away the big card underneath it
  *  and left the panel standing.
+ *
+ *  «design» sits between the menus and «overlay», and that position is the
+ *  whole decision (Runde 6). The design session lives INSIDE the planner
+ *  panel — the panel is the `overlayOpen` rung — and it borrows the board's
+ *  globals while it runs. So:
+ *
+ *    - ABOVE «overlay», because Escape has to mean «leave the session, stay
+ *      in the panel». Below it, the first press would close the panel and the
+ *      session would be torn down by `closePlanner` on the way out: one press
+ *      would have undone two layers, and the teacher who pressed it to get
+ *      out of a screen she was editing would be back at the week grid — or,
+ *      worse, at the board.
+ *    - BELOW «widgetoverlay» and «addmenu», because both of those are things
+ *      the teacher opened INSIDE the design panel (the panel reuses
+ *      `addMenuOpen`, and a card on the little board has the same popover it
+ *      has on the wall). Peeling the session first would take the panel's
+ *      board away from under a menu that was still standing.
  *
  *  «focus» sits between the overlays and fullscreen, not innermost. A menu or
  *  a panel is drawn ON TOP of an enlarged card, so an inner focus rung would
@@ -50,6 +68,7 @@ export type EscapeLayer =
   | "widgetoverlay"
   | "addmenu"
   | "menu"
+  | "design"
   | "overlay"
   | "focus"
   | "fullscreen"
@@ -59,6 +78,8 @@ export function escapeTarget(state: {
   widgetOverlayOpen: boolean;
   addMenuOpen: boolean;
   menuOpen: boolean;
+  /** Is the planner BORROWING the board right now? (state/design-session.ts) */
+  designOpen: boolean;
   overlayOpen: boolean;
   focused: boolean;
   fullscreen: boolean;
@@ -66,6 +87,7 @@ export function escapeTarget(state: {
   if (state.widgetOverlayOpen) return "widgetoverlay";
   if (state.addMenuOpen) return "addmenu";
   if (state.menuOpen) return "menu";
+  if (state.designOpen) return "design";
   if (state.overlayOpen) return "overlay";
   if (state.focused) return "focus";
   if (state.fullscreen) return "fullscreen";

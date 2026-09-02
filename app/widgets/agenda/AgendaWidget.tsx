@@ -23,7 +23,11 @@ import {
 import { updateWidgetConfig, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import { toast } from "../../ui/toast";
-import { shownLesson } from "./agenda-widget-core";
+import {
+  agendaEntryForBlock,
+  blockSpan,
+  shownLesson,
+} from "./agenda-widget-core";
 import { LIMITS } from "@lib/limits.generated";
 import styles from "./agenda.module.css";
 
@@ -73,6 +77,25 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   const plan = todayPlan.value;
   const shown = shownLesson(plan, nowMin);
 
+  /**
+   * BLOCKS (Runde 6). A double lesson is ONE lesson with ONE plan, so every
+   * agenda read and write below goes through the block HEAD's period id.
+   *
+   * `shownLesson` already answers with the head, so today this is the same
+   * entry it was handed — which is exactly why it is spelled out rather than
+   * left implicit. «The list belongs to the head» is a decision
+   * (`agendaEntryForBlock` documents the alternative and why it lost), and a
+   * decision that is only true because of what some other function happens to
+   * return is a seam waiting to open the day that function changes.
+   *
+   * `span` is the block's clock window: A's start to the last tail's end,
+   * collapsing to the entry's own period for an ordinary lesson. It is what
+   * the header prints and what the now-marker counts from — a marker measured
+   * from the second half's start would jump backwards at the joint.
+   */
+  const agendaEntry = shown ? agendaEntryForBlock(plan, shown.entry) : null;
+  const span = shown ? blockSpan(plan, shown.entry) : null;
+
   // A half-typed line belongs to the LESSON it was typed under, and BOTH
   // halves of that key move while the widget stands untouched on a board: the
   // 30 s planner tick above flips `shown` the minute a lesson ends, and
@@ -87,8 +110,8 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   // the source is a key change either way, which is right — a line meant for
   // the widget must not follow the switch into the plan.
   const draftKey =
-    cfg.kind === "agenda" && cfg.source !== "manual" && plan && shown
-      ? `${plan.date}:${shown.entry.period.id}`
+    cfg.kind === "agenda" && cfg.source !== "manual" && plan && agendaEntry
+      ? `${plan.date}:${agendaEntry.period.id}`
       : "";
   useEffect(() => {
     setAddDraft("");
@@ -123,7 +146,9 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   // The lesson the field writes to, captured from the render the teacher is
   // looking at — never re-derived from the clock at write time, which could
   // land the line in the NEXT lesson if she pressed Enter across a boundary.
-  const periodId = shown?.entry.period.id ?? "";
+  // The BLOCK's key, so a line typed in the second half of a double lesson
+  // lands in the list she has been looking at since the first.
+  const periodId = agendaEntry?.period.id ?? "";
 
   /**
    * Replace-all with one row changed. Two disciplines, both load-bearing:
@@ -154,11 +179,14 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
   };
 
   const readFailed = todayReadFailed.value;
-  const listFull = (shown?.entry.agenda.length ?? 0) >= PLANNER_AGENDA_MAX;
+  const listFull = (agendaEntry?.agenda.length ?? 0) >= PLANNER_AGENDA_MAX;
 
   return (
     <div class={styles.agenda}>
-      {shown ? (
+      {/* All three or none: `agendaEntry` and `span` are derived from `shown`
+          and exist exactly when it does. Naming them in the condition is what
+          lets the branch below read them without a non-null assertion. */}
+      {shown && agendaEntry && span ? (
         <>
           <header class={styles.head}>
             {!shown.current && (
@@ -173,17 +201,18 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
               {shown.entry.lesson?.className && (
                 <b>{shown.entry.lesson.className} · </b>
               )}
-              {formatMin(shown.entry.period.startMin)}–
-              {formatMin(shown.entry.period.endMin)}
+              {/* The BLOCK's window, not the period's: a double lesson reads
+                  «08:30–10:00», which is when the class is actually in this
+                  room. No badge — the planner panel owns the «Dobbelttime»
+                  label; the widget only has to tell the truth about time. */}
+              {formatMin(span.startMin)}–{formatMin(span.endMin)}
             </span>
           </header>
           <ItemList
-            items={shown.entry.agenda}
+            items={agendaEntry.agenda}
             showTimes={cfg.showTimes}
-            lessonStartMin={shown.entry.period.startMin}
-            minutesInto={
-              shown.current ? nowMin - shown.entry.period.startMin : -1
-            }
+            lessonStartMin={span.startMin}
+            minutesInto={shown.current ? nowMin - span.startMin : -1}
             pinned={cfg.pinnedItemId}
             // A stale plan may not be REPLACED, so it may not be pruned from
             // either: the remove button is simply not there while the read is
@@ -211,7 +240,7 @@ export function AgendaWidget({ widget }: { widget: WidgetInstance }) {
               )
             }
           />
-          {shown.entry.agenda.length === 0 && (
+          {agendaEntry.agenda.length === 0 && (
             // A DOOR, like «ingen timeplan» further down: «planlegg timen i
             // planleggeren» was already an instruction, and the widget stands
             // in front of the class — so it opens the thing it asks for

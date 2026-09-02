@@ -28,7 +28,9 @@ import {
   lessonKeyInWindow,
   suggest,
 } from "../planner/suggest-core";
-import { shownLesson } from "../widgets/agenda/agenda-widget-core";
+import { blockEnd, shownLesson } from "../widgets/agenda/agenda-widget-core";
+import { designSession, exitDesign } from "./design-session";
+import { invalidateAllThumbs } from "./scene-thumbs";
 import { loadScenes, switchLesson } from "./scenes";
 import { settings } from "./settings";
 import { t } from "../i18n";
@@ -58,8 +60,30 @@ export const plannerHydrated = signal(false);
  */
 export function openPlanner(): void {
   plannerPanelOpen.value = true;
+  // Anything may have happened to the boards since the panel was last open —
+  // and a thumbnail whose read FAILED is remembered as failed rather than
+  // retried on every render (a dead backend behind forty cells is a spin, not
+  // a recovery). Opening the planner is therefore both the moment a stale
+  // picture is likely and the only retry those failed reads get.
+  invalidateAllThumbs();
   void refreshPlanner();
   void loadScenes();
+}
+
+/**
+ * The ONE way to close the planner — and the reason it is async.
+ *
+ * The design session BORROWS the board's globals (`state/design-session.ts`)
+ * while the panel covers the screen. Closing the panel around that borrow
+ * would leave the projector rendering the screen the teacher was preparing
+ * for Wednesday, with the class in front of it — so every closer goes through
+ * here, and `exitDesign` flushes the design scene and hands the board back
+ * BEFORE the panel goes away. With no session running it is a no-op, which is
+ * the point: the callers do not have to know.
+ */
+export async function closePlanner(): Promise<void> {
+  await exitDesign();
+  plannerPanelOpen.value = false;
 }
 
 export async function refreshPlanner(): Promise<void> {
@@ -134,14 +158,22 @@ export async function refreshToday(): Promise<void> {
  * joint — and «hvor lenge er det igjen av timen» must never be able to
  * disagree with the lesson the agenda widget has on the board.
  *
+ * The end is the BLOCK's, not the period's (Runde 6): across a double lesson
+ * «til timen slutter» has to hold all the way to B's end, or the timer would
+ * run out at A's bell while the lesson the widget still names is only half
+ * over — and the break lying between them is inside the block, not after it.
+ * `blockEnd` collapses to `period.endMin` for an ordinary lesson, so the
+ * single-period day is untouched.
+ *
  * Resolution is the planner's 30 s tick, so the answer can be up to half a
  * minute stale at a lesson boundary. That is the same staleness the agenda's
  * now-marker already lives with, and the timer clamps whatever it derives.
  */
 export const runningLessonEndMin = computed<number | null>(() => {
   const nowMin = minutesOfDay(new Date(plannerNowMs.value));
-  const shown = shownLesson(todayPlan.value, nowMin);
-  return shown?.current ? shown.entry.period.endMin : null;
+  const plan = todayPlan.value;
+  const shown = shownLesson(plan, nowMin);
+  return shown?.current ? blockEnd(plan, shown.entry) : null;
 });
 
 /** After ANY planner write — from the panel OR a widget's check-off: the
@@ -192,8 +224,17 @@ let bootStamp: BootStamp | null = null;
  *   - a lesson whose window we are inside is SETTLED even when the board
  *     already shows it, so a later manual switch is not yanked back;
  *   - a lesson that was already running at boot, ON BOOT DAY, is left alone.
+ *
+ * And a third, from Runde 6: not while the planner is BORROWING the board.
  */
 export function maybeAutoSwitch(): void {
+  // FIRST, before anything is read and — deliberately — before the key is
+  // settled. `switchLesson` would swap the globals out from under the design
+  // session, and the next debounced write would put the widgets the teacher
+  // is arranging for Wednesday into the RUNNING lesson's scene. Leaving the
+  // key unsettled is the other half: the automation has not had its say yet,
+  // so the first tick after «Ferdig» does what the rule says it should.
+  if (designSession.peek()) return;
   if (!settings.peek().autoSwitchScenes) return;
   // The plan, not just its key: the boot guard is decided against the DATE
   // the lesson was planned for, never the wall clock.

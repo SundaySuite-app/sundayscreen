@@ -10,6 +10,7 @@ import { t } from "../../i18n";
 import { formatMin } from "../../planner/date-core";
 import { plannerNowMs, todayPlan, todayReadFailed } from "../../state/planner";
 import { updateWidgetConfig } from "../../state/layout";
+import { blockEnd } from "../agenda/agenda-widget-core";
 import styles from "./today.module.css";
 
 export function TodayWidget({ widget }: { widget: WidgetInstance }) {
@@ -32,9 +33,16 @@ export function TodayWidget({ widget }: { widget: WidgetInstance }) {
   }).format(now);
 
   const plan = todayPlan.value;
+  // One row per LESSON, not per period (Runde 6). The resolver copies the
+  // head's lesson onto the second half of a double lesson, so an unfiltered
+  // list would draw «Norsk» twice — once at 08:30 and once at 09:20 — and
+  // read as two separate lessons to a class scanning the day.
   const lessons =
     plan?.entries.filter(
-      (e) => e.period.kind === "lesson" && e.lesson != null,
+      (e) =>
+        e.period.kind === "lesson" &&
+        e.lesson != null &&
+        e.continuation !== true,
     ) ?? [];
 
   return (
@@ -61,17 +69,30 @@ export function TodayWidget({ widget }: { widget: WidgetInstance }) {
                   : t("today.noLessons")}
             </li>
           ) : (
-            lessons.map((e) => (
-              <li key={e.period.id} class={styles.lesson}>
-                <span class={styles.time}>{formatMin(e.period.startMin)}</span>
-                <span class={styles.subject}>
-                  {e.lesson!.title || e.lesson!.subject || e.period.label}
-                </span>
-                {e.lesson!.className && (
-                  <span class={styles.className}>{e.lesson!.className}</span>
-                )}
-              </li>
-            ))
+            lessons.map((e) => {
+              // A merged head now stands for the tail's period too, so its
+              // start time alone would understate the day: the class reads
+              // «08:30» for something that runs to 10:00, with nothing in the
+              // list between. The end is added ONLY when the block actually
+              // reaches past this period — an ordinary lesson keeps the bare
+              // start time it has always had, and the row keeps its width.
+              const end = blockEnd(plan, e);
+              const merged = end !== e.period.endMin;
+              return (
+                <li key={e.period.id} class={styles.lesson}>
+                  <span class={styles.time}>
+                    {formatMin(e.period.startMin)}
+                    {merged && <>–{formatMin(end)}</>}
+                  </span>
+                  <span class={styles.subject}>
+                    {e.lesson!.title || e.lesson!.subject || e.period.label}
+                  </span>
+                  {e.lesson!.className && (
+                    <span class={styles.className}>{e.lesson!.className}</span>
+                  )}
+                </li>
+              );
+            })
           )}
         </ul>
       )}

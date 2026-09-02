@@ -7,7 +7,9 @@ import { signal } from "@preact/signals";
 import type { Scene } from "../bindings/Scene";
 import type { SceneTheme } from "../bindings/SceneTheme";
 import { adoptSwitch, classMenuOpen } from "./classes";
+import { exitDesign } from "./design-session";
 import { activeClass, activeScene, flushPending } from "./layout";
+import { invalidateThumb } from "./scene-thumbs";
 
 export const scenes = signal<Scene[]>([]);
 export const sceneMenuOpen = signal(false);
@@ -68,6 +70,15 @@ export async function switchLesson(
   classId: string,
   sceneId: string | null,
 ): Promise<void> {
+  // The BELT under the design session (Runde 6). `SuggestionBanner` returns
+  // null while a session runs, so the click that lands here should already be
+  // impossible — but this function is also the auto-switch's landing point and
+  // the scene menu's, and a lesson jump that swapped the globals mid-borrow
+  // would leave `exitDesign`'s restore holding a board that no longer exists,
+  // then hand it back over the lesson the jump had just chosen. FIRST, and
+  // before `flushPending`: exit does its own flush, under the DESIGN scene's
+  // id, which is the whole point of the ordering.
+  await exitDesign();
   await flushPending();
   const snap = await window.api.lessonSwitch(classId, sceneId);
   adoptSwitch(snap);
@@ -83,6 +94,11 @@ export async function saveCurrentAsScene(
   // would be missing from it (F-funn B7).
   await flushPending();
   const copy = await window.api.sceneDuplicate(currentSceneId, name);
+  // The copy's rows were written by the backend, not by this store, so the
+  // planner's thumbnail cache has never seen them. The call also bumps the
+  // cache's generation, which is what drops any `layout_load` that was in
+  // flight for this id when the copy landed.
+  invalidateThumb(copy.id);
   await loadScenes();
   await switchScene(copy.id);
 }
@@ -121,6 +137,10 @@ export async function setSceneTheme(theme: SceneTheme): Promise<void> {
 export async function deleteScene(id: string): Promise<void> {
   const wasActive = activeScene.peek()?.id === id;
   await window.api.sceneDelete(id);
+  // Drop the picture with the screen. A cache entry that outlives its scene
+  // would be handed to the next screen that happens to reuse the id — and,
+  // more immediately, keeps rows in memory for a board the teacher deleted.
+  invalidateThumb(id);
   await loadScenes();
   if (wasActive) await switchScene(null);
 }

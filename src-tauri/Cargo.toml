@@ -39,6 +39,14 @@ tauri-plugin-single-instance = "2"
 # plugin. Same shape as the updater, which has shipped that way since v0.1.
 # There is deliberately no npm counterpart: all file I/O stays in Rust.
 tauri-plugin-dialog = "2"
+# Handing ONE stored URL to the system browser, for the link widget alone.
+# Same Rust-only shape as the dialog above: `capabilities/default.json` gets
+# no `opener:*` entry, so the webview cannot invoke the plugin's own commands
+# (`plugin:opener|open_url`, `|open_path`, `|reveal_item_in_dir`) — it calls
+# our typed `link_open` with a widget ID, and Rust looks the address up.
+# There is deliberately no npm counterpart. Registered with a builder rather
+# than `init()`, and that is load-bearing: see the comment in lib.rs.
+tauri-plugin-opener = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

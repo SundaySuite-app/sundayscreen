@@ -302,6 +302,14 @@ pub const DEADLINE_TITLE_MAX_CHARS: usize = 120;
 pub const CHECKLIST_MAX_ITEMS: usize = 30;
 pub const CHECKLIST_TEXT_MAX_CHARS: usize = 200;
 
+/// Caps for the link widget. The title mirrors the deadline's cap — it is
+/// TEXT, and text that outgrows its box is cut to fit.
+pub const LINK_TITLE_MAX_CHARS: usize = 120;
+/// The URL's ceiling, and it is a very different kind of ceiling: a URL is a
+/// VALUE, not text. Over the cap it is CLEARED, never truncated — see
+/// [`sanitized_url`].
+pub const LINK_URL_MAX_CHARS: usize = 2000;
+
 /// Per-kind widget configuration. The serde tag IS the `kind` column value —
 /// a renamed variant is a broken database.
 ///
@@ -524,6 +532,24 @@ pub enum WidgetConfig {
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
     },
+    /// «Lenke» — a titled address the class can reach: the teacher clicks it
+    /// open on the board, the pupils scan the QR on their own devices.
+    ///
+    /// `url = ""` is the honest "not set yet" state (the deadline's
+    /// `target_epoch_ms = 0.0` precedent) — and it is also where every URL
+    /// this build refuses to vouch for ends up, because [`sanitized_url`]
+    /// CLEARS rather than repairs.
+    Link {
+        #[serde(default)]
+        title: String,
+        #[serde(default)]
+        url: String,
+        #[serde(default = "default_true_flag")]
+        show_qr: bool,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
+    },
 }
 
 fn default_true_flag() -> bool {
@@ -538,6 +564,66 @@ fn cap_name(name: &mut String) {
     if name.chars().count() > crate::members::NAME_MAX_CHARS {
         *name = name.chars().take(crate::members::NAME_MAX_CHARS).collect();
     }
+}
+
+/// Does `s` begin with `scheme`, ignoring ASCII case? Byte-wise on purpose:
+/// URL schemes are ASCII by definition, `eq_ignore_ascii_case` cannot be
+/// fooled by a Unicode case fold (`JaVaScRiPt:` is caught, and a Kelvin sign
+/// never becomes a `k`), and slicing a BYTE slice needs no char boundary.
+fn starts_with_scheme(s: &str, scheme: &str) -> bool {
+    let n = scheme.len();
+    s.len() > n && s.as_bytes()[..n].eq_ignore_ascii_case(scheme.as_bytes())
+}
+
+/// The ONE rule for a link widget's URL — the whole value is judged, and it
+/// either stands byte-for-byte or it is thrown away. `Some` carries the
+/// trimmed, accepted address; `None` means "this is not an address this app
+/// will vouch for".
+///
+/// Two call sites, deliberately, and the second is not redundant:
+/// - [`WidgetConfig::clamp`], which every load and every save runs, so a
+///   hostile transfer file or a hand-edited database can never put a
+///   `javascript:` URI on the screen; and
+/// - `link_open` in the Tauri shell, the gate that hands a string to the
+///   system browser. Transfer import writes widget configs RAW (it never
+///   round-trips them through this type), so the open gate cannot assume the
+///   clamp has already run on the bytes it is about to read. Defence in
+///   depth with a single spelling of the rule.
+///
+/// The rule, in order:
+/// 1. Trim the ends. Whitespace around a pasted address carries no content,
+///    and a teacher who pastes ` https://udir.no ` meant the address.
+/// 2. Only `http://` and `https://` (ASCII-case-insensitively), and there
+///    must be something after the scheme. Everything else — `javascript:`,
+///    `data:`, `file:`, `vbscript:`, a relative path, the empty string — is
+///    refused. This is the whole security value of the function.
+/// 3. NO control character anywhere in the trimmed value. A CR or LF inside
+///    a URL is smuggling, never a teacher's link.
+/// 4. Over [`LINK_URL_MAX_CHARS`] codepoints the value is REFUSED, not cut.
+///    This is the one place the widget's caps stop being "trim to fit", and
+///    the reason is worth spelling out: a truncated URL is a DIFFERENT
+///    resource wearing the same title. `https://skole.no/oppgaver/kapittel-4`
+///    cut mid-path can be a valid page about something else entirely, and the
+///    board would present it under the label the teacher wrote. An empty
+///    field says "not set", which is true; a shortened URL says something
+///    false.
+///
+/// Note what is NOT done: nothing is stripped OUT of the middle of the
+/// value. Removing "illegal" characters and keeping the rest is how a
+/// scrubber smuggles content past its own check; the whole value passes or
+/// the whole value goes.
+pub fn sanitized_url(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if !(starts_with_scheme(trimmed, "http://") || starts_with_scheme(trimmed, "https://")) {
+        return None;
+    }
+    if trimmed.chars().any(char::is_control) {
+        return None;
+    }
+    if trimmed.chars().count() > LINK_URL_MAX_CHARS {
+        return None;
+    }
+    Some(trimmed.to_string())
 }
 
 impl WidgetConfig {
@@ -556,6 +642,7 @@ impl WidgetConfig {
             WidgetConfig::Deadline { .. } => "deadline",
             WidgetConfig::Checklist { .. } => "checklist",
             WidgetConfig::Today { .. } => "today",
+            WidgetConfig::Link { .. } => "link",
         }
     }
 
@@ -634,6 +721,12 @@ impl WidgetConfig {
                 show_notes: true,
                 extra: Default::default(),
             }),
+            "link" => Some(WidgetConfig::Link {
+                title: String::new(),
+                url: String::new(),
+                show_qr: true,
+                extra: Default::default(),
+            }),
             _ => None,
         }
     }
@@ -652,7 +745,8 @@ impl WidgetConfig {
             | WidgetConfig::Agenda { extra, .. }
             | WidgetConfig::Deadline { extra, .. }
             | WidgetConfig::Checklist { extra, .. }
-            | WidgetConfig::Today { extra, .. } => extra,
+            | WidgetConfig::Today { extra, .. }
+            | WidgetConfig::Link { extra, .. } => extra,
         }
     }
 
@@ -800,6 +894,15 @@ impl WidgetConfig {
                 }
             }
             WidgetConfig::Today { .. } => {}
+            WidgetConfig::Link { title, url, .. } => {
+                if title.chars().count() > LINK_TITLE_MAX_CHARS {
+                    *title = title.chars().take(LINK_TITLE_MAX_CHARS).collect();
+                }
+                // Two caps, two different verbs, three lines apart — and that
+                // is the point. The title is TEXT and is cut to fit; the URL
+                // is a VALUE and is dropped whole. See `sanitized_url`.
+                *url = sanitized_url(url).unwrap_or_default();
+            }
         }
     }
 }
@@ -1093,7 +1196,7 @@ mod tests {
 
     #[test]
     fn clock_and_timer_kinds_round_trip_defaults() {
-        for kind in ["clock", "timer"] {
+        for kind in ["clock", "timer", "link"] {
             let cfg = WidgetConfig::default_for(kind).expect(kind);
             assert_eq!(cfg.kind(), kind);
             let json = serde_json::to_string(&cfg).unwrap();
@@ -1907,5 +2010,195 @@ mod tests {
             panic!("still a checklist");
         };
         assert!(items[0].extra.is_empty(), "and a plain row buffers nothing");
+    }
+
+    // ── The link widget's URL: the one field that is a security boundary ────
+
+    fn link(url: &str) -> WidgetConfig {
+        WidgetConfig::Link {
+            title: String::new(),
+            url: url.to_string(),
+            show_qr: true,
+            extra: Default::default(),
+        }
+    }
+
+    fn clamped_url(url: &str) -> String {
+        let mut cfg = link(url);
+        cfg.clamp();
+        let WidgetConfig::Link { url, .. } = cfg else {
+            panic!("still a link");
+        };
+        url
+    }
+
+    /// The table the whole widget rests on. `None` in the second column means
+    /// "must end up EMPTY" — the clamp never repairs a URL, it drops it.
+    ///
+    /// Every row is a shape that can actually reach this function: a hostile
+    /// «flytt oppsettet»-file, a hand-edited database, a paste that brought
+    /// its whitespace along.
+    #[test]
+    fn only_an_http_url_survives_the_clamp() {
+        let cases: &[(&str, Option<&str>)] = &[
+            // The attack the widget exists to refuse. An `<a href>` would
+            // have executed this in the webview; the card has none, and the
+            // value never even reaches the open gate.
+            ("javascript:alert(1)", None),
+            ("JaVaScRiPt:alert(1)", None),
+            ("  javascript:alert(1)  ", None),
+            ("data:text/html;base64,PHNjcmlwdD4=", None),
+            ("file:///etc/passwd", None),
+            ("vbscript:msgbox(1)", None),
+            // Not a scheme at all.
+            ("", None),
+            ("   ", None),
+            ("udir.no", None),
+            ("/oppgaver/kapittel-4", None),
+            ("//evil.example", None),
+            // A scheme and nothing behind it is not an address.
+            ("http://", None),
+            ("https://", None),
+            // Whitespace a paste brought along is trimmed — the teacher meant
+            // the address, and the address is what stands.
+            (" http://udir.no ", Some("http://udir.no")),
+            ("\thttps://udir.no\n", Some("https://udir.no")),
+            // …but a control character INSIDE the value is smuggling, and the
+            // whole value goes. Note what does NOT happen: the newline is not
+            // removed and the rest kept, because that is exactly how a
+            // scrubber launders a payload past its own check.
+            ("http://udir.no\n.evil.example", None),
+            ("http://udir\r\n.no", None),
+            ("http://udir\u{0}.no", None),
+            // Case belongs to the scheme test, never to the value.
+            ("HTTPS://Udir.NO/Oppgaver", Some("HTTPS://Udir.NO/Oppgaver")),
+            // The ordinary link a teacher pastes, byte for byte.
+            (
+                "https://www.udir.no/laring-og-trivsel/?q=lek#start",
+                Some("https://www.udir.no/laring-og-trivsel/?q=lek#start"),
+            ),
+        ];
+        for (raw, want) in cases {
+            assert_eq!(
+                clamped_url(raw),
+                want.unwrap_or_default(),
+                "clamping {raw:?}"
+            );
+            assert_eq!(
+                sanitized_url(raw).as_deref(),
+                *want,
+                "…and the shared rule agrees ({raw:?})"
+            );
+        }
+    }
+
+    /// The cap that CLEARS instead of cutting. A URL trimmed to fit is a
+    /// different resource wearing the teacher's title, which is worse than an
+    /// empty field: the empty field is true.
+    #[test]
+    fn an_over_long_url_is_cleared_never_shortened() {
+        let long = format!("https://skole.no/{}", "a".repeat(LINK_URL_MAX_CHARS));
+        assert!(long.chars().count() > LINK_URL_MAX_CHARS);
+        assert_eq!(clamped_url(&long), "");
+
+        // …and the row exactly ON the cap still stands, so the boundary is
+        // pinned from both sides rather than "somewhere around 2000".
+        let head = "https://skole.no/";
+        let at_cap = format!(
+            "{head}{}",
+            "a".repeat(LINK_URL_MAX_CHARS - head.chars().count())
+        );
+        assert_eq!(at_cap.chars().count(), LINK_URL_MAX_CHARS);
+        assert_eq!(clamped_url(&at_cap), at_cap);
+    }
+
+    /// Codepoints, not bytes — the same counting rule every other cap in this
+    /// file uses. A URL of 2000 non-ASCII characters is 2000 characters.
+    #[test]
+    fn the_url_cap_counts_codepoints() {
+        let head = "https://skole.no/";
+        let at_cap = format!(
+            "{head}{}",
+            "æ".repeat(LINK_URL_MAX_CHARS - head.chars().count())
+        );
+        assert!(
+            at_cap.len() > LINK_URL_MAX_CHARS,
+            "…and it is longer in BYTES"
+        );
+        assert_eq!(clamped_url(&at_cap), at_cap);
+    }
+
+    #[test]
+    fn the_link_title_is_cut_to_fit_like_every_other_title() {
+        let mut cfg = WidgetConfig::Link {
+            title: "æ".repeat(LINK_TITLE_MAX_CHARS + 40),
+            url: "https://udir.no".to_string(),
+            show_qr: false,
+            extra: Default::default(),
+        };
+        cfg.clamp();
+        let WidgetConfig::Link {
+            title,
+            url,
+            show_qr,
+            ..
+        } = cfg
+        else {
+            panic!("still a link");
+        };
+        assert_eq!(title.chars().count(), LINK_TITLE_MAX_CHARS);
+        assert_eq!(url, "https://udir.no", "a good URL is never touched");
+        assert!(!show_qr, "and the flag the teacher set stands");
+    }
+
+    /// Clamp runs on every load AND every save, so it runs twice on the same
+    /// value all the time. A second pass must change nothing.
+    #[test]
+    fn clamping_a_link_twice_changes_nothing() {
+        for raw in [
+            "https://udir.no/side",
+            "javascript:alert(1)",
+            " http://udir.no ",
+            "",
+        ] {
+            let mut cfg = link(raw);
+            cfg.clamp();
+            let once = cfg.clone();
+            cfg.clamp();
+            assert_eq!(cfg, once, "clamping {raw:?} is idempotent");
+        }
+    }
+
+    /// ADR-007 for the new kind: a field a NEWER version wrote survives the
+    /// round trip, and the scrub of the URL beside it does not take it along.
+    #[test]
+    fn a_links_unknown_fields_survive_the_round_trip() {
+        let inst = row_to_instance(
+            "w1",
+            "link",
+            0.2,
+            0.2,
+            0.4,
+            0.3,
+            0,
+            r#"{"kind":"link","title":"Oppgaver","url":"javascript:alert(1)","showQr":false,"qrLogo":"skole"}"#,
+        )
+        .expect("a link row renders");
+
+        let json = serde_json::to_string(&inst.config).unwrap();
+        let out: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(out["title"], serde_json::json!("Oppgaver"));
+        assert_eq!(
+            out["url"],
+            serde_json::json!(""),
+            "the hostile URL was cleared on the way in"
+        );
+        assert_eq!(out["showQr"], serde_json::json!(false));
+        assert_eq!(
+            out["qrLogo"],
+            serde_json::json!("skole"),
+            "and the newer version's field is still on the row"
+        );
+        assert_eq!(json.matches("\"kind\"").count(), 1);
     }
 }

@@ -62,6 +62,42 @@ pub fn run() {
     // the plugin being unseen.
     let builder = builder.plugin(tauri_plugin_dialog::init());
 
+    // The system browser, for the link widget's ONE action. Same Rust-only
+    // shape as the dialog above: `opener:*` is absent from
+    // `capabilities/default.json`, so Tauri's ACL denies the plugin's own
+    // three commands (`plugin:opener|open_url`, `|open_path`,
+    // `|reveal_item_in_dir`) to the webview. What the page can call is
+    // `link_open`, which takes a WIDGET ID and reads the address out of the
+    // database — the webview never names a URL.
+    //
+    // `Builder::new().open_js_links_on_click(false)` rather than the usual
+    // `init()`, and this is the part that had to be READ rather than assumed
+    // (the dialog plugin taught this file that "invisible to the webview" can
+    // be simply untrue). `tauri_plugin_opener::init()` is
+    // `Builder::default().build()`, and that default is `true`
+    // (tauri-plugin-opener-2.5.5/src/lib.rs:185-191) — it injects
+    // `init-iife.js` into EVERY page, and that script adds a global `click`
+    // listener which walks `composedPath()` for an `<a>`, and for any anchor
+    // with `target="_blank"` — or ANY anchor at all when Ctrl or Shift is
+    // held — calls `preventDefault()` and fires `plugin:opener|open_url`
+    // with the href.
+    //
+    // The ACL would reject that invoke, so nothing would open. But the
+    // `preventDefault()` happens FIRST and unconditionally, so a Ctrl-click
+    // on an ordinary in-app anchor would be silently cancelled — and only on
+    // Windows, where the page is served from `http://tauri.localhost`; on
+    // macOS the `tauri:` scheme fails the script's own protocol test and the
+    // click behaves normally. A platform-divergent swallowed click, bought
+    // for a feature this app does not use: the link widget's click surface is
+    // a BUTTON, and `app/` has no external `<a href>` at all. So the script
+    // is not injected, and the posture rests on what is registered rather
+    // than on what an ACL happens to refuse.
+    let builder = builder.plugin(
+        tauri_plugin_opener::Builder::new()
+            .open_js_links_on_click(false)
+            .build(),
+    );
+
     // The staged update lives OUTSIDE the builder because two places need it:
     // `setup` (which manages it and hands a clone to the boot check) and the
     // run closure below (which installs what is in it on the way out).
@@ -287,6 +323,7 @@ pub fn run() {
             commands::classes::members_set,
             commands::layout::layout_load,
             commands::layout::layout_save,
+            commands::links::link_open,
             commands::scenes::scene_list,
             commands::scenes::scene_create,
             commands::scenes::scene_rename,

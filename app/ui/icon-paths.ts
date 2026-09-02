@@ -90,6 +90,21 @@ export const ICON_PATHS = {
     "M16 3v4",
     "M10.6 13.25h2.8v2.8h-2.8z",
   ],
+  // Two chain links on the 45° diagonal. Each is an open "U": two parallel
+  // sides closed by an exact semicircle (r = 3.6, so the chord is 7.2 and
+  // the arc meets the straight sides tangentially — no kink at the joint).
+  //
+  // The sides are DELIBERATELY unequal, and that asymmetry is the whole
+  // icon. Every side lies on one of the two lines 3.6 either side of the
+  // diagonal, so a symmetric pair of U's puts both links' sides on top of
+  // each other and the thing renders as one plain capsule — measured, not
+  // guessed: the first draft did exactly that. Giving each link one long
+  // side (which crosses the middle) and one short one staggers the two
+  // gaps, and the eye reads two links passing through one another.
+  link: [
+    "M12.42 6.48L13.41 5.49a3.6 3.6 0 0 1 5.1 5.1L12.99 16.1",
+    "M11.58 17.52L10.59 18.51a3.6 3.6 0 0 1-5.1-5.1L11.01 7.9",
+  ],
   // ------------------------------------------------ sibling-track surfaces
   scene: [
     "M8.5 3.75H19A1.25 1.25 0 0 1 20.25 5v10.5",

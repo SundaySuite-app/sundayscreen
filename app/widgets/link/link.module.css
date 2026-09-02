@@ -1,0 +1,119 @@
+.link {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2cqmin;
+  padding: 4cqmin;
+}
+
+/* The title is the thing the class reads first, so it is the big text here —
+   the deadline spends its size on a numeral, this widget spends it on the
+   word. `cqw` rather than `cqmin`: a link card is typically wide and short,
+   and a title that shrinks with the HEIGHT would be a whisper in exactly the
+   shape a teacher drags it into. */
+.title {
+  border: none;
+  background: none;
+  padding: 0.5cqmin 2cqmin;
+  border-radius: var(--r-sm);
+  font-size: 11cqw;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink);
+  cursor: text;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.title:hover {
+  background: var(--gold-soft);
+}
+
+.titleInput {
+  width: 90%;
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--gold-line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 7cqmin;
+  text-align: center;
+}
+
+/* THE CLICK SURFACE — a button, never an anchor (see LinkWidget.tsx). It is
+   drawn as a soft pill so it reads as pressable from the back of the room,
+   and it keeps its shape when disabled: a control that changes into plain
+   text when there is nothing to open would hide the fact that a link widget
+   is what the teacher is looking at. */
+.open {
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 1cqmin 3cqmin;
+  min-height: 36px;
+  border: 1px solid var(--gold-line);
+  border-radius: var(--r-pill);
+  background: var(--gold-soft);
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.open:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.open:disabled {
+  border-color: var(--line);
+  background: none;
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.host {
+  display: block;
+  font-size: 5.5cqw;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.qrHint {
+  margin: 0;
+  font-size: 4.5cqw;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* The URL input lives in the shell's hover row, which sizes itself to its
+   content — an unconstrained text field would push the row past the card. */
+.urlInput {
+  width: 22ch;
+  max-width: 40vw;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  background: var(--surface);
+  text-align: left;
+}
+
+/* Squeezed short, the host line is the first thing to go: the TITLE is what
+   the class reads, and «udir.no» stacked under it in a 120 px card just
+   crowds it. The click surface itself does NOT go — it is the entire point of
+   the widget — it falls back to its icon, keeping its 36 px target and its
+   accessible name («Åpne lenken»). The card is `container-type: size`
+   (WidgetShell), so this queries the card itself.
+   (The QR code's own degradation is W3's — it hangs off the WIDTH, not the
+   height, and belongs beside the element it hides.) */
+@container (max-height: 160px) {
+  .host,
+  .qrHint {
+    display: none;
+  }
+}

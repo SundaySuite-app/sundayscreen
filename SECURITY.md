@@ -76,6 +76,20 @@ IT-managed. Trust boundaries the app has to defend at:
   `app/security-sync.test.ts`. Nothing the app loads is remote content, so
   there is no page in the webview that an attacker controls and could use
   to reach a Tauri command it should not.
+- **The system browser** — an _outbound_ boundary, and the app's only way to
+  hand something to another program. The link widget («Lenke») stores a
+  teacher-typed address and opens it on click. Three properties bound it:
+  it happens **only on a click**, never automatically and never at boot;
+  the webview sends a **widget ID**, never a URL, so the address opened is
+  the one in the database rather than one the page chose; and only
+  `http://` and `https://` addresses exist to open at all, enforced twice
+  (`sanitized_url` in `crates/sundayscreen-core/src/layout.rs`, once on
+  every load and save, and again in `link_open` immediately before the
+  hand-off). The second enforcement is not redundant: «flytt oppsettet»
+  imports widget configs as raw JSON, so a hostile setup file can put bytes
+  in the database that the clamp has not yet seen. What leaves the machine
+  is the URL and whatever the browser then sends — never a pupil name,
+  which no widget config carries.
 
 **Non-goals:**
 
@@ -114,11 +128,54 @@ So a future auditor doesn't have to re-derive these from scratch:
   allows `unsafe-inline` for CSS only. Duplicated between
   `tauri.conf.json` and `app/index.html`'s meta tag, with a sync test
   (`app/security-sync.test.ts`) so the two cannot silently drift.
-- **A minimal capability set.** `src-tauri/capabilities/default.json` grants
-  only window-management permissions (minimize, maximize, fullscreen,
-  position/size) — no filesystem, no shell, no dialog access from the
-  webview. All database and settings I/O happens through typed Tauri
-  commands, never a general-purpose file or shell bridge.
+- **A minimal capability set, and plugins the webview cannot call.**
+  `src-tauri/capabilities/default.json` grants only window-management
+  permissions (minimize, maximize, fullscreen, position/size). It has
+  never granted anything else, and the file is untouched by every feature
+  described below.
+
+  Plugins with real capabilities are nevertheless registered in
+  `src-tauri/src/lib.rs`: the updater (under the `updater` feature), the
+  native file dialog (for «flytt oppsettet») and the opener (for the link
+  widget). No `updater:*`, `dialog:*` or `opener:*` permission appears in
+  the capability file, so Tauri's ACL **denies** every one of their own
+  IPC commands to the page — `plugin:dialog|open`, `plugin:dialog|save`,
+  `plugin:opener|open_url`, `plugin:opener|open_path` and
+  `plugin:opener|reveal_item_in_dir` included. The webview reaches their
+  functionality only through this app's own typed commands, and those take
+  **identifiers, not paths or URLs**: `transfer_export` /
+  `transfer_import` open the dialog in Rust and the page never learns the
+  chosen path; `link_open` takes a widget ID and reads the address out of
+  the database. There is still no general-purpose file, shell or "open
+  anything" bridge — and that is now a claim about argument shapes, not
+  about which plugins happen to be linked in.
+
+  What a plugin _does_ put in the page is worth naming rather than
+  assuming, because one of them surprised us. `tauri_plugin_dialog::init()`
+  injects a script that replaces `window.alert` and `window.confirm` with
+  IPC calls (the replaced `confirm` returns a Promise, which is always
+  truthy — `if (confirm(…))` would take the yes branch); nothing in `app/`
+  calls either global. The opener plugin has the same habit: its `init()`
+  would inject a global click handler that routes `<a target="_blank">` —
+  and any Ctrl- or Shift-clicked anchor — through `plugin:opener|open_url`,
+  cancelling the click first and only then hitting the ACL denial, which
+  swallows Ctrl-clicks on Windows (where the page is served over
+  `http://tauri.localhost`) but not on macOS (`tauri:`). It is registered
+  with `Builder::new().open_js_links_on_click(false)` instead, so that
+  script is **not** injected at all. The app has no external `<a href>`
+  for it to act on either: the link widget's click surface is a `<button>`,
+  pinned by `e2e/link.spec.ts`.
+
+- **The one URL rule, spelled once.** `sanitized_url`
+  (`crates/sundayscreen-core/src/layout.rs`) accepts `http://` and
+  `https://` only, refuses any control character, and **clears** rather
+  than truncates a URL over its cap — a shortened URL is a different
+  resource wearing the teacher's title. It runs inside `clamp`, which every
+  layout load and every layout save calls, and again inside `link_open`
+  before the address reaches the operating system. A `javascript:` or
+  `file:` URI planted by a hand-edited database or a hostile setup file
+  therefore never renders and never opens (`layout.rs` and
+  `src-tauri/src/commands/links.rs` both carry the table tests).
 - **Updater signature verification.** Tauri's built-in updater verifies a
   minisign signature on every downloaded update before installing it —
   a build without a valid signature for the pinned pubkey is refused, full

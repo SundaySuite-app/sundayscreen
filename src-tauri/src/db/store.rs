@@ -833,6 +833,36 @@ where
         .collect())
 }
 
+/// ONE widget row, by id alone — no scene, no class. Sibling to
+/// [`load_widget_rows`] and generic over the executor for the same reason.
+///
+/// `link_open` is the caller, and the shape of this function IS the security
+/// contract it rests on: the webview names a WIDGET, never a URL, so the id
+/// has to be turned back into stored bytes before anything can be opened. A
+/// scene-scoped lookup would have forced the webview to name the scene too —
+/// one more caller-supplied value on a path whose whole point is that the
+/// caller supplies as little as possible.
+pub async fn get_widget_row<'e, E>(executor: E, id: &str) -> AppResult<Option<WidgetRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    let row =
+        sqlx::query("SELECT id, kind, x, y, w, h, z, config FROM widget_instance WHERE id = ?1")
+            .bind(id)
+            .fetch_optional(executor)
+            .await?;
+    Ok(row.map(|r| WidgetRow {
+        id: r.get("id"),
+        kind: r.get("kind"),
+        x: r.get("x"),
+        y: r.get("y"),
+        w: r.get("w"),
+        h: r.get("h"),
+        z: r.get("z"),
+        config: r.get("config"),
+    }))
+}
+
 /// Replace a SCENE's entire layout in one transaction — idempotent and
 /// atomic: a failed insert rolls the delete back, so a crash mid-save can
 /// never leave a mixed layout. Scene-scoped on purpose: saving scene A must

@@ -25,6 +25,8 @@ export const LIMITS = {
   DEADLINE_TITLE_MAX_CHARS: 120,
   CHECKLIST_MAX_ITEMS: 30,
   CHECKLIST_TEXT_MAX_CHARS: 200,
+  LINK_TITLE_MAX_CHARS: 120,
+  LINK_URL_MAX_CHARS: 2000,
 
   // crates/sundayscreen-core/src/schedule.rs
   LABEL_MAX_CHARS: 80,

@@ -13,17 +13,32 @@
 // enten en falsk regresjon ingen kan reprodusere lokalt, eller en falsk grønn
 // som skjuler en ekte økning. Rå filstørrelse er den samme overalt.
 //
-// Budsjetter (målt 2026-08-31, etter 3D-terningen: 178 700 / 58 138 /
-// 302 359 B — margin nå 6 300 / 6 862 / 17 641 B):
-//   - største enkelt-JS-fil   ≤ 185 000 B
+// Budsjetter (målt 2026-09-02, R6-bølge W2 «lenke-widgeten»: 187 237 /
+// 62 133 / 315 889 B — margin nå 4 763 / 2 867 / 4 111 B):
+//   - største enkelt-JS-fil   ≤ 192 000 B
 //   - største enkelt-CSS-fil  ≤  65 000 B
 //   - HELE dist/, alle filer  ≤ 320 000 B
 //
-// ⚠️ Marginen er ikke lenger romslig. Taket ble BEVISST stående da terningens
-// 3D-motor landet (ADR-015): en gate skal gjøre vekst SYNLIG, ikke forby
-// planlagt vekst — men den neste runden som trenger plass må heve tallet med
-// et MÅLT tall i denne docstringen, aldri flytte kode mellom chunks for å
-// komme under (det er å spille gaten, ikke å bestå den).
+// Forrige måling: 2026-08-31, etter 3D-terningen — 178 700 / 58 138 /
+// 302 359 B under taket 185 000 / 65 000 / 320 000.
+//
+// JS-taket ble hevet fordi målingen sprengte det, med tallet foran seg og
+// ~5,5 kB margin over: R6 la til lenke-widgeten (mappe + ikon +
+// registry-linje) og, i samme arbeidstre, planlegger- og agendaarbeidet fra
+// de parallelle bølgene. Delta-en er altså RUNDENS, ikke én mappes — en
+// isolert måling ville krevd et bygg med registry-linja fjernet, og det er
+// ikke verdt å bryte treet for mens andre bygger i det.
+//
+// ⚠️ CSS- og dist-marginene er nå de trangeste (2,9 / 4,9 kB), og det er
+// TOTALEN som ryker først: QR-koden (W3) kommer som en egen lazy chunk og
+// teller i dist-totalen selv om den aldri rører index-chunken. Den bølgen
+// må måle på nytt og heve `DIST_TOTAL_MAX` med sitt eget tall.
+//
+// Regelen står: et tak heves med et MÅLT tall og en dato i denne
+// docstringen, aldri ved å flytte kode mellom chunks for å komme under (det
+// er å spille gaten, ikke å bestå den). En egen chunk er lov når den er en
+// ekte lastegrense — `en.json` er presedensen (app/lib/i18n.ts) — men da
+// teller den fortsatt i totalen, og det er nettopp derfor totalen finnes.
 //
 // FORUTSETNING: dist/ er FERSK. Dette skriptet bygger IKKE selv — det leser
 // bare det som ligger der fra sist. Kjør `npm run build` rett før, i samme
@@ -39,7 +54,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(root, "dist");
 
-const LARGEST_JS_MAX = 185_000;
+const LARGEST_JS_MAX = 192_000;
 const LARGEST_CSS_MAX = 65_000;
 const DIST_TOTAL_MAX = 320_000;
 

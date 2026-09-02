@@ -13,26 +13,42 @@
 // enten en falsk regresjon ingen kan reprodusere lokalt, eller en falsk grønn
 // som skjuler en ekte økning. Rå filstørrelse er den samme overalt.
 //
-// Budsjetter (målt 2026-09-02, R6-bølge W2 «lenke-widgeten»: 187 237 /
-// 62 133 / 315 889 B — margin nå 4 763 / 2 867 / 4 111 B):
+// Budsjetter (dist-totalen målt 2026-09-02, R6-bølge W3 «QR-kjernen»:
+// 336 556 B — margin 3 444 B):
 //   - største enkelt-JS-fil   ≤ 192 000 B
 //   - største enkelt-CSS-fil  ≤  65 000 B
-//   - HELE dist/, alle filer  ≤ 320 000 B
+//   - HELE dist/, alle filer  ≤ 340 000 B
 //
-// Forrige måling: 2026-08-31, etter 3D-terningen — 178 700 / 58 138 /
-// 302 359 B under taket 185 000 / 65 000 / 320 000.
+// Forrige måling: 2026-09-02, W2 «lenke-widgeten» — 187 237 / 62 133 /
+// 315 889 B under taket 192 000 / 65 000 / 320 000. Og før den: 2026-08-31,
+// etter 3D-terningen — 178 700 / 58 138 / 302 359 B.
 //
-// JS-taket ble hevet fordi målingen sprengte det, med tallet foran seg og
-// ~5,5 kB margin over: R6 la til lenke-widgeten (mappe + ikon +
-// registry-linje) og, i samme arbeidstre, planlegger- og agendaarbeidet fra
-// de parallelle bølgene. Delta-en er altså RUNDENS, ikke én mappes — en
-// isolert måling ville krevd et bygg med registry-linja fjernet, og det er
-// ikke verdt å bryte treet for mens andre bygger i det.
+// ## Hva W3 la til, isolert målt
 //
-// ⚠️ CSS- og dist-marginene er nå de trangeste (2,9 / 4,9 kB), og det er
-// TOTALEN som ryker først: QR-koden (W3) kommer som en egen lazy chunk og
-// teller i dist-totalen selv om den aldri rører index-chunken. Den bølgen
-// må måle på nytt og heve `DIST_TOTAL_MAX` med sitt eget tall.
+// QR-koden kom som forutsett i en EGEN chunk, `dist/assets/qr-core-*.js`,
+// 5 382 B. Isolert måling (samme arbeidstre, ett bygg med slot + CSS ute og
+// ett med dem inne, alt annet likt):
+//
+//   - største JS   195 749 → 196 460 B  (+711 B)
+//   - største CSS   67 895 →  68 158 B  (+263 B)
+//   - dist totalt  330 200 → 336 556 B  (+6 356 B = 711 + 263 + 5 382)
+//
+// De +711 B er `LazyQr.tsx` — KOMPONENTEN, ikke koderen. Selve encoderen
+// ligger med 0 B i index-chunken; verifisert ved å lete etter signaturene
+// (0x11D, formatordet 0x5412, kodeordstabellen `26,44,70,100,134`,
+// path-fragmentet `h1v1h-1z`) i index-*.js: null treff der, treff i
+// qr-core-*.js. Lazy-lastingen lekker altså ikke — den ene tingen som MÅTTE
+// bli i index er komponenten som tegner koden, og den er 0,7 kB.
+//
+// ## ⚠️ JS- og CSS-takene er sprengt av RUNDEN, ikke av W3
+//
+// Baselinjen OVER (195 749 / 67 895 B, uten W3 i det hele tatt) ligger
+// allerede over 192 000 / 65 000. Den veksten kom fra de parallelle
+// R6-bølgene i samme arbeidstre, og W3 hverken kjenner eller kan forklare
+// den. Å heve et tak krever en ærlig begrunnelse i denne docstringen, så de
+// to takene står urørt her: bølgen som eier veksten må måle sitt eget tall
+// og skrive sin egen linje. Bare `DIST_TOTAL_MAX` er hevet, fordi det taket
+// var W3s oppgave å måle på nytt.
 //
 // Regelen står: et tak heves med et MÅLT tall og en dato i denne
 // docstringen, aldri ved å flytte kode mellom chunks for å komme under (det
@@ -56,7 +72,7 @@ const DIST = join(root, "dist");
 
 const LARGEST_JS_MAX = 192_000;
 const LARGEST_CSS_MAX = 65_000;
-const DIST_TOTAL_MAX = 320_000;
+const DIST_TOTAL_MAX = 340_000;
 
 function walk(dir) {
   const out = [];

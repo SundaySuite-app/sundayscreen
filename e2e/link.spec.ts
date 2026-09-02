@@ -139,6 +139,10 @@ test("the QR toggle persists and says so when the address is too long", async ({
   const long = `https://skole.no/${"a".repeat(300)}`;
   await card.getByLabel("https://…").fill(long);
   await expect(card).toContainText("for lang for en QR-kode");
+  // …and the hint is instead of a code, never beside one. Nothing is drawn
+  // where the code would have been: no plate, no frame, no «loading» square.
+  // A shape on a projector tells a class there is something to scan.
+  await expect(card.locator("svg[data-qr]")).toHaveCount(0);
   // It is still openable — «no QR» is not «no link».
   await expect(card.getByRole("button", { name: "Åpne lenken" })).toBeEnabled();
 
@@ -154,4 +158,53 @@ test("the QR toggle persists and says so when the address is too long", async ({
     "aria-pressed",
     "false",
   );
+});
+
+test("the code is drawn for an address that fits, and disappears when turned off", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+
+  await addWidget(page, "Lenke");
+  const card = page.locator('[data-widget-kind="link"]');
+  const qr = card.locator("svg[data-qr]");
+
+  // A fresh widget has `showQr` on but nothing to encode, and it draws
+  // NOTHING rather than an empty plate.
+  await expect(qr).toHaveCount(0);
+
+  await card.hover();
+  await card.getByLabel("https://…").fill("https://sundaysuite.app");
+
+  // THE LAZY LOAD. The encoder is its own dist chunk (`LazyQr` is the only
+  // way into it), so this is the one assertion in the file that waits on a
+  // fetch and not just a render — `toBeVisible` polls, which is exactly what
+  // makes it a real test of the loading boundary rather than of a timeout.
+  // If somebody ever static-imports `qr-core`, this still passes and
+  // `check-bundle-budget.mjs` is what notices; if the dynamic import BREAKS
+  // in a built bundle, this is what notices (`SUNDAYSCREEN_E2E_TARGET=prod`).
+  await expect(qr).toBeVisible();
+
+  // 23 bytes is a version-2 symbol: 25 modules, plus the four-module quiet
+  // zone on each side. Pinning the viewBox pins both — a code drawn without
+  // its quiet zone scans from a screen and fails off a projector.
+  await expect(qr).toHaveAttribute("viewBox", "-4 -4 33 33");
+  const d = await qr.locator("path").getAttribute("d");
+  expect(d?.startsWith("M")).toBe(true);
+  expect(d).not.toContain("NaN");
+
+  // Her choice, immediately: off is off.
+  await card.hover();
+  await card.getByRole("button", { name: "QR-kode" }).click();
+  await expect(qr).toHaveCount(0);
+
+  // …and back on again without a reload, from the module-cached chunk.
+  await card.getByRole("button", { name: "QR-kode" }).click();
+  await expect(qr).toBeVisible();
+
+  // An address the app will not vouch for takes the code with it — the QR
+  // must never carry something the click surface refuses to open.
+  await card.getByLabel("https://…").fill("javascript:alert(1)");
+  await expect(qr).toHaveCount(0);
 });

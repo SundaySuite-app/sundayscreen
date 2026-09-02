@@ -1,6 +1,6 @@
 // «Lenke»: a titled address on the board. The teacher clicks it open on the
-// projector; the pupils scan the QR on their own devices (W3 draws the code —
-// see the marker below).
+// projector; the pupils scan the QR on their own devices (`LazyQr`, which
+// loads the encoder as its own chunk — see that file's header).
 //
 // ── The one rule this component exists to hold ──────────────────────────────
 // There is NO `<a href>` anywhere in this card, and there never may be. The
@@ -24,6 +24,10 @@ import { t } from "../../i18n";
 import { saveNow, updateWidgetConfig } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import { toast } from "../../ui/toast";
+// `LazyQr` is a plain import; the ENCODER behind it is not. The dynamic
+// `import("./qr-core")` lives inside that component and nowhere else — see
+// its file header for why a static one would undo the whole arrangement.
+import { LazyQr } from "./LazyQr";
 import { displayHost, fitsInQr, isPresentableUrl } from "./link-core";
 import styles from "./link.module.css";
 
@@ -106,20 +110,17 @@ export function LinkWidget({ widget }: { widget: WidgetInstance }) {
         <span class={styles.host}>{presentable ? host : t("link.notSet")}</span>
       </button>
 
-      {/* W3 (the QR wave) HOOKS IN HERE.
-          W2 deliberately draws NOTHING where the code will go. A dashed
-          placeholder plate on a projector tells a class there is something
-          to scan when there is not, and «vis ikke noe du ikke har» is the
-          same rule the rest of this app is built on.
-          What W2 leaves ready: `showQr` is persisted and toggled below,
+      {/* THE CODE, or nothing. Three conditions, and each one is a different
+          reason there is nothing to draw: the teacher turned it off, the
+          address is not one the app will present, or it is longer than a
+          scannable code can carry. Only the third has something to say, and
+          it says it in words — a dashed placeholder plate on a projector
+          tells a class there is something to scan when there is not.
           `fitsInQr` answers the capacity question WITHOUT loading the
-          encoder (link-core.ts, and `QR_MAX_URL_BYTES` is the number
-          `qr-core.ts` must import rather than restate), and the «too long»
-          hint is already live because it needs no encoder. W3's change is
-          this one slot: `{cfg.showQr && presentable && !qrTooLong &&
-          <LazyQr url={cfg.url} />}`, its own `.qr*` classes in
-          link.module.css, and the WIDTH-based degradation beside them (the
-          height rule at the bottom of that file is already in). */}
+          encoder, which is why the hint can render while `LazyQr` is still
+          fetching its chunk (and why `QR_MAX_URL_BYTES` lives in link-core
+          and is imported by qr-core, never restated there). */}
+      {cfg.showQr && presentable && !qrTooLong && <LazyQr url={cfg.url} />}
       {qrTooLong && <p class={styles.qrHint}>{t("link.qrTooLong")}</p>}
 
       <div data-settings-row data-no-drag>

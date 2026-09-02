@@ -103,17 +103,84 @@
   text-align: left;
 }
 
+/* THE CODE — as big as the card can spare, and never any shape but square.
+   `flex: 1 1 auto` with `min-height: 0` and BOTH dimensions left `auto` is
+   what does it: the code takes exactly the height the title and the click
+   surface did not, and the SVG's own viewBox supplies the 1:1 intrinsic
+   ratio, so the width follows the height with no `aspect-ratio` for a flex
+   line to overrule. `min-height: 0` is the load-bearing half — a flex item
+   refuses to shrink past its content size without it, and the code would
+   shove the click surface off the bottom edge of a short card.
+   A fixed `cqmin` square was the first draft, and it was worse on every
+   shape: 48cqmin on a 420 × 280 card is 134 px where this gets 153, and on a
+   300 × 600 card it is 144 px where this gets 274.
+   `max-width` is the one clamp needed: on a TALL card the leftover height
+   exceeds the card's width, and without it the square would grow straight
+   through the sides. Clamped, the box letterboxes and the code fills the
+   width — which is the largest it could have been anyway. */
+.qr {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+}
+
+/* Dark modules on a light plate — the one contrast a scanner cannot do
+   without. The colours are HERE, in the .css, and never on the SVG element:
+   `check-app-css-tokens.mjs` only reads stylesheets, so a `fill="#000"` in
+   the TSX would sail past the very palette-ownership rule the gate exists to
+   hold. `--surface` is what every widget card already keeps (see the theme
+   note in tokens.css — a scene theme colours the BACKDROP, never the card),
+   so the plate is invisible today; it is here so the quiet zone stays light
+   even on the day a card is not. */
+.qrPlate {
+  fill: var(--surface);
+}
+
+.qrModules {
+  fill: var(--ink);
+}
+
 /* Squeezed short, the host line is the first thing to go: the TITLE is what
    the class reads, and «udir.no» stacked under it in a 120 px card just
    crowds it. The click surface itself does NOT go — it is the entire point of
    the widget — it falls back to its icon, keeping its 36 px target and its
    accessible name («Åpne lenken»). The card is `container-type: size`
-   (WidgetShell), so this queries the card itself.
-   (The QR code's own degradation is W3's — it hangs off the WIDTH, not the
-   height, and belongs beside the element it hides.) */
+   (WidgetShell), so this queries the card itself. */
 @container (max-height: 160px) {
   .host,
   .qrHint {
+    display: none;
+  }
+}
+
+/* Squeezed small, the CODE is what goes — and a code that cannot be scanned
+   is not a smaller feature, it is a lie about one. Below roughly 3 device
+   pixels per module the modules antialias into each other and no camera gets
+   it back, so under about 100 px of drawn code there is nothing worth
+   showing and the title and the click surface keep the card.
+   Three ways for the card to be that small, all measured on the real widget
+   (drawn code, in px, with the sizing above):
+     420 × 280 → 153    500 × 240 → 108    325 × 217 → 110   ← keep
+     400 × 200 →  86    280 × 180 →  84    797 × 233 →  64   ← hide
+   WIDTH is the threshold this widget was specified around, and it is where
+   the card stops being a link card at all. HEIGHT is the same floor on the
+   other axis. ASPECT is the one that is not obvious and is not optional: the
+   title is sized in `cqw`, so a very wide card grows a very big title, and at
+   797 × 233 it and the pill had eaten the room — 37 modules in 64 px, visible
+   and unscannable, which is the worst of the three outcomes.
+   None of this touches the teacher's `showQr` choice: it HIDES the code
+   rather than turning it off, so dragging the card bigger brings it back.
+   ⚠️ `or`, never a comma list. A comma-separated container query is legal CSS
+   and the DEV server serves it happily — `npm run e2e` was green on it — but
+   lightningcss (Vite 8's minifier) fails the production build outright with
+   «Unexpected token Comma». The dice widget's `or` at the bottom of
+   dice.module.css is the house form; this is why. */
+@container (max-width: 260px) or (max-height: 200px) or
+  (min-aspect-ratio: 5 / 2) {
+  .qr {
     display: none;
   }
 }

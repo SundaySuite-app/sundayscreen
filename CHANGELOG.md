@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0-beta.3] — 2026-09-02
+
+- **Skolens timelengde** (eierønske): sett 30, 45 eller 60 minutter i
+  Timeoppsett-fanen, så legger «Legg til time» inn riktig lengde for hver
+  ny time, kant i kant med forrige. Valget lagres som resten av oppsettet.
+  Eksisterende tider røres aldri.
+
 ## [0.5.0-beta.2] — 2026-09-01
 
 - **Tierterningen 0–9** (eierønske): den ekte klasseroms-tierterningen —

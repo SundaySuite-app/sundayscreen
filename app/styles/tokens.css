@@ -98,6 +98,53 @@
   --die-slate: #2f3540;
   --die-slate-ink: #f3f4f7;
 
+  /* ── The five SCENE BACKDROPS, and the ink each one carries ───────────
+   *
+   * A screen can be given a colour so a teacher tells her Norwegian board
+   * from her maths board at a glance. The vocabulary is
+   * `sundayscreen_core::theme::SceneTheme` — five names, never a colour
+   * picker — and `app/screen/Surface.module.css` binds them through
+   * `--scene-bg` / `--scene-ink`.
+   *
+   * ## The theme colours the BACKDROP ONLY
+   *
+   * Every widget card keeps `--surface`, so every in-card contrast guarantee
+   * proved above is untouched and needs no per-theme exception. The one piece
+   * of text that stands directly on the backdrop is the empty board's
+   * signpost, and that is what `--scene-<x>-ink` is for. A dark backdrop with
+   * white cards is also the better projector picture: the cards lift off it.
+   *
+   * ## Each theme is a PAIR, and three floors hold it up (tokens.test.ts)
+   *
+   * 1. **Ink ≥ 4.5:1 on ITS OWN backdrop.** The empty-state sentence is text
+   *    a pupil reads from the back row. Which ink is the pale one is a
+   *    per-theme FACT: `tavle` is a near-black board with chalk-white ink.
+   *    ⚠️ Consequence for the guard: `--scene-tavle-ink` must never join the
+   *    INKS list in `tokens.test.ts` — that list measures against --surface
+   *    and would read it as 1.06:1 while the board it sits on is at 12.72:1.
+   *    Exactly the `--die-slate-ink` trap, one layer over.
+   *
+   * 2. **`--scene-standard-bg` is BYTE-IDENTICAL to --bg.** The default theme
+   *    is today's board, pinned: a teacher who never opens the picker must
+   *    see no change at all. Its ink is today's --ink-2 for the same reason.
+   *
+   * 3. **A luminance LADDER, like the dice.** Five swatches in a menu are
+   *    told apart by brightness before hue — so the four light boards keep
+   *    ≥ 0.02 relative luminance between every pair (papir 0.939, standard
+   *    0.898, kjolig 0.839, varm 0.810), and `tavle` sits far below at 0.021.
+   *    The ceiling on the light four is 0.95: a backdrop brighter than that
+   *    stops being a tint and becomes glare on a projector. */
+  --scene-standard-bg: #f6f3ec;
+  --scene-standard-ink: #5c636e;
+  --scene-papir-bg: #f9f8f5;
+  --scene-papir-ink: #565c66;
+  --scene-varm-bg: #f7e6d2;
+  --scene-varm-ink: #6b5544;
+  --scene-kjolig-bg: #e6edf3;
+  --scene-kjolig-ink: #4e5b6b;
+  --scene-tavle-bg: #1e2a24;
+  --scene-tavle-ink: #e8efe9;
+
   /* ── Ink, three levels — every one of them a READING level ───────────
    *
    * `--ink-3` is not «the third grey»; it is MUTED TEXT WITH A CONTRAST

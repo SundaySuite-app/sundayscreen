@@ -1,9 +1,45 @@
 .surface {
   position: absolute;
   inset: 0;
-  background: var(--bg);
+  background: var(--scene-bg, var(--bg));
   overflow: hidden;
   z-index: var(--z-surface);
+}
+
+/* The screen's BACKDROP theme (R6), keyed off `data-theme` from Surface.tsx.
+   Each block only re-points two variables at a PAIR in tokens.css — no colour
+   literal appears here, which is both the house rule and the reason the whole
+   palette is still tunable from one file.
+
+   `standard` has NO block on purpose. It is today's board, and the absence of
+   a block is what makes that literally true: `--scene-bg`/`--scene-ink` stay
+   undefined, so the fallbacks below (`--bg`, `--ink-2`, `--ink-3`) are the
+   ones that render — the exact declarations that have always rendered. A
+   `standard` block would be equivalent by the numbers `tokens.test.ts` pins
+   and NOT equivalent in the one thing it must be: it would let a future edit
+   move the default board without anyone touching `--bg`.
+
+   Only the BACKDROP is coloured. Widget cards keep `--surface` and every
+   contrast guarantee inside them, which is why a dark `tavle` needs no
+   per-widget exception anywhere: the cards simply lift off the board. */
+.surface[data-theme="papir"] {
+  --scene-bg: var(--scene-papir-bg);
+  --scene-ink: var(--scene-papir-ink);
+}
+
+.surface[data-theme="varm"] {
+  --scene-bg: var(--scene-varm-bg);
+  --scene-ink: var(--scene-varm-ink);
+}
+
+.surface[data-theme="kjolig"] {
+  --scene-bg: var(--scene-kjolig-bg);
+  --scene-ink: var(--scene-kjolig-ink);
+}
+
+.surface[data-theme="tavle"] {
+  --scene-bg: var(--scene-tavle-bg);
+  --scene-ink: var(--scene-tavle-ink);
 }
 
 /* The empty board's one signpost. `pointer-events: none` on the layer is
@@ -28,17 +64,21 @@
   padding: var(--sp-4);
 }
 
+/* The ONLY text in the app that stands directly on the backdrop — which is
+   why the theme has an ink at all, and why that ink's 4.5:1 floor against its
+   own board is tested in `tokens.test.ts`. Everything else a pupil reads sits
+   on a `--surface` card the theme never touches. */
 .emptyTitle {
   margin: 0;
   font-size: var(--fs-xl);
   font-weight: 600;
-  color: var(--ink-2);
+  color: var(--scene-ink, var(--ink-2));
 }
 
 .emptyHint {
   margin: 0;
   font-size: var(--fs-base);
-  color: var(--ink-3);
+  color: var(--scene-ink, var(--ink-3));
   /* 32ch left «kant.» alone on a second line. This is a two-line sentence at
      most, so balance it rather than widening the card. */
   text-wrap: balance;

@@ -16,6 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Row, SqlitePool};
+use sundayscreen_core::theme::SceneTheme;
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -339,13 +340,17 @@ pub async fn insert_class(pool: &SqlitePool, name: &str) -> AppResult<ClassRow> 
         .execute(&mut *tx)
         .await?;
     sqlx::query(
-        "INSERT INTO scene (id, class_id, name, sort_index, created_at)
-         VALUES (?1, ?2, ?3, 0, ?4)",
+        "INSERT INTO scene (id, class_id, name, sort_index, created_at, theme)
+         VALUES (?1, ?2, ?3, 0, ?4, ?5)",
     )
     .bind(default_scene_id(&row.id))
     .bind(&row.id)
     .bind(&row.name)
     .bind(row.created_at)
+    // Spelled out rather than left to the column DEFAULT: the Rust default
+    // is the one that must win, and a column default nobody names is how the
+    // two drift apart.
+    .bind(SceneTheme::default().as_str())
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -634,6 +639,10 @@ pub struct SceneRow {
     #[ts(type = "number")]
     pub sort_index: i64,
     pub created_at: f64,
+    /// The BACKDROP the screen is drawn on (migration 0006). Stored as TEXT
+    /// and read leniently, so an unknown spelling degrades to
+    /// [`SceneTheme::Standard`] instead of failing the row.
+    pub theme: SceneTheme,
 }
 
 /// The deterministic id of a class's default scene — the same shape the
@@ -649,6 +658,9 @@ fn row_to_scene(r: sqlx::sqlite::SqliteRow) -> SceneRow {
         name: r.get("name"),
         sort_index: r.get("sort_index"),
         created_at: r.get("created_at"),
+        // LENIENT on the way in (migration 0006): a spelling written by a
+        // newer build reads as `Standard` rather than failing the row.
+        theme: SceneTheme::parse(&r.get::<String, _>("theme")),
     }
 }
 
@@ -657,11 +669,12 @@ pub async fn get_scene<'e, E>(executor: E, id: &str) -> AppResult<Option<SceneRo
 where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
-    let row =
-        sqlx::query("SELECT id, class_id, name, sort_index, created_at FROM scene WHERE id = ?1")
-            .bind(id)
-            .fetch_optional(executor)
-            .await?;
+    let row = sqlx::query(
+        "SELECT id, class_id, name, sort_index, created_at, theme FROM scene WHERE id = ?1",
+    )
+    .bind(id)
+    .fetch_optional(executor)
+    .await?;
     Ok(row.map(row_to_scene))
 }
 
@@ -672,7 +685,7 @@ where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
     let rows = sqlx::query(
-        "SELECT id, class_id, name, sort_index, created_at FROM scene
+        "SELECT id, class_id, name, sort_index, created_at, theme FROM scene
          WHERE class_id IS NULL ORDER BY sort_index, created_at",
     )
     .fetch_all(executor)
@@ -693,18 +706,36 @@ pub async fn insert_global_scene(pool: &SqlitePool, name: &str) -> AppResult<Sce
         name: name.to_string(),
         sort_index: next,
         created_at: now_ms(),
+        // A new screen starts on today's board; the picker is how it changes.
+        theme: SceneTheme::default(),
     };
     sqlx::query(
-        "INSERT INTO scene (id, class_id, name, sort_index, created_at)
-         VALUES (?1, NULL, ?2, ?3, ?4)",
+        "INSERT INTO scene (id, class_id, name, sort_index, created_at, theme)
+         VALUES (?1, NULL, ?2, ?3, ?4, ?5)",
     )
     .bind(&row.id)
     .bind(&row.name)
     .bind(row.sort_index)
     .bind(row.created_at)
+    .bind(row.theme.as_str())
     .execute(pool)
     .await?;
     Ok(row)
+}
+
+/// Set a screen's backdrop theme. Returns false when the id is unknown.
+///
+/// Deliberately NOT restricted to library scenes: a class's default screen is
+/// the one a teacher looks at most, and colouring it is exactly the point.
+/// (Rename and delete are restricted, because those would take a screen the
+/// class lifecycle owns.)
+pub async fn set_scene_theme(pool: &SqlitePool, id: &str, theme: SceneTheme) -> AppResult<bool> {
+    let res = sqlx::query("UPDATE scene SET theme = ?2 WHERE id = ?1")
+        .bind(id)
+        .bind(theme.as_str())
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected() > 0)
 }
 
 /// Rename a scene. Returns false when the id is unknown.
@@ -739,16 +770,18 @@ pub async fn ensure_default_scene(pool: &SqlitePool, class: &ClassRow) -> AppRes
         name: class.name.clone(),
         sort_index: 0,
         created_at: now_ms(),
+        theme: SceneTheme::default(),
     };
     sqlx::query(
-        "INSERT INTO scene (id, class_id, name, sort_index, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO scene (id, class_id, name, sort_index, created_at, theme)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )
     .bind(&row.id)
     .bind(&row.class_id)
     .bind(&row.name)
     .bind(row.sort_index)
     .bind(row.created_at)
+    .bind(row.theme.as_str())
     .execute(pool)
     .await?;
     Ok(row)

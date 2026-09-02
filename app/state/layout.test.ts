@@ -61,6 +61,7 @@ const SCENE: Scene = {
   name: "7B",
   sortIndex: 0,
   createdAt: 0,
+  theme: "standard",
 };
 
 function textWidget(id: string): WidgetInstance {

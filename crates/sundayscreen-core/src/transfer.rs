@@ -129,6 +129,25 @@ pub struct TransferScene {
     pub id: String,
     #[serde(default)]
     pub name: String,
+    /// The screen's backdrop, as the STORED WORD rather than as
+    /// [`crate::theme::SceneTheme`].
+    ///
+    /// A `String` on purpose, and it is this file's tolerance rule rather
+    /// than laziness: a spelling this build does not know must not fail the
+    /// parse of the whole file. The import runs it through
+    /// `SceneTheme::parse`, so an unknown word lands on `standard`.
+    ///
+    /// This is deliberately NOT the treatment [`PeriodKind`] gets. There, a
+    /// fallback would put a made-up LESSON on a projector — something the app
+    /// acts on. Here the fallback is the board the teacher already had: a
+    /// theme is cosmetic, and losing the colour is the cheapest possible way
+    /// for a file from the future to be wrong.
+    ///
+    /// ADDITIVE: an older file simply has no key, `#[serde(default)]` gives
+    /// the empty string, and that parses to `standard`. `SCHEMA_VERSION`
+    /// therefore stays at 1.
+    #[serde(default)]
+    pub theme: String,
     #[serde(default)]
     pub widgets: Vec<TransferWidget>,
 }
@@ -423,6 +442,7 @@ mod tests {
             default_scene: Some(TransferScene {
                 id: "default-c1".into(),
                 name: "7B".into(),
+                theme: "tavle".into(),
                 widgets: vec![TransferWidget {
                     kind: "text".into(),
                     config: r#"{"kind":"text","content":"hei"}"#.into(),
@@ -655,6 +675,7 @@ mod tests {
             default_scene: Some(TransferScene {
                 id: "default-c1".into(),
                 name: "7B".into(),
+                theme: String::new(),
                 widgets: (0..WIDGETS_MAX_PER_SCENE + 1)
                     .map(|_| TransferWidget {
                         kind: "text".into(),
@@ -677,6 +698,7 @@ mod tests {
         file.scenes.push(TransferScene {
             id: "s1".into(),
             name: "Prøve".into(),
+            theme: String::new(),
             widgets: vec![TransferWidget {
                 kind: "text".into(),
                 config: "x".repeat(WIDGET_CONFIG_MAX_CHARS + 1),

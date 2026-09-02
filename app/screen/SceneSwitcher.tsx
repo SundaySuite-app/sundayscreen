@@ -5,14 +5,16 @@
 
 import { useState } from "preact/hooks";
 
-import { t } from "../i18n";
+import { t, tDyn } from "../i18n";
 import { activeClass, activeScene } from "../state/layout";
 import {
   deleteScene,
   renameScene,
   saveCurrentAsScene,
   sceneMenuOpen,
+  SCENE_THEMES,
   scenes,
+  setSceneTheme,
   switchScene,
 } from "../state/scenes";
 import { Icon } from "../ui/Icon";
@@ -208,6 +210,52 @@ export function SceneSwitcher() {
                   )}
                 </div>
               ),
+            )}
+            {/* The BACKDROP colour of the screen that is on the board right
+             * now — a row, not a submenu: five swatches read in one glance,
+             * and the board behind the menu recolours on the click so the
+             * choice is its own preview.
+             *
+             * It applies to the ACTIVE screen whichever kind it is; a class's
+             * default screen is the one on the wall most of the week, so
+             * leaving it out would have hidden the feature from the teacher
+             * who never saves a library screen at all.
+             *
+             * `role="group"` with a name, rather than five loose buttons: a
+             * screen reader announces «Skjermfarge, gruppe» once instead of
+             * spelling out five colours with no shared heading. And NOT
+             * `menuitem`s — these are settings inside the menu, not five more
+             * ways to leave it. */}
+            {scene && (
+              <>
+                <div class={styles.divider} />
+                <div
+                  class={styles.themeRow}
+                  role="group"
+                  aria-label={t("theme.title")}
+                >
+                  <span class={styles.themeLabel}>{t("theme.title")}</span>
+                  <div class={styles.swatches}>
+                    {SCENE_THEMES.map((option) => (
+                      <button
+                        key={option}
+                        class={styles.swatch}
+                        // The pair from tokens.css, bound by CSS — the swatch
+                        // paints itself in the backdrop it stands for and
+                        // marks itself in that backdrop's own ink, so an
+                        // unreadable pair would be visible HERE first.
+                        data-theme={option}
+                        aria-label={tDyn("theme.name", option)}
+                        title={tDyn("theme.name", option)}
+                        aria-pressed={scene.theme === option}
+                        onClick={() => void setSceneTheme(option).catch(fail)}
+                      >
+                        <span class={styles.swatchMark} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
             <div class={styles.divider} />
             {saveDraft === null ? (

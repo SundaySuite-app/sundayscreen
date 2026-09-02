@@ -187,6 +187,7 @@ pub async fn export_payload(
             Some(scene) => Some(TransferScene {
                 id: scene.id.clone(),
                 name: scene.name,
+                theme: scene.theme.as_str().to_string(),
                 widgets: to_transfer_widgets(store::load_widget_rows(&mut *tx, &scene.id).await?),
             }),
             None => None,
@@ -204,6 +205,7 @@ pub async fn export_payload(
         file.scenes.push(TransferScene {
             id: scene.id,
             name: scene.name,
+            theme: scene.theme.as_str().to_string(),
             widgets,
         });
     }
@@ -347,8 +349,10 @@ pub async fn transfer_import(
 mod tests {
     use super::*;
     use crate::commands::planner as planner_cmd;
+    use crate::commands::scenes as scenes_cmd;
     use crate::db::import::count;
     use sundayscreen_core::schedule::PeriodKind;
+    use sundayscreen_core::theme::SceneTheme;
 
     async fn temp_pool() -> (SqlitePool, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -997,6 +1001,108 @@ mod tests {
         assert_eq!(receipt.outcome, ImportOutcome::Imported);
         assert_eq!(receipt.classes, 0);
         assert_eq!(count(&target, "class").await, 0);
+    }
+
+    #[tokio::test]
+    async fn a_screens_colour_travels_with_it() {
+        // Both KINDS of screen: a class default and a library screen. The
+        // default is the easy one to forget — it is not in `file.scenes`.
+        let (source, _ds) = temp_pool().await;
+        let class = store::insert_class(&source, "7B").await.unwrap();
+        scenes_cmd::set_theme_for(
+            &source,
+            &store::default_scene_id(&class.id),
+            SceneTheme::Kjolig,
+        )
+        .await
+        .unwrap();
+        let library = store::insert_global_scene(&source, "Prøve").await.unwrap();
+        scenes_cmd::set_theme_for(&source, &library.id, SceneTheme::Tavle)
+            .await
+            .unwrap();
+
+        let json = serde_json::to_string(&payload_of(&source).await).unwrap();
+        assert!(
+            json.contains(r#""theme":"tavle""#),
+            "the word is in the file"
+        );
+        let parsed = transfer::parse(&json).expect("our own file passes our own gate");
+
+        let (target, _dt) = temp_pool().await;
+        import::import_setup(&target, &parsed).await.unwrap();
+        let new_class = &store::list_classes(&target).await.unwrap()[0];
+        assert_eq!(
+            store::get_scene(&target, &store::default_scene_id(&new_class.id))
+                .await
+                .unwrap()
+                .unwrap()
+                .theme,
+            SceneTheme::Kjolig
+        );
+        assert_eq!(
+            store::list_global_scenes(&target).await.unwrap()[0].theme,
+            SceneTheme::Tavle
+        );
+    }
+
+    #[tokio::test]
+    async fn a_file_from_before_themes_lands_on_standard() {
+        // The additive-field promise, as a FILE rather than as a struct: an
+        // R5 export has no `theme` key anywhere, and `schemaVersion` is still
+        // 1, so it must import whole — with today's board.
+        let older = r#"{
+            "kind": "sundayscreen-setup",
+            "schemaVersion": 1,
+            "appVersion": "0.5.0",
+            "exportedAt": 0,
+            "classes": [
+                { "id": "c1", "name": "7B", "members": ["Kari"],
+                  "defaultScene": { "id": "default-c1", "name": "7B", "widgets": [] } }
+            ],
+            "scenes": [{ "id": "s1", "name": "Prøve", "widgets": [] }],
+            "planner": { "periods": [], "week": [] }
+        }"#;
+        let parsed = transfer::parse(older).expect("an older file is still ours");
+        assert_eq!(parsed.scenes[0].theme, "", "no key means no word");
+
+        let (target, _dt) = temp_pool().await;
+        assert_eq!(
+            import::import_setup(&target, &parsed)
+                .await
+                .unwrap()
+                .outcome,
+            ImportOutcome::Imported
+        );
+        assert_eq!(
+            store::list_global_scenes(&target).await.unwrap()[0].theme,
+            SceneTheme::Standard
+        );
+    }
+
+    #[tokio::test]
+    async fn a_theme_from_a_newer_build_degrades_instead_of_travelling_raw() {
+        // A file written by a SundayScreen that has a theme this one does not.
+        // The scene must arrive WHOLE, on the standard board — and the unknown
+        // word must not reach the column, where nothing would ever render it.
+        let mut file = TransferFile::new("9.9.9", 0.0);
+        file.scenes.push(transfer::TransferScene {
+            id: "s1".into(),
+            name: "Prøve".into(),
+            theme: "solnedgang".into(),
+            widgets: Vec::new(),
+        });
+
+        let (target, _dt) = temp_pool().await;
+        import::import_setup(&target, &file).await.unwrap();
+        let scenes = store::list_global_scenes(&target).await.unwrap();
+        assert_eq!(scenes.len(), 1, "the screen came through");
+        assert_eq!(scenes[0].theme, SceneTheme::Standard);
+        let stored: String = sqlx::query_scalar("SELECT theme FROM scene WHERE id = ?1")
+            .bind(&scenes[0].id)
+            .fetch_one(&target)
+            .await
+            .unwrap();
+        assert_eq!(stored, "standard", "the unknown word never reached the row");
     }
 
     #[tokio::test]

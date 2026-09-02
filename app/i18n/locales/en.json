@@ -227,6 +227,16 @@
     "renamePlaceholder": "New name … (Enter saves)",
     "deleteConfirm": "Delete the screen"
   },
+  "theme": {
+    "title": "Screen colour",
+    "name": {
+      "standard": "Standard",
+      "papir": "Paper",
+      "varm": "Warm",
+      "kjolig": "Cool",
+      "tavle": "Chalkboard"
+    }
+  },
   "planner": {
     "title": "Planner",
     "tab": {

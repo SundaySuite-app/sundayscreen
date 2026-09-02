@@ -50,6 +50,7 @@ use std::collections::HashMap;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use sundayscreen_core::schedule::{self, Period};
+use sundayscreen_core::theme::SceneTheme;
 use sundayscreen_core::transfer::{
     self, TransferFile, TransferScene, TransferSlot, TransferWidget,
 };
@@ -217,6 +218,19 @@ fn normalized_periods(file: &TransferFile) -> Option<Vec<Period>> {
     Some(normalized)
 }
 
+/// The backdrop word to store for an incoming screen — through
+/// [`SceneTheme::parse`], so a spelling from a newer build (or a hand-edited
+/// file) lands on `standard` instead of travelling into the column raw. A
+/// screen the file did not describe at all gets the default too.
+///
+/// The parse is what keeps the column's vocabulary CLOSED: everything else in
+/// an imported widget row is deliberately raw (promise 3), and a theme is the
+/// opposite case — nothing renders an unknown one, so storing it would only
+/// hide the fallback until the next read.
+fn scene_theme(scene: Option<&TransferScene>) -> &'static str {
+    SceneTheme::parse(scene.map(|s| s.theme.as_str()).unwrap_or_default()).as_str()
+}
+
 /// Write one scene's widgets, with fresh ids, into `scene_id`.
 ///
 /// `kind` and `config` go in as the RAW strings they came out as — never
@@ -376,13 +390,14 @@ pub async fn import_setup(pool: &SqlitePool, file: &TransferFile) -> AppResult<I
             .filter(|s| !s.is_empty())
             .unwrap_or(name);
         sqlx::query(
-            "INSERT INTO scene (id, class_id, name, sort_index, created_at)
-             VALUES (?1, ?2, ?3, 0, ?4)",
+            "INSERT INTO scene (id, class_id, name, sort_index, created_at, theme)
+             VALUES (?1, ?2, ?3, 0, ?4, ?5)",
         )
         .bind(&scene_id)
         .bind(&class_id)
         .bind(scene_name)
         .bind(stamp)
+        .bind(scene_theme(class.default_scene.as_ref()))
         .execute(&mut *tx)
         .await?;
         if let Some(source) = &class.default_scene {
@@ -419,13 +434,14 @@ pub async fn import_setup(pool: &SqlitePool, file: &TransferFile) -> AppResult<I
     for scene in &file.scenes {
         let scene_id = new_id();
         sqlx::query(
-            "INSERT INTO scene (id, class_id, name, sort_index, created_at)
-             VALUES (?1, NULL, ?2, ?3, ?4)",
+            "INSERT INTO scene (id, class_id, name, sort_index, created_at, theme)
+             VALUES (?1, NULL, ?2, ?3, ?4, ?5)",
         )
         .bind(&scene_id)
         .bind(scene.name.trim())
         .bind(scene_sort)
         .bind(stamp)
+        .bind(scene_theme(Some(scene)))
         .execute(&mut *tx)
         .await?;
         scene_sort += 1;

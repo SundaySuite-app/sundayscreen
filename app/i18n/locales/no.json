@@ -227,6 +227,16 @@
     "renamePlaceholder": "Nytt navn … (Enter lagrer)",
     "deleteConfirm": "Slett skjermen"
   },
+  "theme": {
+    "title": "Skjermfarge",
+    "name": {
+      "standard": "Standard",
+      "papir": "Papir",
+      "varm": "Varm",
+      "kjolig": "Kjølig",
+      "tavle": "Tavle"
+    }
+  },
   "planner": {
     "title": "Planlegger",
     "tab": {

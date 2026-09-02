@@ -1,0 +1,22 @@
+-- 0006 — the screen's backdrop theme (Runde 6).
+--
+-- A NAMED vocabulary, not a colour: the spellings are owned by
+-- `sundayscreen_core::theme::SceneTheme` ('standard', 'papir', 'varm',
+-- 'kjolig', 'tavle'), and the theme colours the BACKDROP only — every widget
+-- card keeps its own surface, so no contrast guarantee anywhere else moves.
+--
+-- TEXT with a LENIENT parse on read (`SceneTheme::parse`): a spelling this
+-- build has never heard of — a newer SundayScreen's theme, a hand-edited
+-- row — degrades to 'standard' rather than failing the scene. A theme is
+-- cosmetic, so the harmless fallback is the right one here (unlike
+-- `period.kind`, where a fallback would invent a lesson).
+--
+-- Downgrade accounting (promise 3): an older build's scene SELECTs name their
+-- columns explicitly, so this one is invisible to it, and its INSERTs omit the
+-- column, so the DEFAULT fills it. The teacher's screens survive a downgrade
+-- untouched — they simply lose the colour until she upgrades again.
+--
+-- APPLIED-FOREVER: never edit this file (a checksum mismatch reads as
+-- corruption).
+
+ALTER TABLE scene ADD COLUMN theme TEXT NOT NULL DEFAULT 'standard';

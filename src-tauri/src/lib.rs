@@ -292,6 +292,7 @@ pub fn run() {
             commands::scenes::scene_rename,
             commands::scenes::scene_delete,
             commands::scenes::scene_duplicate,
+            commands::scenes::scene_set_theme,
             commands::scenes::lesson_switch,
             commands::planner::planner_periods_get,
             commands::planner::planner_periods_set,

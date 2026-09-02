@@ -5,11 +5,28 @@
 import { signal } from "@preact/signals";
 
 import type { Scene } from "../bindings/Scene";
+import type { SceneTheme } from "../bindings/SceneTheme";
 import { adoptSwitch, classMenuOpen } from "./classes";
 import { activeClass, activeScene, flushPending } from "./layout";
 
 export const scenes = signal<Scene[]>([]);
 export const sceneMenuOpen = signal(false);
+
+/**
+ * The five backdrops, in the order the picker offers them — the standard
+ * board first, then the three light tints, then the one dark board.
+ *
+ * A list rather than `Object.keys` of something: the ORDER is a design
+ * decision (five swatches a teacher scans in half a second), and a key order
+ * is not. Same reasoning as `DIE_COLORS`.
+ */
+export const SCENE_THEMES: readonly SceneTheme[] = [
+  "standard",
+  "papir",
+  "varm",
+  "kjolig",
+  "tavle",
+];
 
 export async function loadScenes(): Promise<void> {
   scenes.value = await window.api.sceneList();
@@ -76,6 +93,26 @@ export async function renameScene(id: string, name: string): Promise<void> {
   // The toolbar trigger shows the ACTIVE scene's name — refresh it too
   // (F-funn F14), or it keeps the old one until the next switch.
   if (activeScene.peek()?.id === id) activeScene.value = renamed;
+}
+
+/**
+ * Recolour the screen that is on the board.
+ *
+ * The rename pattern (above), and for the same reason: the backend's answer
+ * is the row as STORED, so adopting it keeps `activeScene` and the database
+ * from drifting apart until the next switch. `loadScenes()` refreshes the
+ * library list so a menu that is still open shows the new colour on its
+ * swatch too.
+ *
+ * A rejection TRAVELS — the caller reports it. A colour that looks applied
+ * and was never written is exactly the quiet lie promise 4 forbids.
+ */
+export async function setSceneTheme(theme: SceneTheme): Promise<void> {
+  const scene = activeScene.peek();
+  if (!scene) return;
+  const updated = await window.api.sceneSetTheme(scene.id, theme);
+  activeScene.value = updated;
+  await loadScenes();
 }
 
 /** Delete a library scene. If it was on screen, land on the class default —

@@ -44,6 +44,9 @@ export async function installFixtures(
         name: string;
         sortIndex: number;
         createdAt: number;
+        /** The screen's backdrop theme (migration 0006). Every mint below
+         *  starts on "standard", exactly like the column DEFAULT. */
+        theme: string;
       }
 
       interface E2eDb {
@@ -131,6 +134,7 @@ export async function installFixtures(
               name: "7B",
               sortIndex: 0,
               createdAt: 1,
+              theme: "standard",
             },
           ],
           activeClassId: "c1",
@@ -167,6 +171,7 @@ export async function installFixtures(
             name: cls.name,
             sortIndex: 0,
             createdAt: 0,
+            theme: "standard",
           };
           db.scenes.push(scene);
           db.layouts[scene.id] ??= [];
@@ -412,6 +417,7 @@ export async function installFixtures(
               name,
               sortIndex: db.scenes.length,
               createdAt: db.scenes.length,
+              theme: "standard",
             };
             db.scenes.push(scene);
             db.layouts[scene.id] = [];
@@ -448,17 +454,30 @@ export async function installFixtures(
               db.settings.activeSceneId = null;
             save(db);
           },
+          // Mirrors `commands::scenes::set_theme_for` — and deliberately
+          // WITHOUT the library-only guard the rename/delete handlers carry:
+          // a class default screen may be recoloured.
+          scene_set_theme: (args?: Record<string, unknown>) => {
+            const db = load();
+            const scene = db.scenes.find((s) => s.id === arg(args, "sceneId"));
+            if (!scene) throw new Error("not_found");
+            scene.theme = String(arg(args, "theme"));
+            save(db);
+            return scene;
+          },
           scene_duplicate: (args?: Record<string, unknown>) => {
             const db = load();
             const sourceId = String(arg(args, "sceneId"));
-            if (!db.scenes.some((s) => s.id === sourceId))
-              throw new Error("not_found");
+            const source = db.scenes.find((s) => s.id === sourceId);
+            if (!source) throw new Error("not_found");
             const copy: E2eScene = {
               id: mint(db),
               classId: null,
               name: String(arg(args, "name")),
               sortIndex: db.scenes.length,
               createdAt: db.scenes.length,
+              // The colour travels with the copy, like the widgets do.
+              theme: source.theme,
             };
             db.scenes.push(copy);
             db.layouts[copy.id] = (db.layouts[sourceId] ?? []).map((w) => ({
@@ -758,6 +777,7 @@ export async function installFixtures(
               name: "Importert skjerm",
               sortIndex: db.scenes.length,
               createdAt: db.scenes.length,
+              theme: "standard",
             };
             db.scenes.push(scene);
             db.layouts[scene.id] = [];

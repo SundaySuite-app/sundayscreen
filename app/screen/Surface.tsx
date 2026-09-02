@@ -8,6 +8,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { t } from "../i18n";
 import { addMenuOpen, chromeActivity } from "../state/chrome";
 import {
+  activeScene,
   clearFocus,
   focusedWidget,
   layoutHydrated,
@@ -44,6 +45,12 @@ export function Surface() {
   return (
     <div
       class={styles.surface}
+      // The screen's own BACKDROP colour (R6). It rides on the SCENE, so it
+      // follows the screen across classes and comes back with it after a
+      // restart — nothing here remembers a choice of its own. `"standard"`
+      // before the first scene is read is the same board `--bg` draws, so the
+      // boot frame cannot flash a colour.
+      data-theme={activeScene.value?.theme ?? "standard"}
       ref={ref}
       onPointerDown={(e) => {
         // A click on the bare surface deselects.

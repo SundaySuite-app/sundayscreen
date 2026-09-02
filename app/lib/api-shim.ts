@@ -12,6 +12,7 @@ import type { AppInfo } from "../bindings/AppInfo";
 import type { BootFault } from "../bindings/BootFault";
 import type { Class } from "../bindings/Class";
 import type { Scene } from "../bindings/Scene";
+import type { SceneTheme } from "../bindings/SceneTheme";
 import type { AgendaItem } from "../bindings/AgendaItem";
 import type { AgendaItemSpec } from "../bindings/AgendaItemSpec";
 import type { DayNote } from "../bindings/DayNote";
@@ -284,6 +285,7 @@ const api = {
           name: defaultName,
           sortIndex: 0,
           createdAt: 0,
+          theme: "standard",
         },
       },
     ),
@@ -315,6 +317,12 @@ const api = {
 
   sceneDuplicate: async (sceneId: string, name: string): Promise<Scene> =>
     invoke<Scene>("scene_duplicate", { sceneId, name }),
+
+  /** Recolour a screen's backdrop. A WRITE — the rejection travels (a colour
+   *  that looks applied and was never stored is a fabricated success). The
+   *  answer is the row as STORED, so the caller adopts it. */
+  sceneSetTheme: async (sceneId: string, theme: SceneTheme): Promise<Scene> =>
+    invoke<Scene>("scene_set_theme", { sceneId, theme }),
 
   /** THE switch: class + scene in one atomic pointer move + snapshot.
    *  `sceneId = null` lands on the class's default scene. */

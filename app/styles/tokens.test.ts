@@ -301,6 +301,109 @@ describe("terningfamiliene: a body, and the one ink it carries", () => {
   });
 });
 
+/** A SCENE THEME is a PAIR — the backdrop the board is drawn on and the one
+ *  ink allowed directly on it (the empty board's signpost). Declared as pairs
+ *  for the same reason the die families are: «readable» is only ever a
+ *  statement about the thing the ink is printed ON.
+ *
+ *  ⚠️ `--scene-tavle-ink` is deliberately NOT in `INKS` above, and the reason
+ *  is a number: it is chalk-white ink for a near-black board, so the list's
+ *  --surface floor would read it as 1.06:1 and go red about the most legible
+ *  pair in the file. Same trap as `--die-slate-ink`. */
+const SCENE_THEMES = [
+  { name: "standard", bg: "--scene-standard-bg", ink: "--scene-standard-ink" },
+  { name: "papir", bg: "--scene-papir-bg", ink: "--scene-papir-ink" },
+  { name: "varm", bg: "--scene-varm-bg", ink: "--scene-varm-ink" },
+  { name: "kjolig", bg: "--scene-kjolig-bg", ink: "--scene-kjolig-ink" },
+  { name: "tavle", bg: "--scene-tavle-bg", ink: "--scene-tavle-ink" },
+];
+
+/** The four LIGHT boards, in the order the picker offers them. `tavle` is the
+ *  one dark board and is held to its own bound below. */
+const LIGHT_THEMES = ["standard", "papir", "varm", "kjolig"];
+
+/** How far apart two light backdrops must be in relative luminance for a
+ *  teacher to tell their swatches apart at a glance. */
+const SCENE_LADDER_STEP = 0.02;
+/** A backdrop brighter than this stops being a tint and becomes glare. */
+const SCENE_LIGHT_MAX = 0.95;
+/** …and one darker than this stops being a light board at all. */
+const SCENE_LIGHT_MIN = 0.6;
+/** The dark board's ceiling — it must read as a chalkboard, not as a tint. */
+const SCENE_DARK_MAX = 0.06;
+
+describe("skjermtemaene: a backdrop, and the one ink it carries", () => {
+  for (const { name, bg, ink } of SCENE_THEMES) {
+    it(`${name}: the empty-board text clears the AA floor on its own backdrop`, () => {
+      const b = paint(bg);
+      const i = paint(ink);
+      expect(b.a, `${bg} is a backdrop — it must be opaque`).toBe(1);
+      expect(i.a, `${ink} is ink — it must be opaque`).toBe(1);
+      expect(contrast(i.rgb, b.rgb)).toBeGreaterThanOrEqual(FLOOR);
+    });
+
+    it(`${name}: its ink is checked against the BOARD, never the card`, () => {
+      // The ⚠️ above, as a guard. Adding a scene ink to INKS looks like
+      // thoroughness and is the one edit that would make this file lie:
+      // `tavle`'s is chalk on a blackboard.
+      expect(INKS.map((entry) => entry.name)).not.toContain(ink);
+    });
+  }
+
+  it("the default theme IS today's board, byte for byte", () => {
+    // The promise to a teacher who never opens the picker: nothing moved.
+    // Compared as declared TEXT, not as parsed rgb — `#f6f3ec` and
+    // `rgb(246, 243, 236)` are the same colour and would hide a divergence
+    // in how the two are maintained.
+    expect(TOKENS.get("--scene-standard-bg")).toBe(TOKENS.get("--bg"));
+    expect(TOKENS.get("--scene-standard-ink")).toBe(TOKENS.get("--ink-2"));
+  });
+
+  it("the four light boards are a ladder, not four whites", () => {
+    // The dice lesson, one layer out: five swatches in a menu are told apart
+    // by brightness before hue.
+    for (let i = 0; i < LIGHT_THEMES.length; i++) {
+      for (let j = i + 1; j < LIGHT_THEMES.length; j++) {
+        const a = SCENE_THEMES.find((t) => t.name === LIGHT_THEMES[i])!;
+        const b = SCENE_THEMES.find((t) => t.name === LIGHT_THEMES[j])!;
+        const gap = Math.abs(
+          luminance(paint(a.bg).rgb) - luminance(paint(b.bg).rgb),
+        );
+        expect(gap, `${a.name} and ${b.name} are one board`).toBeGreaterThan(
+          SCENE_LADDER_STEP,
+        );
+      }
+    }
+  });
+
+  it("a light board stays light, and never becomes glare", () => {
+    for (const name of LIGHT_THEMES) {
+      const theme = SCENE_THEMES.find((t) => t.name === name)!;
+      const l = luminance(paint(theme.bg).rgb);
+      expect(l, `${name} is too dark to be a light board`).toBeGreaterThan(
+        SCENE_LIGHT_MIN,
+      );
+      expect(l, `${name} is glare on a projector`).toBeLessThanOrEqual(
+        SCENE_LIGHT_MAX,
+      );
+    }
+  });
+
+  it("tavle is the one dark board, and it is properly dark", () => {
+    expect(luminance(paint("--scene-tavle-bg").rgb)).toBeLessThanOrEqual(
+      SCENE_DARK_MAX,
+    );
+  });
+
+  it("all five themes are actually declared", () => {
+    // `paint()` throws on a missing token, so every `it` above is real — but
+    // a theme DELETED from the list would take its own guard with it and
+    // leave nothing red. Five is the enum in `core/src/theme.rs`.
+    expect(SCENE_THEMES).toHaveLength(5);
+    expect(LIGHT_THEMES).toHaveLength(4);
+  });
+});
+
 describe("the popover layer sits between the chrome and the modals", () => {
   const layer = (name: string) => {
     const raw = TOKENS.get(name);

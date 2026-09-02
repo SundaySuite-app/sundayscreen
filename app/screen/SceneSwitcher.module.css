@@ -160,6 +160,94 @@
   line-height: 1.35;
 }
 
+/* ── «Skjermfarge»: the active screen's backdrop, as five swatches ──────── */
+
+.themeRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.themeLabel {
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.swatches {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/* Each swatch IS its own preview: it is painted in the backdrop it stands for
+   and marked in that backdrop's own ink, so an unreadable pair would show up
+   here before it ever reached a projector — the same live check the die's
+   colour chips are. The two variables are re-pointed per theme below; no
+   colour literal appears in this file. */
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--swatch-bg);
+  color: var(--swatch-ink);
+  cursor: pointer;
+}
+
+.swatch:hover {
+  border-color: var(--gold-line);
+}
+
+/* The chosen one, marked twice over: a gold ring the eye finds, and a dot in
+   the board's own ink for anyone the ring's hue does nothing for. */
+.swatch[aria-pressed="true"] {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-soft);
+}
+
+.swatchMark {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: currentColor;
+  opacity: 0;
+}
+
+.swatch[aria-pressed="true"] .swatchMark {
+  opacity: 1;
+}
+
+.swatch[data-theme="standard"] {
+  --swatch-bg: var(--scene-standard-bg);
+  --swatch-ink: var(--scene-standard-ink);
+}
+
+.swatch[data-theme="papir"] {
+  --swatch-bg: var(--scene-papir-bg);
+  --swatch-ink: var(--scene-papir-ink);
+}
+
+.swatch[data-theme="varm"] {
+  --swatch-bg: var(--scene-varm-bg);
+  --swatch-ink: var(--scene-varm-ink);
+}
+
+.swatch[data-theme="kjolig"] {
+  --swatch-bg: var(--scene-kjolig-bg);
+  --swatch-ink: var(--scene-kjolig-ink);
+}
+
+.swatch[data-theme="tavle"] {
+  --swatch-bg: var(--scene-tavle-bg);
+  --swatch-ink: var(--scene-tavle-ink);
+}
+
 /* Shares the row with its tick button, so it takes the slack. */
 .inlineInput {
   flex: 1;

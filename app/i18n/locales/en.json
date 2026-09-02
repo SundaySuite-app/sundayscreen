@@ -243,6 +243,8 @@
     "lesson": "Lesson",
     "break": "Break",
     "addPeriod": "Add a lesson",
+    "lessonMinutes": "Lesson length",
+    "minutePill": "{n} min",
     "addBreak": "Add a break",
     "savePeriods": "Save the template",
     "defaultPeriodLabel": "Lesson {n}",

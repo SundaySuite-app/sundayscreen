@@ -128,6 +128,52 @@ test("«Legg til pause» chains on, without taking a lesson number", async ({
   await expect(page.getByText("Lagret")).toBeVisible();
 });
 
+test("the school's lesson length drives «Legg til time», and survives a reload", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/?goto=planner:periods");
+
+  // The row is an OFFER with a persisted answer: 45 is Rust's documented
+  // default, so its pill starts ticked.
+  const pill = (label: string) =>
+    page.getByRole("button", { name: label, exact: true });
+  await expect(pill("45 min")).toHaveAttribute("data-current", "true");
+
+  // A 30-minute school: two lessons and the break chain 08:30–09:00,
+  // 09:00–09:15, 09:15–09:45 — the length applies to LESSONS alone.
+  await pill("30 min").click();
+  await page.getByRole("button", { name: "Legg til time" }).click();
+  await page.getByRole("button", { name: "Legg til pause" }).click();
+  await page.getByRole("button", { name: "Legg til time" }).click();
+  const starts = page.locator("input[aria-label='Start']");
+  const ends = page.locator("input[aria-label='Slutt']");
+  await expect(ends.nth(0)).toHaveValue("09:00");
+  await expect(ends.nth(1)).toHaveValue("09:15");
+  await expect(starts.nth(2)).toHaveValue("09:15");
+  await expect(ends.nth(2)).toHaveValue("09:45");
+
+  // Switching mid-edit re-fits NOTHING: the rows she made stand, and only
+  // the NEXT press spans the new length.
+  await pill("60 min").click();
+  await expect(ends.nth(0)).toHaveValue("09:00");
+  await page.getByRole("button", { name: "Legg til time" }).click();
+  await expect(ends.nth(3)).toHaveValue("10:45");
+
+  await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await expect(page.getByText("Lagret")).toBeVisible();
+
+  // The choice is the SCHOOL's, not the session's: a fresh boot still
+  // offers 60, and the chain continues from the saved template.
+  await page.goto("/?goto=planner:periods");
+  await page.waitForLoadState("networkidle");
+  await expect(pill("60 min")).toHaveAttribute("data-current", "true");
+  await page.getByRole("button", { name: "Legg til time" }).click();
+  await expect(page.locator("input[aria-label='Slutt']").nth(4)).toHaveValue(
+    "11:45",
+  );
+});
+
 test("the empty week plan points at the one tab that fixes it", async ({
   page,
 }) => {

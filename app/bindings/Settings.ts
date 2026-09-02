@@ -54,4 +54,17 @@ autoUpdate: boolean,
  * Opt-in: switch class+scene automatically when a planned lesson
  * starts. Off by default — the banner suggests, the teacher decides.
  */
-autoSwitchScenes: boolean, };
+autoSwitchScenes: boolean, 
+/**
+ * The SCHOOL's lesson length in minutes — what one press of «Legg til
+ * time» spans. Schools run 30-, 45- or 60-minute lessons and the choice
+ * is a fact about the school, not about one editing session, which is
+ * why it lives here and not in component state. 45 is the default the
+ * button has always had.
+ *
+ * `lenient_lesson_minutes`, not `lenient`: `u16::default()` is 0, and a
+ * value we could not read must never become «0-minutters skoletime» —
+ * nor the clamp floor pretending someone chose it (the B#7 lesson:
+ * garbage and absent must land on the SAME documented default).
+ */
+lessonMinutes: number, };

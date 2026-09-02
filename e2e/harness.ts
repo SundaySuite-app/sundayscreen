@@ -230,6 +230,10 @@ export async function installFixtures(
               // that could have caught a defaults drift shows the drift as
               // normal.
               autoUpdate: true,
+              // Rust's documented default, through the generated limits —
+              // limits:check is what guards the agreement (the members.rs
+              // «four copies of 80» lesson).
+              lessonMinutes: limits.LESSON_MINUTES_DEFAULT,
               ...(db.settings ?? {}),
               activeClassId: db.activeClassId,
               activeSceneId: db.activeSceneId,
@@ -276,16 +280,13 @@ export async function installFixtures(
            * other half of `validate` (dropping a non-finite/absurd geometry
            * outright) is the real backend's own unit-tested job and not
            * reproduced here; only the floor is load-bearing for a journey.
-           * The two constants are hand-copied, not sourced from
-           * `limits.generated` — that generator only scans layout.rs/
-           * schedule.rs/members.rs (see scripts/gen-limits.mjs's own module
-           * doc), and settings.rs's window bounds sit outside that list —
-           * same reason NAME_MAX_CHARS=80 is hand-copied a few lines up in
-           * `scene_create`.
+           * The floors come from `limits.generated` — settings.rs joined the
+           * generator's SOURCE_FILES when `lessonMinutes` needed its default
+           * guarded, and these two hand-copies were retired in the same
+           * breath (their justification comment had been «the generator does
+           * not scan settings.rs», which stopped being true).
            */
           settings_set_window: (args?: Record<string, unknown>) => {
-            const MIN_WINDOW_W = 960;
-            const MIN_WINDOW_H = 600;
             const db = load();
             const raw = (arg(args, "window") ?? {}) as {
               x: number;
@@ -296,8 +297,8 @@ export async function installFixtures(
             };
             const clamped = {
               ...raw,
-              w: Math.max(raw.w, MIN_WINDOW_W),
-              h: Math.max(raw.h, MIN_WINDOW_H),
+              w: Math.max(raw.w, limits.MIN_WINDOW_W),
+              h: Math.max(raw.h, limits.MIN_WINDOW_H),
             };
             db.settings ??= {};
             db.settings.window = clamped;

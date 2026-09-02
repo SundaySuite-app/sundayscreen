@@ -243,6 +243,8 @@
     "lesson": "Time",
     "break": "Pause",
     "addPeriod": "Legg til time",
+    "lessonMinutes": "Timelengde",
+    "minutePill": "{n} min",
     "addBreak": "Legg til pause",
     "savePeriods": "Lagre timeoppsett",
     "defaultPeriodLabel": "Time {n}",

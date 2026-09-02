@@ -1,4 +1,5 @@
 import type { Settings } from "../bindings/Settings";
+import { LIMITS } from "./limits.generated";
 
 // Typed as the GENERATED binding, so a Rust field change is a TS compile
 // error here. Used ONLY as the api-shim's fallback when the backend cannot
@@ -14,4 +15,5 @@ export const SETTINGS_DEFAULTS: Settings = {
   updateChannel: "stable",
   autoUpdate: true,
   autoSwitchScenes: false,
+  lessonMinutes: LIMITS.LESSON_MINUTES_DEFAULT,
 };

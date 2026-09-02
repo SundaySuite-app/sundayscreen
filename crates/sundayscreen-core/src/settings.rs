@@ -54,6 +54,24 @@ pub const MIN_WINDOW_H: f64 = 600.0;
 pub const MAX_WINDOW_DIM: f64 = 20_000.0;
 pub const MAX_WINDOW_POS: f64 = 100_000.0;
 
+/// The sane range for [`Settings::lesson_minutes`]. The UI offers 30/45/60;
+/// the clamp exists for hand-edited blobs and future versions — wide enough
+/// for a double lesson, narrow enough that a stray epoch number cannot make
+/// «Legg til time» span three days.
+/// ⚠️ This file is a `scripts/gen-limits.mjs` SOURCE_FILE: every `pub const`
+/// scalar here lands in `app/lib/limits.generated.ts`. A `pub const` whose
+/// value is an expression or an array makes `npm run check` throw — keep
+/// those private or add them to EXPRESSION_SKIP over there.
+pub const LESSON_MINUTES_MIN: u16 = 5;
+pub const LESSON_MINUTES_MAX: u16 = 240;
+/// The documented default — 45 is the lesson «Legg til time» has always
+/// spanned. ONE spelling: the default fn, the lenient fallback, the
+/// `Default` impl, `app/lib/settings-defaults.ts` and the e2e harness all
+/// read this constant (the last two through `limits.generated.ts`, guarded
+/// by `limits:check`) — the members.rs «four copies of 80» lesson, applied
+/// before the copies could drift instead of after.
+pub const LESSON_MINUTES_DEFAULT: u16 = 45;
+
 /// Which release feed this install follows. The lowercase tag IS the feed's
 /// path segment (`/v1/update/sundayscreen/{stable|beta}`) — a renamed
 /// variant is a renamed live URL.
@@ -172,6 +190,21 @@ pub struct Settings {
     /// starts. Off by default — the banner suggests, the teacher decides.
     #[serde(default, deserialize_with = "lenient")]
     pub auto_switch_scenes: bool,
+    /// The SCHOOL's lesson length in minutes — what one press of «Legg til
+    /// time» spans. Schools run 30-, 45- or 60-minute lessons and the choice
+    /// is a fact about the school, not about one editing session, which is
+    /// why it lives here and not in component state. 45 is the default the
+    /// button has always had.
+    ///
+    /// `lenient_lesson_minutes`, not `lenient`: `u16::default()` is 0, and a
+    /// value we could not read must never become «0-minutters skoletime» —
+    /// nor the clamp floor pretending someone chose it (the B#7 lesson:
+    /// garbage and absent must land on the SAME documented default).
+    #[serde(
+        default = "default_lesson_minutes",
+        deserialize_with = "lenient_lesson_minutes"
+    )]
+    pub lesson_minutes: u16,
     /// ADR-007: settings keys a NEWER version wrote survive this build's
     /// load→save cycle instead of being dropped by the whole-blob write.
     /// `#[ts(skip)]` — the webview receives the keys inline and its
@@ -187,6 +220,19 @@ fn default_language() -> Option<String> {
 fn default_true() -> bool {
     true
 }
+fn default_lesson_minutes() -> u16 {
+    LESSON_MINUTES_DEFAULT
+}
+
+/// [`lenient`] for the lesson length: garbage falls to the documented 45,
+/// never to `u16::default()` = 0 (the B#7 shape, same as `lenient_language`).
+fn lenient_lesson_minutes<'de, D>(de: D) -> Result<u16, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(de)?;
+    Ok(serde_json::from_value(raw).unwrap_or(LESSON_MINUTES_DEFAULT))
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -199,6 +245,7 @@ impl Default for Settings {
             update_channel: UpdateChannel::Stable,
             auto_update: true,
             auto_switch_scenes: false,
+            lesson_minutes: LESSON_MINUTES_DEFAULT,
             extra: Default::default(),
         }
     }
@@ -251,6 +298,9 @@ impl Settings {
                 self.language = None;
             }
         }
+        self.lesson_minutes = self
+            .lesson_minutes
+            .clamp(LESSON_MINUTES_MIN, LESSON_MINUTES_MAX);
     }
 }
 
@@ -265,6 +315,29 @@ mod tests {
         assert_eq!(s.active_class_id, None);
         assert!(s.snap_enabled);
         assert_eq!(s.window, None);
+        assert_eq!(s.lesson_minutes, 45);
+    }
+
+    /// The B#7 triple for the lesson length: absent, garbage and out-of-range
+    /// each land somewhere DOCUMENTED — the first two on the same 45, the
+    /// third on the clamp edge.
+    #[test]
+    fn the_lesson_length_is_45_for_absent_and_garbage_and_clamped_for_nonsense() {
+        assert_eq!(Settings::from_json_merged("{}").lesson_minutes, 45);
+        assert_eq!(
+            Settings::from_json_merged(r#"{"lessonMinutes":"femogforti"}"#).lesson_minutes,
+            45
+        );
+        let mut s = Settings::from_json_merged(r#"{"lessonMinutes":30}"#);
+        assert_eq!(s.lesson_minutes, 30);
+        s.validate();
+        assert_eq!(s.lesson_minutes, 30, "an offered value survives validate");
+        let mut wild = Settings::from_json_merged(r#"{"lessonMinutes":9999}"#);
+        wild.validate();
+        assert_eq!(wild.lesson_minutes, LESSON_MINUTES_MAX);
+        let mut tiny = Settings::from_json_merged(r#"{"lessonMinutes":1}"#);
+        tiny.validate();
+        assert_eq!(tiny.lesson_minutes, LESSON_MINUTES_MIN);
     }
 
     #[test]
@@ -416,6 +489,7 @@ mod tests {
                 fullscreen: true,
             }),
             update_channel: UpdateChannel::Beta,
+            lesson_minutes: 60,
             auto_update: false,
             auto_switch_scenes: true,
             extra: Default::default(),

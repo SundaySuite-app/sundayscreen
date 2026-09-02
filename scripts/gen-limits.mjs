@@ -4,7 +4,7 @@
 // stepper, a maxLength attribute, the e2e harness's fake backend. Nothing
 // noticed when a Rust number changed and its TypeScript twin did not; that
 // is exactly the seam-bug shape `reference-seam-bugs` describes. This
-// script parses the `pub const` declarations directly out of the three
+// script parses the `pub const` declarations directly out of the
 // crate files that own them and regenerates `app/lib/limits.generated.ts`
 // as the ONE place the frontend reads them from.
 //
@@ -15,7 +15,7 @@
 //                                         wired into `npm run check` — a pure
 //                                         text comparison, no build involved)
 //
-// Parsing rules — each one earned by a real shape in these 24 numbers:
+// Parsing rules — each one earned by a real shape in these numbers:
 //   - only a line matching `pub const NAME: TYPE = VALUE;` is read (TYPE one
 //     of f64/u32/u8/u64/i32/i64/usize); doc comments, private consts and
 //     functions are invisible to this script on purpose.
@@ -59,6 +59,10 @@ const SOURCE_FILES = [
   "crates/sundayscreen-core/src/layout.rs",
   "crates/sundayscreen-core/src/schedule.rs",
   "crates/sundayscreen-core/src/members.rs",
+  // settings.rs joined for LESSON_MINUTES_MIN/MAX — the window-geometry
+  // consts it also holds are f64 literals and harvest fine; nothing in the
+  // frontend reads them, but an unused generated constant is not a defect.
+  "crates/sundayscreen-core/src/settings.rs",
 ];
 
 // Constant name → the exact expression text it is known to hold today.
@@ -73,7 +77,7 @@ const EXPRESSION_SKIP = {
 };
 
 const CONST_RE =
-  /^[ \t]*pub const ([A-Za-z0-9_]+): (f64|u32|u8|u64|i32|i64|usize) = ([^;]+);/gm;
+  /^[ \t]*pub const ([A-Za-z0-9_]+): (f64|u16|u32|u8|u64|i32|i64|usize) = ([^;]+);/gm;
 
 /** A bare Rust numeric literal, underscores and all — or `null` for
  *  anything else (an expression). */

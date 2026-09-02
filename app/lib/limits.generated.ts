@@ -38,4 +38,13 @@ export const LIMITS = {
   NAME_MAX_CHARS: 120,
   CLASS_NAME_MAX_CHARS: 80,
   MEMBERS_MAX: 1000,
+
+  // crates/sundayscreen-core/src/settings.rs
+  MIN_WINDOW_W: 960,
+  MIN_WINDOW_H: 600,
+  MAX_WINDOW_DIM: 20000,
+  MAX_WINDOW_POS: 100000,
+  LESSON_MINUTES_MIN: 5,
+  LESSON_MINUTES_MAX: 240,
+  LESSON_MINUTES_DEFAULT: 45,
 } as const;

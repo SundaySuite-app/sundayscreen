@@ -106,6 +106,21 @@
   font-size: var(--fs-sm);
 }
 
+/* ── The school's lesson length ────────────────────────────────────────
+   Sits directly ABOVE the add buttons it parameterises, so the eye reads
+   «Timelengde 45 min → Legg til time» as one sentence. */
+.lengthRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.lengthLabel {
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+}
+
 /* ── Shared form bits ─────────────────────────────────────────────────── */
 
 .actions {

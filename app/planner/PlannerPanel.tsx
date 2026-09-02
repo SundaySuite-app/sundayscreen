@@ -40,6 +40,12 @@ import {
 } from "./date-core";
 import styles from "./PlannerPanel.module.css";
 
+/** What the «Timelengde» row offers. A DESIGN list, not a protocol: the
+ *  store accepts anything in LIMITS.LESSON_MINUTES_MIN..MAX, and a stored
+ *  value outside this list (a future version's 90) simply renders with no
+ *  pill ticked — the row is an offer, never a validator. */
+const LESSON_MINUTE_OPTIONS: readonly number[] = [30, 45, 60];
+
 const LESSON_WEEKDAYS = [1, 2, 3, 4, 5] as const;
 
 /** «mandag 31. august» — the key stays in a data attribute for tests
@@ -154,7 +160,11 @@ function PeriodsTab() {
     const last = rows[rows.length - 1];
     const start = last ? last.end : "08:30";
     const startMin = parseTime(start) ?? 510;
-    const minutes = kind === "lesson" ? 45 : 15;
+    // The SCHOOL's lesson length (settings.rs::lesson_minutes) — the whole
+    // point of the «Timelengde» row below: pick 30/45/60 once and every
+    // press of «Legg til time» spans it. Breaks stay 15; nobody schedules
+    // a school around the length of a friminutt.
+    const minutes = kind === "lesson" ? settings.peek().lessonMinutes : 15;
     setDrafts([
       ...rows,
       {
@@ -261,6 +271,55 @@ function PeriodsTab() {
           </button>
         </div>
       ))}
+      {/* The school's lesson length — a fact about the SCHOOL, so it lives
+          in settings and survives restarts, not in this editing session.
+          Three offered values because Norwegian schools run 30-, 45- or
+          60-minute lessons; the store itself takes any sane number
+          (LESSON_MINUTES_MIN..MAX), so a school with block lessons is a
+          future option away, not a schema change. Applies to NEW rows only:
+          re-fitting existing times under the teacher's hands would be the
+          same shape as the seed overwriting her typing. */}
+      <div class={styles.lengthRow}>
+        <span class={styles.lengthLabel}>
+          {t("planner.lessonMinutes")}
+          {/* A stored value OUTSIDE the offered three (a clamped hand-edit,
+              a future version's 90) ticks no pill — and a row that then
+              says nothing about what «Legg til time» will do is a label
+              posing a question it refuses to answer. The odd value moves
+              into the label; the offered three never repeat there. */}
+          {!LESSON_MINUTE_OPTIONS.includes(settings.value.lessonMinutes) &&
+            ` — ${tf("planner.minutePill", {
+              n: String(settings.value.lessonMinutes),
+            })}`}
+        </span>
+        {LESSON_MINUTE_OPTIONS.map((m) => (
+          <button
+            key={m}
+            class={styles.pill}
+            data-current={settings.value.lessonMinutes === m || undefined}
+            onClick={() => {
+              const prev = settings.peek();
+              settings.value = { ...prev, lessonMinutes: m };
+              window.api
+                .saveSettings({ ...prev, lessonMinutes: m })
+                .then((stored) => {
+                  // Adopt the CLAMPED answer, the settingsSetWindow rule:
+                  // today {30,45,60} ⊂ [MIN,MAX] makes this a no-op, but
+                  // nothing guards that containment, and a signal that keeps
+                  // what it sent is how the pill and the disk drift apart.
+                  settings.value = stored;
+                })
+                .catch((err) => {
+                  console.warn("[planner] lesson-length save failed", err);
+                  settings.value = prev;
+                  toast("error", t("manage.actionFailed"));
+                });
+            }}
+          >
+            {tf("planner.minutePill", { n: String(m) })}
+          </button>
+        ))}
+      </div>
       <div class={styles.actions}>
         <button class={styles.secondary} onClick={() => addRow("lesson")}>
           <Icon name="plus" size="sm" />

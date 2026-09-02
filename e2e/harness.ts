@@ -49,6 +49,49 @@ export async function installFixtures(
         theme: string;
       }
 
+      /** One weekly cell as STORED — `schedule::WeekSlot` minus the key
+       *  fields (weekday/periodId live in the record key, id is the key).
+       *
+       *  `mergedWithNext` is OPTIONAL here for the same reason Rust marks it
+       *  `#[serde(default)]`: rows written before double lessons existed (a
+       *  spec that seeds `slots` straight into localStorage, e.g.
+       *  suggestion.spec) simply have no such key, and an absent key must
+       *  read as an ordinary single lesson — see
+       *  `an_older_row_without_the_column_reads_as_a_single_lesson`. */
+      interface E2eSlot {
+        classId: string | null;
+        subject: string;
+        sceneId: string | null;
+        mergedWithNext?: boolean;
+      }
+
+      /** One date override as STORED — `schedule::DateOverride` minus the
+       *  key fields. `mergedWithNext` is the TRI-STATE: absent/`null`
+       *  inherits the weekly slot's flag, `true`/`false` decides for this one
+       *  date. Absent and `null` are the SAME answer here (the store round
+       *  trips through JSON, which drops `undefined`), so every read tests
+       *  with `!= null` rather than `!== undefined`. */
+      interface E2eOverride {
+        kind: string;
+        classId: string | null;
+        subject: string;
+        sceneId: string | null;
+        title: string;
+        mergedWithNext?: boolean | null;
+      }
+
+      /** The resolved lesson `planner_day_get` hands back — mirrors
+       *  `schedule::LessonInfo`, names joined in. */
+      interface E2eLesson {
+        classId: string | null;
+        className: string | null;
+        subject: string;
+        sceneId: string | null;
+        sceneName: string | null;
+        title: string;
+        overridden: boolean;
+      }
+
       interface E2eDb {
         classes: {
           id: string;
@@ -82,20 +125,11 @@ export async function installFixtures(
           kind: string;
           sortIndex: number;
         }[];
-        slots?: Record<
-          string,
-          { classId: string | null; subject: string; sceneId: string | null }
-        >;
-        overrides?: Record<
-          string,
-          {
-            kind: string;
-            classId: string | null;
-            subject: string;
-            sceneId: string | null;
-            title: string;
-          }
-        >;
+        /** Keyed `weekday:periodId`. */
+        slots?: Record<string, E2eSlot>;
+        /** Keyed `date:periodId` — the DATE is read back out of the key by
+         *  `scene_usage` (a `YYYY-MM-DD` holds no colon). */
+        overrides?: Record<string, E2eOverride>;
         agenda?: Record<
           string,
           {
@@ -217,6 +251,18 @@ export async function installFixtures(
         return snapshot(db, cls, scene);
       };
 
+      /** Mirrors `commands::planner::valid_plan_scene`: a screen a PLAN
+       *  points at must EXIST and must be a LIBRARY screen (`classId ==
+       *  null`). A class's default screen is refused outright — a weekly cell
+       *  can change class, so «the right class's default» is not a property
+       *  the row can keep. `null` is always fine («klassens egen skjerm» at
+       *  switch time). */
+      const validPlanScene = (db: E2eDb, sceneId: string | null) => {
+        if (sceneId == null) return;
+        const scene = db.scenes.find((s) => s.id === sceneId);
+        if (!scene || scene.classId != null) throw new Error("validation");
+      };
+
       (window as unknown as Record<string, unknown>).__SUNDAYSCREEN_FIXTURES__ =
         {
           // The blob is stored WHOLE, like the real backend (F9-funn S8a) — a
@@ -309,6 +355,13 @@ export async function installFixtures(
             db.settings.window = clamped;
             save(db);
             return clamped;
+          },
+          // The link widget's open action. Records the ids it was asked to
+          // open on the window, so a spec can assert the click WOULD have
+          // opened the stored URL without any browser leaving the page.
+          link_open: (args?: Record<string, unknown>) => {
+            const w = window as unknown as { __openedLinks?: string[] };
+            (w.__openedLinks ??= []).push(String(arg(args, "widgetId")));
           },
           update_check: { phase: "upToDate" },
           app_info: { name: "SundayScreen", version: "0.0.0-e2e" },
@@ -465,6 +518,27 @@ export async function installFixtures(
             save(db);
             return scene;
           },
+          // Mirrors `commands::scenes::usage_for` + `db::planner::
+          // scene_usage_counts`: hvor mange steder i PLANEN som fortsatt
+          // peker hit. Deliberately NOT a `require_scene` — spørsmålet
+          // stilles MENS en sletting armes.
+          scene_usage: (args?: Record<string, unknown>) => {
+            const db = load();
+            const id = String(arg(args, "sceneId"));
+            const today = String(arg(args, "today"));
+            return {
+              weekSlots: Object.values(db.slots ?? {}).filter(
+                (s) => s.sceneId === id,
+              ).length,
+              // Fortida telles IKKE. Datoen bor i nøkkelen (`date:periodId`),
+              // og STRENGSAMMENLIGNING er datosammenligning for `YYYY-MM-DD`
+              // — fast bredde, mest signifikante felt først, akkurat som
+              // SQL-ens `date >= ?2`.
+              futureOverrides: Object.entries(db.overrides ?? {}).filter(
+                ([key, o]) => o.sceneId === id && key.split(":")[0] >= today,
+              ).length,
+            };
+          },
           scene_duplicate: (args?: Record<string, unknown>) => {
             const db = load();
             const sourceId = String(arg(args, "sceneId"));
@@ -532,35 +606,72 @@ export async function installFixtures(
             const db = load();
             return Object.entries(db.slots ?? {}).map(([key, v]) => {
               const [weekday, periodId] = key.split(":");
-              return { id: key, weekday: Number(weekday), periodId, ...v };
+              return {
+                id: key,
+                weekday: Number(weekday),
+                periodId,
+                ...v,
+                // AFTER the spread, and never `undefined`: the generated
+                // `WeekSlot` has `mergedWithNext: boolean` (not optional), so
+                // a row seeded without the key must still READ as `false` —
+                // Rust's `#[serde(default)]` seen from this side.
+                mergedWithNext: v.mergedWithNext ?? false,
+              };
             });
           },
           planner_slot_set: (args?: Record<string, unknown>) => {
             const db = load();
             db.slots ??= {};
             const key = `${Number(arg(args, "weekday"))}:${String(arg(args, "periodId"))}`;
+            // `SlotSpec` — `mergedWithNext` is optional on the wire, and an
+            // absent key is an ordinary single lesson.
             const slot = arg(args, "slot") as {
               classId: string | null;
               subject: string;
               sceneId: string | null;
+              mergedWithNext?: boolean;
             } | null;
             if (slot == null) delete db.slots[key];
-            else db.slots[key] = slot;
+            else {
+              // Same order as `slot_set_for`: validate the screen BEFORE the
+              // write, so a refused plan never reaches the store.
+              validPlanScene(db, slot.sceneId);
+              db.slots[key] = {
+                classId: slot.classId,
+                subject: slot.subject,
+                sceneId: slot.sceneId,
+                mergedWithNext: slot.mergedWithNext ?? false,
+              };
+            }
             save(db);
           },
           planner_override_set: (args?: Record<string, unknown>) => {
             const db = load();
             db.overrides ??= {};
             const key = `${String(arg(args, "date"))}:${String(arg(args, "periodId"))}`;
+            // `OverrideSpec` — `mergedWithNext` is the tri-state.
             const ovr = arg(args, "ovr") as {
               kind: string;
               classId: string | null;
               subject: string;
               sceneId: string | null;
               title: string;
+              mergedWithNext?: boolean | null;
             } | null;
             if (ovr == null) delete db.overrides[key];
-            else db.overrides[key] = ovr;
+            else {
+              validPlanScene(db, ovr.sceneId);
+              db.overrides[key] = {
+                kind: ovr.kind,
+                classId: ovr.classId,
+                subject: ovr.subject,
+                sceneId: ovr.sceneId,
+                title: ovr.title,
+                // `undefined` and `null` are the same answer («arv uka»);
+                // store the one JSON can hold.
+                mergedWithNext: ovr.mergedWithNext ?? null,
+              };
+            }
             save(db);
           },
           planner_day_get: (args?: Record<string, unknown>) => {
@@ -571,10 +682,77 @@ export async function installFixtures(
               db.classes.find((c) => c.id === id)?.name ?? null;
             const sceneName = (id: string | null) =>
               db.scenes.find((s) => s.id === id)?.name ?? null;
+
+            // ── Dobbelttimer: speiling av schedule.rs ────────────────────────
+            //
+            // FASITEN er `crates/sundayscreen-core/src/schedule.rs` (modul-
+            // headerens «Double lessons», `apply_merges` / `is_flag_carrier` /
+            // `shadowing_override` / `effective_merge_flag`). Divergerer denne
+            // fixturen fra den, blir e2e-tieren grønn på FEIL semantikk — les
+            // Rust-fila før du rører noe her.
+            //
+            // SELVTEST — de fem reglene, med Rust-testen som eier hver:
+            //  1. Effektivt flagg = override-radens `Some(x)`, ellers ukas
+            //     slott, ellers false. (`effective_merge_flag`; matrise-radene
+            //     «a WEEKLY double lesson merges…» og «a carrier with
+            //     Some(false) SPLITS a weekly double for one date»)
+            //  2. FLAGGBÆRER: kind=lesson + satt flagg + INGEN innhold =
+            //     skygger ingenting; innholdet løses fra uka og
+            //     `overridden` blir false. Halv bærer = vanlig override.
+            //     (`is_flag_carrier`/`shadowing_override`; «a FLAG CARRIER
+            //     merges for one date without overriding anything»,
+            //     «PARTIAL content on A/B is not a carrier …»,
+            //     `a_carrier_row_never_makes_the_lesson_look_overridden`)
+            //  3. En SKYGGENDE override-rad på B bryter merget for datoen —
+            //     lesson som cancelled. («an override ROW on B breaks the
+            //     merge …», «…and a CANCELLED B breaks it too»)
+            //  4. Merge = B får KOPI av A sin lesson (klasse og skjerm blir
+            //     med), B.continuation = true, A.mergedWithNext = true;
+            //     friminutt imellom hoppes over og består som egne entries;
+            //     kjeder følger av det framoverrettede gjennomløpet.
+            //     («chains: B flags onward…», «a break inside a double lesson
+            //     is skipped and survives as itself»,
+            //     `a_merged_tail_carries_the_heads_whole_lesson_not_just_its_subject`)
+            //  5. DINGLENDE flagg ignoreres i stillhet: avlyst/fri A, eller
+            //     flagg på dagens siste timeperiode. («a CANCELLED A has
+            //     nothing to run on…», «a flag on the day's LAST lesson period
+            //     is ignored in silence»)
+            const overrideRow = (periodId: string): E2eOverride | undefined =>
+              (db.overrides ?? {})[`${date}:${periodId}`];
+
+            /** `is_flag_carrier` — deliberately strict and NOT a trim: en rad
+             *  med så mye som en tittel er en ekte override. */
+            const isFlagCarrier = (o: E2eOverride): boolean =>
+              o.kind === "lesson" &&
+              o.mergedWithNext != null &&
+              o.classId == null &&
+              o.sceneId == null &&
+              o.subject === "" &&
+              o.title === "";
+
+            /** `shadowing_override` — en flaggbærer er ikke en. */
+            const shadowing = (periodId: string): E2eOverride | undefined => {
+              const o = overrideRow(periodId);
+              return o && !isFlagCarrier(o) ? o : undefined;
+            };
+
+            /** `effective_merge_flag` — lest fra raden UANSETT om den er
+             *  bærer eller ikke: å bære flagget er den ene tingen begge
+             *  radtyper gjør. `null`/fravær = «arv uka». */
+            const mergeFlag = (periodId: string): boolean => {
+              const o = overrideRow(periodId);
+              if (o && o.mergedWithNext != null) return o.mergedWithNext;
+              return (
+                (db.slots ?? {})[`${weekday}:${periodId}`]?.mergedWithNext ??
+                false
+              );
+            };
+
             const entries = (db.periods ?? []).map((p) => {
-              let lesson = null;
+              let lesson: E2eLesson | null = null;
               if (p.kind !== "break") {
-                const ovr = (db.overrides ?? {})[`${date}:${p.id}`];
+                // `shadowing`, ikke rå oppslag: en flaggbærer skygger ingenting.
+                const ovr = shadowing(p.id);
                 if (ovr) {
                   lesson =
                     ovr.kind === "cancelled"
@@ -606,8 +784,40 @@ export async function installFixtures(
               const agenda = ((db.agenda ?? {})[`${date}:${p.id}`] ?? []).map(
                 (a, i) => ({ ...a, date, periodId: p.id, sortIndex: i }),
               );
-              return { period: p, lesson, agenda };
+              // Begge flaggene skrives ALLTID, som serde gjør det: feltene er
+              // `#[serde(default)]` (valgfrie i bindingen) men har ingen
+              // skip_serializing, så det ekte svaret bærer to booleaner.
+              return {
+                period: p,
+                lesson,
+                agenda,
+                mergedWithNext: false,
+                continuation: false,
+              };
             });
+
+            // `apply_merges`, andre pass — ETTER at hver entry har fått sin
+            // effektive lesson: merging er en påstand om to OPPLØSTE timer.
+            // Friminutt filtreres bort her og består urørt som egne entries.
+            const lessonIdx = entries
+              .map((e, i) => (e.period.kind !== "break" ? i : -1))
+              .filter((i) => i >= 0);
+            for (let w = 0; w + 1 < lessonIdx.length; w++) {
+              const head = entries[lessonIdx[w]];
+              const tail = entries[lessonIdx[w + 1]];
+              // Regel 5: avlyst/fri A har ingenting å løpe videre på.
+              if (head.lesson == null) continue;
+              if (!mergeFlag(head.period.id)) continue;
+              // Regel 3: hun har sagt noe bestemt om B i dag.
+              if (shadowing(tail.period.id)) continue;
+              // Regel 4: HELE lessonen kopieres (klasse + skjerm blir med, ellers
+              // lander andre halvdel av dobbelttimen på feil tavle).
+              tail.lesson = { ...head.lesson };
+              tail.continuation = true;
+              head.mergedWithNext = true;
+              // Kjeden faller ut av det framoverrettede gjennomløpet: B er nå
+              // selv et hode, og B sitt eget flagg avgjør om blokka når C.
+            }
             const notes = ((db.notes ?? {})[date] ?? []).map((n, i) => ({
               ...n,
               date,

@@ -41,3 +41,18 @@
      each of them would make this a containing block for anything `fixed`
      inside it, which is the exact trap this whole host exists to get out of. */
 }
+
+/* A design session (state/design-session.ts) draws the board INSIDE the
+   planner panel, and the panel's scrim is `--z-overlay` (300) — above this
+   host's usual 200. So while one is open, both layers step over it, keeping
+   the same one-apart relationship they have everywhere else.
+   `--z-toast` (400) is deliberately untouched above them: the undo snackbar
+   still has to be reachable, and a widget popover that covered it would take
+   away the way back from a card deleted by mistake. */
+.backdrop[data-elevated] {
+  z-index: calc(var(--z-overlay) + 20);
+}
+
+.panel[data-elevated] {
+  z-index: calc(var(--z-overlay) + 21);
+}

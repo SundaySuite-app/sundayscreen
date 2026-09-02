@@ -6,6 +6,7 @@
 
 import type { DayPlan } from "../bindings/DayPlan";
 import { defaultSceneId } from "../lib/scene-ids";
+import { blockEnd } from "../widgets/agenda/agenda-widget-core";
 
 /** Minutes before a lesson's start the suggestion window opens. */
 export const SUGGEST_LEAD_MIN = 5;
@@ -100,6 +101,30 @@ interface WindowHit {
   onTarget: (classId: string | null, sceneId: string | null) => boolean;
 }
 
+/**
+ * A double lesson suggests ONCE, as its head (Runde 6).
+ *
+ * Two changes, and they are two halves of one rule — the block is the
+ * lesson-instance:
+ *
+ * 1. `continuation` entries are filtered OUT of the candidates. Their `lesson`
+ *    is a clone of the head's, so leaving them in would mint a SECOND key
+ *    (`date:B`) for the same lesson, and the auto-switch would consume it at
+ *    B's start and yank the board back — undoing a manual switch the teacher
+ *    made mid-block. That is F-funn B3 in its double-lesson shape, and the
+ *    cure is the same one: one key per lesson-instance.
+ * 2. The head's window closes at `blockEnd`, not at its own period end, so the
+ *    banner is still offerable in the second half. The key stays A's — already
+ *    settled by the first firing, which is exactly why extending the window
+ *    cannot re-fire the automation.
+ *
+ * The filter reads the FLAG, where `shownLesson` asks `blockHead` — so a
+ * continuation nobody claims (impossible from `resolve_day`, reachable from a
+ * hand-built plan) is drawn on the board but never suggested. The asymmetry is
+ * on purpose and it points the safe way: a display must not hide a real
+ * lesson, and an automation must not move the teacher's pointers on the
+ * strength of a plan that contradicts itself.
+ */
 function lessonInWindow(
   plan: DayPlan | null,
   nowMin: number,
@@ -108,9 +133,10 @@ function lessonInWindow(
   const candidates = plan.entries.filter(
     (e) =>
       e.period.kind === "lesson" &&
+      e.continuation !== true &&
       e.lesson?.classId != null &&
       nowMin >= e.period.startMin - SUGGEST_LEAD_MIN &&
-      nowMin < e.period.endMin,
+      nowMin < blockEnd(plan, e),
   );
   if (candidates.length === 0) return null;
   const entry = candidates.reduce((a, b) =>

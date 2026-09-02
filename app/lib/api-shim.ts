@@ -12,6 +12,7 @@ import type { AppInfo } from "../bindings/AppInfo";
 import type { BootFault } from "../bindings/BootFault";
 import type { Class } from "../bindings/Class";
 import type { Scene } from "../bindings/Scene";
+import type { SceneUsage } from "../bindings/SceneUsage";
 import type { SceneTheme } from "../bindings/SceneTheme";
 import type { AgendaItem } from "../bindings/AgendaItem";
 import type { AgendaItemSpec } from "../bindings/AgendaItemSpec";
@@ -323,6 +324,22 @@ const api = {
    *  answer is the row as STORED, so the caller adopts it. */
   sceneSetTheme: async (sceneId: string, theme: SceneTheme): Promise<Scene> =>
     invoke<Scene>("scene_set_theme", { sceneId, theme }),
+
+  /** How many lessons point at this scene — the delete confirmation's
+   *  number. A REJECTING read on purpose: a typed fallback of zeroes would
+   *  be the «claim 0» the round's spec forbids; the caller falls back to a
+   *  wording without a count instead. `today` from the frontend — JS owns
+   *  the wall clock. */
+  sceneUsage: async (sceneId: string, today: string): Promise<SceneUsage> =>
+    invoke<SceneUsage>("scene_usage", { sceneId, today }),
+
+  /** Open a link widget's URL in the system browser. The webview sends only
+   *  the WIDGET ID — never a URL: the command reads the stored value from
+   *  the database and re-validates http/https before opening, so this can
+   *  never become a general «open anything» bridge (SECURITY.md). A bare
+   *  write-form invoke: a failed open lands in the error ring. */
+  linkOpen: async (widgetId: string): Promise<void> =>
+    write<void>("link_open", { widgetId }),
 
   /** THE switch: class + scene in one atomic pointer move + snapshot.
    *  `sceneId = null` lands on the class's default scene. */

@@ -16,6 +16,7 @@ import { attendancePanelOpen } from "./state/attendance";
 import { bootFault } from "./state/boot";
 import { managePanelOpen } from "./state/classes";
 import { anyOverlayOpen, chromeActivity, chromeVisible } from "./state/chrome";
+import { designSession } from "./state/design-session";
 import {
   focusedWidget,
   layoutHydrated,
@@ -93,9 +94,21 @@ export function Shell() {
     );
   }
 
+  // A design session BORROWS the store's globals (state/design-session.ts), so
+  // exactly ONE `<Surface/>` may be mounted at a time — the panel mounts its
+  // own inside the little board. Two would mean two ResizeObservers writing
+  // `surfaceSize`, and every normalised coordinate in the app converts through
+  // that one number: the last observer to fire would decide where widgets are
+  // on the wall. (Remounting is harmless by construction — promise #2 derives
+  // every widget's state from its config and its epoch, which is why the board
+  // comes back exactly after a restart in the first place. `toNorm` already
+  // guards a zero-sized surface, so the gap between unmount and measure is
+  // not a divide by nothing.)
+  const designing = designSession.value !== null;
+
   return (
     <main class={styles.shell}>
-      <Surface />
+      {!designing && <Surface />}
       <div class={styles.topStack}>
         {chipText() !== null && (
           <p class={styles.errorChip} data-status="error">
@@ -122,7 +135,20 @@ export function Shell() {
           </button>
         </div>
       )}
-      <Toolbar />
+      {/* The toolbar goes away with the board it belongs to, and not merely
+          because the panel covers it. Three reasons, in order of how badly
+          each one bites:
+          — the class switcher and the screen library are `adoptSnapshot`
+            doors. Reached mid-session (a Tab away, behind the scrim) they
+            would swap the globals out from under the borrow, and the way home
+            would be gone;
+          — the add menu is the same `addMenuOpen` signal the design panel
+            uses, so a mounted toolbar would open a second copy of the menu
+            under the scrim;
+          — two «Legg til verktøy»-buttons in one accessibility tree is an
+            ambiguous target for a screen reader and for every by-name test
+            selector. */}
+      {!designing && <Toolbar />}
       {/* A widget's own popover, drawn HERE and not in the card that owns it:
           every card is `overflow: hidden` with `container-type: size`, which
           also makes it a containing block for `position: fixed`, so nothing a

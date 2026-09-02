@@ -4,6 +4,7 @@
 
 import { t } from "../i18n";
 import { formatMin } from "../planner/date-core";
+import { designSession } from "../state/design-session";
 import { currentSuggestion, dismissedSuggestionKey } from "../state/planner";
 import { switchLesson } from "../state/scenes";
 import { Icon } from "../ui/Icon";
@@ -11,6 +12,16 @@ import { toast } from "../ui/toast";
 import styles from "./SuggestionBanner.module.css";
 
 export function SuggestionBanner() {
+  // Not while a screen is being designed. The banner rides at `--z-toast`,
+  // ABOVE the planner's scrim, so «Bytt skjerm» would be sitting on top of the
+  // design panel — one click on a board that is not the board, and
+  // `switchLesson` would swap the globals out from under the borrow.
+  //
+  // Hidden rather than disabled: the suggestion is still true, and it comes
+  // straight back the moment the session ends (its window is derived from the
+  // clock, and «Ikke nå» is the only thing that settles it). A greyed-out
+  // banner would say the offer had expired, which is not what happened.
+  if (designSession.value) return null;
   const s = currentSuggestion.value;
   if (!s) return null;
 

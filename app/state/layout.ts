@@ -124,6 +124,37 @@ export function adoptSnapshot(snap: ClassSnapshot): void {
   clearUndo();
 }
 
+/**
+ * Point the store at a BORROWED board — and, with the same call, hand it back.
+ * The design session's one door into this module (state/design-session.ts).
+ *
+ * `adoptSnapshot` minus the class and its members, deliberately: a design
+ * session never moves the class pointer, and the members belong to the lesson
+ * on the wall rather than to the screen being drawn. Everything else is the
+ * same rule, including the one that matters most — the pending UNDO dies with
+ * the old board (R3-funn 3.2). `undoRemove` writes into whatever scene is
+ * active NOW, so an Undo tapped across the borrow would resurrect a card into
+ * the wrong screen and SAVE it there.
+ *
+ * `hydrated` is a parameter and not the constant `true` because this is also
+ * the way BACK. The lesson's board may have been un-hydrated when the session
+ * opened (a failed `layout_load` at boot), and returning it as hydrated would
+ * unblock replace-all writes against a layout nobody ever read — funn S#4,
+ * arrived at from the other end.
+ */
+export function adoptDesignBoard(
+  scene: Scene | null,
+  list: WidgetInstance[],
+  hydrated = true,
+): void {
+  activeScene.value = scene;
+  widgets.value = list;
+  layoutHydrated.value = hydrated;
+  selectedWidgetId.value = null;
+  focusedWidgetId.value = null;
+  clearUndo();
+}
+
 /** The next z on top of the current stack — NOT the list length: deletions
  *  leave holes and length-based z collided with survivors (F9-funn S#3). */
 function nextZ(): number {

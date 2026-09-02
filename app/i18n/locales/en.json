@@ -36,6 +36,7 @@
       "agenda": "This lesson",
       "today": "Today",
       "deadline": "Deadline",
+      "link": "Link",
       "checklist": "Checklist"
     },
     "text": {
@@ -225,7 +226,11 @@
     "emptyHint": "Save the board exactly as it stands now, and bring it back for the same lesson next week.",
     "confirmName": "Save the name",
     "renamePlaceholder": "New name … (Enter saves)",
-    "deleteConfirm": "Delete the screen"
+    "deleteConfirm": "Delete the screen",
+    "deleteInUse": {
+      "one": "Used by {n} lesson — delete anyway?",
+      "other": "Used by {n} lessons — delete anyway?"
+    }
   },
   "theme": {
     "title": "Screen colour",
@@ -300,7 +305,21 @@
     "autoSwitch": "Switch the screen automatically when the lesson starts",
     "emptyLabel": "Every period needs a name.",
     "readFailed": "Could not read the plan",
-    "noTimetable": "No timetable set up yet"
+    "noTimetable": "No timetable set up yet",
+    "design": "Design the screen",
+    "newSceneForLesson": "Create a new screen for this lesson",
+    "newSceneName": "Screen name …",
+    "doubleLesson": "Merge with the next lesson",
+    "splitLesson": "Split",
+    "splitLessonToday": "Split today",
+    "mergeLessonToday": "Merge with the next today",
+    "mergedBadge": "Double lesson",
+    "mergedContinuation": "continuation"
+  },
+  "design": {
+    "done": "Done",
+    "addTool": "Add a tool to the screen",
+    "editingHint": "You are designing “{name}” — the board behind is untouched"
   },
   "agenda": {
     "empty": "No lesson right now",
@@ -389,5 +408,14 @@
     "noteAdds": "Import always adds new classes and screens; nothing you already have is changed or overwritten.",
     "notePlanner": "The school day and the week plan are only imported if this machine does not already have them.",
     "boardUnsaved": "The board could not be saved, so the file was not written. Try again in a moment."
+  },
+  "link": {
+    "titlePlaceholder": "Title …",
+    "urlPlaceholder": "https://…",
+    "open": "Open the link",
+    "openFailed": "Could not open the link",
+    "showQr": "QR code",
+    "qrTooLong": "The link is too long for a QR code",
+    "notSet": "No link set yet"
   }
 }

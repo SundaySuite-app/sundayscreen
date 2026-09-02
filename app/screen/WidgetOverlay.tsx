@@ -26,11 +26,20 @@ import { useLayoutEffect, useRef } from "preact/hooks";
 
 import { t } from "../i18n";
 import { activeWidgetOverlay, closeWidgetOverlay } from "../state/chrome";
+import { designSession } from "../state/design-session";
 import { POPOVER_GAP_PX, popoverPos } from "./popover-core";
 import styles from "./WidgetOverlay.module.css";
 
 export function WidgetOverlay() {
   const active = activeWidgetOverlay.value;
+  // A card on the design panel's little board opens its panel through the same
+  // host — and the host's layer, `--z-popover` (200), sits BELOW the planner's
+  // scrim at `--z-overlay` (300). Without this the die's appearance menu would
+  // open somewhere under the panel that asked for it: nothing on screen, and
+  // an Escape that appears to do nothing because the top rung of the ladder is
+  // held by a panel nobody can see. A data attribute rather than a second host
+  // — same element, one layer up.
+  const elevated = designSession.value !== null || undefined;
   const panelRef = useRef<HTMLDivElement>(null);
   const anchor = active?.anchor;
 
@@ -91,6 +100,7 @@ export function WidgetOverlay() {
           keyboard and a screen reader can reach the way out too. */}
       <button
         class={styles.backdrop}
+        data-elevated={elevated}
         aria-label={t("manage.close")}
         onClick={closeWidgetOverlay}
       />
@@ -99,7 +109,12 @@ export function WidgetOverlay() {
           the box is — a menu, a group of radios, a form. A wrapper role
           chosen up here would have to be right for all twelve kinds, and
           would sit between a screen reader and the one the widget declares. */}
-      <div class={styles.panel} ref={panelRef} data-widget-overlay={widget.id}>
+      <div
+        class={styles.panel}
+        ref={panelRef}
+        data-elevated={elevated}
+        data-widget-overlay={widget.id}
+      >
         <Overlay
           widget={widget}
           anchor={active.anchor}

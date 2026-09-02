@@ -1,0 +1,88 @@
+/* A picture of a screen, at about a tenth of the wall. Colours come from
+   tokens.css alone (css-tokens gate); the SIZE comes from the component,
+   because the caller decides how big a thumbnail its row can carry. */
+
+.thumb {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
+/* One widget. The box is what carries the information — a screen with six
+   cards must look busier than one with two, whether or not the marks fit. */
+.box {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  background: var(--raised);
+  box-sizing: border-box;
+}
+
+/* The kind's mark, drawn only when `showIcon` said there is room (see
+   scene-thumb-core.ts). Sized as a FRACTION of its box rather than at the
+   token px sizes: a 16 px icon in a 13 px card is the smear the threshold
+   exists to prevent. `.thumb .mark` outranks Icon.module.css's own `.sm`
+   (0,1,1 against 0,1,0), which is the whole reason it is written as a
+   descendant selector. */
+.thumb .mark {
+  width: 62%;
+  height: 62%;
+  max-width: var(--icon-sm);
+  max-height: var(--icon-sm);
+  color: var(--ink-3);
+}
+
+/* NOT a board: the quiet state for «still reading», «could not read» and
+   «no screen identified yet». A thin bar, centred — deliberately nothing
+   that could be mistaken for a widget. */
+.placeholder {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34%;
+  height: 2px;
+  transform: translate(-50%, -50%);
+  border-radius: var(--r-pill);
+  background: var(--line-2);
+}
+
+/* The read FAILED. Same placeholder bar, but the frame says the difference
+   out loud: a dashed edge is not a screen anyone designed, and an empty
+   board here would be the one lie this component exists to refuse. */
+.thumb[data-thumb-state="error"] {
+  border-style: dashed;
+  border-color: var(--bad-line);
+  background: var(--bad-soft);
+}
+
+.thumb[data-thumb-state="error"] .placeholder {
+  background: var(--bad-line);
+}
+
+/* Still on its way — dimmer than «failed», and it settles on its own. */
+.thumb[data-thumb-state="loading"] {
+  opacity: 0.7;
+}
+
+/* «Standard» — the class's own screen rather than one from the library.
+   Sits in the corner so it never covers the middle of the picture. */
+.badge {
+  position: absolute;
+  left: var(--sp-1);
+  bottom: var(--sp-1);
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--gold-soft);
+  color: var(--ink-2);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.02em;
+}

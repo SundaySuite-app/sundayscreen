@@ -1,0 +1,171 @@
+/* The design session's panel body. No `transform`, `filter`, `contain` or
+   `container-type` anywhere in this file: `.backdrop` below is
+   `position: fixed`, and any one of those on an ancestor would make that
+   element the containing block, so the dismiss layer would cover this panel
+   instead of the viewport and a click outside the menu would never close it. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.naming {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+/* The anchor for the menu — see the note in DesignPanel.tsx. */
+.addWrap {
+  position: relative;
+}
+
+.add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-4);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--gold-line);
+  background: var(--gold-soft);
+  color: var(--ink);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add:hover,
+.add[aria-expanded="true"] {
+  background: var(--gold);
+  color: var(--on-gold);
+}
+
+/* Above the planner panel it dismisses (--z-overlay), unlike the toolbar's
+   copy, which only ever has to clear the chrome. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  border: none;
+  background: none;
+  cursor: default;
+  z-index: calc(var(--z-overlay) + 1);
+}
+
+/* DOWNWARD, where the toolbar's menu opens upward: this trigger sits at the
+   top of a panel, and a menu above it would run off the top of the screen. */
+.menu {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 2px;
+  padding: var(--sp-2);
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-dialog);
+  z-index: calc(var(--z-overlay) + 2);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 36px;
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink);
+  font-size: var(--fs-base);
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--gold-soft);
+}
+
+.itemIcon {
+  color: var(--ink-2);
+}
+
+.item:hover .itemIcon {
+  color: var(--ink);
+}
+
+/* The shell's chip, mirrored — same declarations, because it is the same
+   message and it must not read as a different, lesser one here. */
+.errorChip {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--bad);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--bad-line);
+  background: var(--bad-soft);
+}
+
+.done {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-4);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.done:hover {
+  border-color: var(--gold-line);
+  background: var(--gold-soft);
+}
+
+/* The little board.
+   `aspect-ratio` here is only the FALLBACK — DesignPanel.tsx sets the measured
+   one inline, and an inline style wins over any rule in this file.
+   No `max-height`: a cap would be honoured ahead of the ratio (width stays
+   100 %), which is precisely the lie the ratio exists to prevent. The panel
+   body scrolls instead, and a scrollbar is a smaller cost than a board whose
+   shape does not match the wall. */
+.board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg);
+}

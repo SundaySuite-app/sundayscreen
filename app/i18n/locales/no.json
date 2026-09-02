@@ -36,6 +36,7 @@
       "agenda": "Dagens time",
       "today": "Dagen i dag",
       "deadline": "Frist",
+      "link": "Lenke",
       "checklist": "Sjekkliste"
     },
     "text": {
@@ -225,7 +226,11 @@
     "emptyHint": "Lagre tavla slik den står nå, og hent den fram igjen til samme time neste uke.",
     "confirmName": "Lagre navnet",
     "renamePlaceholder": "Nytt navn … (Enter lagrer)",
-    "deleteConfirm": "Slett skjermen"
+    "deleteConfirm": "Slett skjermen",
+    "deleteInUse": {
+      "one": "Brukes av {n} time — slett likevel?",
+      "other": "Brukes av {n} timer — slett likevel?"
+    }
   },
   "theme": {
     "title": "Skjermfarge",
@@ -300,7 +305,21 @@
     "autoSwitch": "Bytt skjerm automatisk når timen starter",
     "emptyLabel": "Alle økter må ha et navn.",
     "readFailed": "Fikk ikke lest planen",
-    "noTimetable": "Ingen timeplan satt opp ennå"
+    "noTimetable": "Ingen timeplan satt opp ennå",
+    "design": "Design skjermen",
+    "newSceneForLesson": "Lag ny skjerm for denne timen",
+    "newSceneName": "Navn på skjermen …",
+    "doubleLesson": "Slå sammen med neste time",
+    "splitLesson": "Del opp",
+    "splitLessonToday": "Del opp i dag",
+    "mergeLessonToday": "Slå sammen med neste i dag",
+    "mergedBadge": "Dobbelttime",
+    "mergedContinuation": "fortsettelse"
+  },
+  "design": {
+    "done": "Ferdig",
+    "addTool": "Legg til verktøy på skjermen",
+    "editingHint": "Du designer «{name}» — tavla bak er urørt"
   },
   "agenda": {
     "empty": "Ingen time nå",
@@ -389,5 +408,14 @@
     "noteAdds": "Import legger alltid til som nye klasser og skjermer; ingenting du har fra før blir endret eller overskrevet.",
     "notePlanner": "Timeoppsettet og ukeplanen importeres bare hvis maskinen ikke har noe fra før.",
     "boardUnsaved": "Tavla kunne ikke lagres, så fila ble ikke skrevet. Prøv igjen om litt."
+  },
+  "link": {
+    "titlePlaceholder": "Tittel …",
+    "urlPlaceholder": "https://…",
+    "open": "Åpne lenken",
+    "openFailed": "Fikk ikke åpnet lenken",
+    "showQr": "QR-kode",
+    "qrTooLong": "Lenken er for lang for en QR-kode",
+    "notSet": "Ingen lenke satt ennå"
   }
 }

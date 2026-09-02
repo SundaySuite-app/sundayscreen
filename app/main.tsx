@@ -29,9 +29,8 @@ import { loadScenes } from "./state/scenes";
 import { parseGoto } from "@lib/goto-core";
 import {
   initPlanner,
-  plannerPanelOpen,
+  openPlanner,
   plannerTab,
-  refreshPlanner,
   type PlannerTab,
 } from "./state/planner";
 import { managePanelOpen } from "./state/classes";
@@ -91,8 +90,12 @@ async function boot(): Promise<void> {
   const goto = parseGoto(location.search);
   if (goto?.page === "manage") managePanelOpen.value = true;
   if (goto?.page === "planner") {
-    plannerPanelOpen.value = true;
-    void refreshPlanner();
+    // Through the ONE door, not around it. Setting the signal and calling
+    // `refreshPlanner` by hand was the same thing minus `invalidateAllThumbs`,
+    // so a deep link opened the planner on whatever screen pictures happened
+    // to be cached — including ones remembered as FAILED, which are only ever
+    // retried when the planner opens.
+    openPlanner();
     const tab = goto.tab?.replace(/^planner-/, "");
     if (tab === "periods" || tab === "week" || tab === "day") {
       plannerTab.value = tab as PlannerTab;

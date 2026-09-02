@@ -65,6 +65,13 @@
   color: var(--ink);
 }
 
+/* Stands in for `.tabs` while a design session runs: the tabs are gone, but
+   the close button must not walk left to meet the title — a control that
+   moves when the panel changes mode is a control the eye has to find again. */
+.spacer {
+  flex: 1;
+}
+
 .close {
   display: inline-flex;
   align-items: center;
@@ -324,6 +331,21 @@
   color: var(--ink-2);
 }
 
+/* The screen this lesson lands on — a THIRD line, quieter than the subject,
+   because it is the answer to a question the teacher only sometimes asks. */
+.cellScene {
+  color: var(--ink-3);
+}
+
+/* The second half of a weekly double lesson. Dimmed, not disabled: this cell
+   is where «Del opp» lives, so it has to stay clickable — the same reasoning
+   the delete confirmation uses for not flipping `disabled` in front of a
+   class. */
+.cell[data-continuation] {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
 .cellEmpty {
   color: var(--ink-3);
 }
@@ -417,6 +439,36 @@
 .lessonInfo {
   flex: 1;
   color: var(--ink-2);
+}
+
+/* Picture + name of the lesson's screen, in the header row. `flex: none` so
+   the thumbnail keeps its own aspect instead of being squeezed by the row. */
+.lessonScene {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  color: var(--ink-3);
+}
+
+/* The tail of a double lesson: a line, not a card. Dashed and inset so it
+   reads as belonging to the card above it rather than standing on its own. */
+.continuationCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-left: var(--sp-5);
+  padding: var(--sp-2) var(--sp-4);
+  border-left: 2px dashed var(--line);
+  color: var(--ink-3);
+}
+
+.continuationRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
 }
 
 .badge {

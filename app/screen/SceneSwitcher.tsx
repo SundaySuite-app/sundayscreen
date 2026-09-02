@@ -5,7 +5,8 @@
 
 import { useState } from "preact/hooks";
 
-import { t, tDyn } from "../i18n";
+import { t, tDyn, tn } from "../i18n";
+import { localDateStr } from "../planner/date-core";
 import { activeClass, activeScene } from "../state/layout";
 import {
   deleteScene,
@@ -44,6 +45,16 @@ export function confirmArmed(armedAt: number, now: number): boolean {
 interface ArmedDelete {
   id: string;
   armedAt: number;
+  /**
+   * How many lessons still point at this screen — `null` while the answer is
+   * on its way, and `null` FOREVER if the read failed.
+   *
+   * The distinction is the whole point: `scene_usage` rejects rather than
+   * returning a typed zero, because «Slett skjermen» and «Brukes av 0 timer —
+   * slett likevel?» are different sentences and only one of them is a claim.
+   * A failed read falls back to the wording that makes no claim at all.
+   */
+  usage: number | null;
 }
 
 export function SceneSwitcher() {
@@ -81,6 +92,40 @@ export function SceneSwitcher() {
     if (renameDraft.trim() === "") return;
     void renameScene(id, renameDraft).catch(fail);
     setRenamingId(null);
+  };
+
+  /**
+   * Arm the delete, and ASK — in that order.
+   *
+   * The confirmation appears immediately with its plain wording; the count
+   * arrives when it arrives and rewrites the button in place. Blocking the
+   * arming on a database read would put a spinner between the teacher and a
+   * confirmation she may well want to dismiss, and a backend that is not
+   * answering would make the trash button look broken.
+   *
+   * `today` comes from the frontend because JS owns the wall clock (the
+   * command counts overrides from today FORWARD — the past cannot be affected
+   * by a deletion made now). The answer is dropped unless the SAME screen is
+   * still the armed one: arming A, changing your mind and arming B must not
+   * put A's number on B's button.
+   */
+  const arm = (id: string) => {
+    setArmedDelete({ id, armedAt: Date.now(), usage: null });
+    window.api
+      .sceneUsage(id, localDateStr(new Date()))
+      .then((usage) => {
+        setArmedDelete((prev) =>
+          prev && prev.id === id
+            ? { ...prev, usage: usage.weekSlots + usage.futureOverrides }
+            : prev,
+        );
+      })
+      .catch((e) => {
+        // Not a toast: the teacher asked to delete a screen, not to hear
+        // about a count she never asked for. The button keeps the wording
+        // that claims nothing.
+        console.warn("[scenes] usage read failed", e);
+      });
   };
 
   return (
@@ -180,7 +225,13 @@ export function SceneSwitcher() {
                         void deleteScene(s.id).catch(fail);
                       }}
                     >
-                      {t("scene.deleteConfirm")}
+                      {/* The count only ever ADDS to the sentence. Zero and
+                          «we could not find out» both read as the plain
+                          «Slett skjermen» — never «Brukes av 0 timer», which
+                          would be a claim the app has not earned. */}
+                      {armedDelete.usage != null && armedDelete.usage > 0
+                        ? tn("scene.deleteInUse", armedDelete.usage)
+                        : t("scene.deleteConfirm")}
                     </button>
                   ) : (
                     <>
@@ -200,9 +251,7 @@ export function SceneSwitcher() {
                         class={styles.rowAction}
                         aria-label={t("manage.delete")}
                         title={t("manage.delete")}
-                        onClick={() =>
-                          setArmedDelete({ id: s.id, armedAt: Date.now() })
-                        }
+                        onClick={() => arm(s.id)}
                       >
                         <Icon name="trash" size="sm" />
                       </button>

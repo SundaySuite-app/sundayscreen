@@ -70,8 +70,14 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(root, "dist");
 
-const LARGEST_JS_MAX = 192_000;
-const LARGEST_CSS_MAX = 65_000;
+// Målt 2026-09-02 etter R6-bølgene B1/2D/B3 (designøkta, ScenePicker/
+// SceneThumb, dobbelttime-UI i planleggeren): største JS 196 460 B,
+// største CSS 68 158 B. Veksten er RUNDENS — tre nye paneler og et helt
+// dobbelttime-UI i index-chunken — og takene heves med de målte tallene
+// pluss ~5 kB margin, per denne filens egen regel: heving skjer med et
+// målt tall og en eier, aldri ved chunk-flytting.
+const LARGEST_JS_MAX = 201_000;
+const LARGEST_CSS_MAX = 73_000;
 const DIST_TOTAL_MAX = 340_000;
 
 function walk(dir) {

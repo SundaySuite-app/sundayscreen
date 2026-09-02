@@ -230,6 +230,7 @@ pub async fn export_payload(
             class_id: s.class_id,
             subject: s.subject,
             scene_id: s.scene_id,
+            merged_with_next: s.merged_with_next,
         })
         .collect();
 
@@ -445,7 +446,12 @@ mod tests {
             pool,
             2,
             &periods[0].id,
-            Some((&Some(a.id.clone()), "Matte", &Some(library.id.clone()))),
+            Some(pstore::SlotWrite {
+                class_id: &Some(a.id.clone()),
+                subject: "Matte",
+                scene_id: &Some(library.id.clone()),
+                merged_with_next: false,
+            }),
         )
         .await
         .unwrap();
@@ -456,11 +462,12 @@ mod tests {
             pool,
             3,
             &periods[0].id,
-            Some((
-                &Some(b.id.clone()),
-                "Norsk",
-                &Some(store::default_scene_id(&b.id)),
-            )),
+            Some(pstore::SlotWrite {
+                class_id: &Some(b.id.clone()),
+                subject: "Norsk",
+                scene_id: &Some(store::default_scene_id(&b.id)),
+                merged_with_next: false,
+            }),
         )
         .await
         .unwrap();
@@ -629,7 +636,12 @@ mod tests {
             &pool,
             1,
             &periods[0].id,
-            Some((&None, too_long.as_str(), &None)),
+            Some(pstore::SlotWrite {
+                class_id: &None,
+                subject: too_long.as_str(),
+                scene_id: &None,
+                merged_with_next: false,
+            }),
         )
         .await
         .unwrap();
@@ -709,6 +721,86 @@ mod tests {
             "a slot pointing at a class DEFAULT screen must land on the NEW \
              class's default — derived, then mapped"
         );
+    }
+
+    #[tokio::test]
+    async fn a_double_lesson_survives_the_move_to_another_machine() {
+        // Without the `mergedWithNext` field in the file, every double lesson
+        // would arrive on the new machine quietly split in two — and the
+        // receipt would say the school day came through.
+        let (source, _ds) = temp_pool().await;
+        let class = store::insert_class(&source, "7B").await.unwrap();
+        let periods = planner_cmd::periods_set_for(
+            &source,
+            vec![
+                planner_cmd::PeriodSpec {
+                    id: None,
+                    label: "1. time".into(),
+                    start_min: 480,
+                    end_min: 525,
+                    kind: PeriodKind::Lesson,
+                },
+                planner_cmd::PeriodSpec {
+                    id: None,
+                    label: "2. time".into(),
+                    start_min: 530,
+                    end_min: 575,
+                    kind: PeriodKind::Lesson,
+                },
+            ],
+        )
+        .await
+        .unwrap();
+        pstore::set_slot(
+            &source,
+            2,
+            &periods[0].id,
+            Some(pstore::SlotWrite {
+                class_id: &Some(class.id.clone()),
+                subject: "Matte",
+                scene_id: &None,
+                merged_with_next: true,
+            }),
+        )
+        .await
+        .unwrap();
+        pstore::set_slot(
+            &source,
+            2,
+            &periods[1].id,
+            Some(pstore::SlotWrite {
+                class_id: &Some(class.id.clone()),
+                subject: "Matte",
+                scene_id: &None,
+                merged_with_next: false,
+            }),
+        )
+        .await
+        .unwrap();
+
+        let file = payload_of(&source).await;
+        let first = file
+            .planner
+            .week
+            .iter()
+            .find(|s| s.period_id == periods[0].id)
+            .expect("the flagged cell is in the file");
+        assert!(first.merged_with_next, "the export carries it");
+
+        let (target, _dt) = temp_pool().await;
+        import::import_setup(&target, &file).await.unwrap();
+        let week = pstore::list_week_slots(&target).await.unwrap();
+        let mut flags: Vec<bool> = week.iter().map(|s| s.merged_with_next).collect();
+        flags.sort_unstable();
+        assert_eq!(flags, vec![false, true], "the import carries it too");
+
+        // And the whole point of carrying it: the day still resolves as ONE
+        // double lesson on the new machine.
+        let day = planner_cmd::day_get_for(&target, "2026-09-01", 2)
+            .await
+            .unwrap();
+        assert!(day.entries[0].merged_with_next);
+        assert!(day.entries[1].continuation);
     }
 
     #[tokio::test]
@@ -875,6 +967,7 @@ mod tests {
             class_id: None,
             subject: "Lørdagsskole".into(),
             scene_id: None,
+            merged_with_next: false,
         });
         assert_eq!(
             import::import_setup(&target, &file).await.unwrap().outcome,
@@ -928,6 +1021,7 @@ mod tests {
             class_id: Some("c1".into()),
             subject: "Matte".into(),
             scene_id: None,
+            merged_with_next: false,
         });
 
         let receipt = import::import_setup(&target, &file).await.unwrap();
@@ -961,6 +1055,7 @@ mod tests {
                 class_id: None,
                 subject: subject.into(),
                 scene_id: None,
+                merged_with_next: false,
             });
         }
 

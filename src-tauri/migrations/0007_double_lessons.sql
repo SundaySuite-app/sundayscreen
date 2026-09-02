@@ -1,0 +1,43 @@
+-- 0007 — double lessons (Runde 6): «slå sammen med neste time».
+--
+-- A double lesson is NOT a new row shape. The bijection entries↔periods is
+-- kept exactly as it was: the school day still has one entry per period, and
+-- a merge is a FLAG that says "this lesson runs on into the next lesson
+-- period". Everything downstream (the agenda widget's block span, the
+-- banner's window, the day card's «Dobbelttime»-badge) derives from the
+-- resolved flags in `sundayscreen_core::schedule::resolve_day` — the ONE
+-- place the shadowing rule already lives.
+--
+-- TWO columns, and deliberately DIFFERENT nullability:
+--
+--   week_slot.merged_with_next     INTEGER NOT NULL DEFAULT 0
+--     The recurring truth: "Tuesday's 1st period is always a double." Two
+--     states, so a plain boolean.
+--
+--   date_override.merged_with_next INTEGER              (NULLABLE — TRI-STATE)
+--     NULL = inherit whatever the weekly plan says for this period,
+--     1    = merge with the next lesson period on THIS date,
+--     0    = split on THIS date, whatever the weekly plan says.
+--     The third state is the whole point: "del opp akkurat i dag" cannot be
+--     expressed by a boolean, because 0 and "nothing written" would then be
+--     the same sentence. It is also what lets a per-date merge be written as
+--     a CONTENT-FREE override row (the resolver's «flag carrier»: kind =
+--     'lesson', class/scene NULL, subject/title empty) instead of copying the
+--     weekly cell's content into the date — a copy-on-write that would fork
+--     the plan silently the first time she edited the week afterwards
+--     (the ADR-009 lesson).
+--
+-- No triggers. The resolution rule is Rust's, and a trigger here would be a
+-- second, invisible copy of it.
+--
+-- Downgrade accounting (promise 3): an older build's SELECTs name their
+-- columns explicitly, so these two are invisible to it; its INSERTs omit
+-- them, so the DEFAULT / NULL fills them. A teacher who goes back a version
+-- keeps her week plan intact and simply sees two ordinary lessons again.
+--
+-- APPLIED-FOREVER: never edit this file (a checksum mismatch reads as
+-- corruption).
+
+ALTER TABLE week_slot ADD COLUMN merged_with_next INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE date_override ADD COLUMN merged_with_next INTEGER;

@@ -3,4 +3,11 @@
 /**
  * One weekly cell's content.
  */
-export type SlotSpec = { classId: string | null, subject: string, sceneId: string | null, };
+export type SlotSpec = { classId: string | null, subject: string, sceneId: string | null, 
+/**
+ * «Dobbelttime»: this lesson runs on into the next lesson period, every
+ * week. `#[serde(default)]` — an absent key is a single lesson, which is
+ * also why the TypeScript field is optional (`#[ts(optional = nullable)]`):
+ * the shape a caller may send is the shape the type describes.
+ */
+mergedWithNext?: boolean, };

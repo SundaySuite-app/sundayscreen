@@ -11,4 +11,11 @@ weekday: number, periodId: string, classId: string | null, subject: string,
 /**
  * `None` → the class's default scene at switch time.
  */
-sceneId: string | null, };
+sceneId: string | null, 
+/**
+ * Does this lesson run on into the next lesson period, every week?
+ *
+ * `#[serde(default)]` so a setup file (or a row) written before
+ * migration 0007 reads as an ordinary single lesson rather than failing.
+ */
+mergedWithNext: boolean, };

@@ -12,4 +12,14 @@ date: string, periodId: string, kind: OverrideKind, classId: string | null, subj
 /**
  * «Prøve», «Tur til Bymarka» — shown alongside/instead of the subject.
  */
-title: string, };
+title: string, 
+/**
+ * The TRI-STATE the nullable column exists for: `None` inherits the
+ * weekly slot's flag, `Some(true)` merges on this date alone,
+ * `Some(false)` splits on this date alone.
+ *
+ * A row that carries this and nothing else is a FLAG CARRIER (see the
+ * module header): its content resolves from the week, so a per-date
+ * merge never forks the weekly plan.
+ */
+mergedWithNext: boolean | null, };

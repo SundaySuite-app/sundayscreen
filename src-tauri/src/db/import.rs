@@ -298,8 +298,9 @@ async fn insert_week(
             .cloned();
         sqlx::query(
             "INSERT INTO week_slot
-               (id, weekday, period_id, class_id, subject, scene_id, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+               (id, weekday, period_id, class_id, subject, scene_id,
+                merged_with_next, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         )
         .bind(new_id())
         .bind(i64::from(slot.weekday))
@@ -307,6 +308,9 @@ async fn insert_week(
         .bind(class_id)
         .bind(&slot.subject)
         .bind(&scene_id)
+        // Carried, not derived: a double lesson that arrived as two singles
+        // would be a silent loss the receipt could not mention.
+        .bind(slot.merged_with_next as i64)
         .bind(stamp)
         .execute(&mut **tx)
         .await?;

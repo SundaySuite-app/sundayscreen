@@ -4,4 +4,12 @@ import type { OverrideKind } from "./OverrideKind";
 /**
  * One date override's content.
  */
-export type OverrideSpec = { kind: OverrideKind, classId: string | null, subject: string, sceneId: string | null, title: string, };
+export type OverrideSpec = { kind: OverrideKind, classId: string | null, subject: string, sceneId: string | null, title: string, 
+/**
+ * The tri-state: absent/`null` inherits the weekly plan, `true` merges
+ * on this date alone, `false` splits on this date alone. Written on its
+ * own — with every other field left empty — it is the resolver's FLAG
+ * CARRIER, which is how «slå sammen i dag» avoids copying the week's
+ * content into the date.
+ */
+mergedWithNext?: boolean | null, };

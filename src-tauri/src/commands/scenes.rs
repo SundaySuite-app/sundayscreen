@@ -4,16 +4,39 @@
 //! class lifecycle (created with it, dies with it) and is deliberately NOT
 //! part of the library: it cannot be renamed, listed or deleted here.
 
+use serde::Serialize;
 use sqlx::SqlitePool;
 use sundayscreen_core::members::CLASS_NAME_MAX_CHARS;
 use sundayscreen_core::theme::SceneTheme;
 use tauri::State;
+use ts_rs::TS;
 
 use crate::commands::classes::{lesson_switch_for, ClassSnapshot};
+use crate::commands::valid_date;
+use crate::db::planner as pstore;
 use crate::db::store::{self, SceneRow, WidgetRow};
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::settings;
+
+/// Where a screen is still used in the PLAN — the two numbers behind «denne
+/// skjermen brukes i N timer».
+///
+/// Two fields rather than one total: they are different sentences to a
+/// teacher (a weekly cell repeats every week; a date override happens once),
+/// and adding them here would take that choice away from the frontend.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "SceneUsage.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct SceneUsage {
+    /// Cells in the recurring weekly timetable pointing at this screen.
+    #[ts(type = "number")]
+    pub week_slots: u32,
+    /// Date overrides pointing at it on `today` or later. The past is not
+    /// counted: it cannot be affected by a deletion made now.
+    #[ts(type = "number")]
+    pub future_overrides: u32,
+}
 
 // A screen's name is bounded by the same `members::CLASS_NAME_MAX_CHARS` a
 // class name is — `transfer::check_limits` checks both against that ONE
@@ -108,6 +131,21 @@ pub async fn set_theme_for(
     require_scene(pool, scene_id).await
 }
 
+/// Count where `scene_id` is still planned. `today` is the frontend's local
+/// wall date (JS owns the clock) and is validated like every other date key.
+///
+/// Deliberately NOT `require_scene`: this is asked WHILE a deletion is being
+/// armed, and answering «0 places» for a screen that has just disappeared is
+/// a truthful answer to «what would this deletion take with it».
+pub async fn usage_for(pool: &SqlitePool, scene_id: &str, today: &str) -> AppResult<SceneUsage> {
+    valid_date(today)?;
+    let (week_slots, future_overrides) = pstore::scene_usage_counts(pool, scene_id, today).await?;
+    Ok(SceneUsage {
+        week_slots: week_slots.max(0) as u32,
+        future_overrides: future_overrides.max(0) as u32,
+    })
+}
+
 // ── The command wrappers ────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -155,6 +193,17 @@ pub async fn scene_set_theme(
     theme: SceneTheme,
 ) -> AppResult<SceneRow> {
     set_theme_for(db.pool(), &scene_id, theme).await
+}
+
+/// What a deletion would take with it — read when the teacher ARMS the
+/// delete, so the confirmation can say how many lessons still point here.
+#[tauri::command]
+pub async fn scene_usage(
+    db: State<'_, Db>,
+    scene_id: String,
+    today: String,
+) -> AppResult<SceneUsage> {
+    usage_for(db.pool(), &scene_id, &today).await
 }
 
 /// The ONE switch: class + scene in a single atomic pointer move + snapshot.
@@ -342,6 +391,96 @@ mod tests {
         let b = store::insert_class(&pool, "8A").await.unwrap();
         assert_eq!(
             lesson_switch_for(&pool, &a.id, Some(&store::default_scene_id(&b.id)))
+                .await
+                .unwrap_err()
+                .code(),
+            "validation"
+        );
+    }
+
+    #[tokio::test]
+    async fn scene_usage_counts_the_week_and_only_the_future_of_the_calendar() {
+        use crate::commands::planner::{self as planner_cmd, OverrideSpec, SlotSpec};
+        use sundayscreen_core::schedule::{OverrideKind, PeriodKind};
+
+        let (pool, _d) = temp_pool().await;
+        let class = store::insert_class(&pool, "7B").await.unwrap();
+        let scene = store::insert_global_scene(&pool, "Prøve").await.unwrap();
+        let other = store::insert_global_scene(&pool, "Skriveøkt")
+            .await
+            .unwrap();
+        let periods = planner_cmd::periods_set_for(
+            &pool,
+            vec![
+                planner_cmd::PeriodSpec {
+                    id: None,
+                    label: "1. time".into(),
+                    start_min: 510,
+                    end_min: 555,
+                    kind: PeriodKind::Lesson,
+                },
+                planner_cmd::PeriodSpec {
+                    id: None,
+                    label: "2. time".into(),
+                    start_min: 565,
+                    end_min: 610,
+                    kind: PeriodKind::Lesson,
+                },
+            ],
+        )
+        .await
+        .unwrap();
+        let slot = |scene_id: &str| SlotSpec {
+            class_id: Some(class.id.clone()),
+            subject: "Norsk".into(),
+            scene_id: Some(scene_id.to_string()),
+            merged_with_next: false,
+        };
+        // Two weekly cells on the screen, one on another screen.
+        planner_cmd::slot_set_for(&pool, 1, &periods[0].id, Some(&slot(&scene.id)))
+            .await
+            .unwrap();
+        planner_cmd::slot_set_for(&pool, 2, &periods[0].id, Some(&slot(&scene.id)))
+            .await
+            .unwrap();
+        planner_cmd::slot_set_for(&pool, 3, &periods[0].id, Some(&slot(&other.id)))
+            .await
+            .unwrap();
+
+        let ovr = |scene_id: &str| OverrideSpec {
+            kind: OverrideKind::Lesson,
+            class_id: Some(class.id.clone()),
+            subject: "Matte".into(),
+            scene_id: Some(scene_id.to_string()),
+            title: "Prøve".into(),
+            merged_with_next: None,
+        };
+        for date in ["2026-08-20", "2026-09-01", "2026-09-14"] {
+            planner_cmd::override_set_for(&pool, date, &periods[0].id, Some(&ovr(&scene.id)))
+                .await
+                .unwrap();
+        }
+        // …and one on another screen, on a future date.
+        planner_cmd::override_set_for(&pool, "2026-09-14", &periods[1].id, Some(&ovr(&other.id)))
+            .await
+            .unwrap();
+
+        let usage = usage_for(&pool, &scene.id, "2026-09-01").await.unwrap();
+        assert_eq!(usage.week_slots, 2);
+        assert_eq!(
+            usage.future_overrides, 2,
+            "TODAY counts; 2026-08-20 is over and cannot be affected"
+        );
+
+        // A screen nothing points at answers zero rather than failing.
+        let unused = store::insert_global_scene(&pool, "Ubrukt").await.unwrap();
+        let zero = usage_for(&pool, &unused.id, "2026-09-01").await.unwrap();
+        assert_eq!((zero.week_slots, zero.future_overrides), (0, 0));
+
+        // The date comes from the frontend and is gated like every other one:
+        // a nonsense key would make `date >= ?` compare against nothing real.
+        assert_eq!(
+            usage_for(&pool, &scene.id, "2026-99-99")
                 .await
                 .unwrap_err()
                 .code(),

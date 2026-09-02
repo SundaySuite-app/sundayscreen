@@ -43,6 +43,13 @@ pub struct SlotSpec {
     #[serde(default)]
     pub subject: String,
     pub scene_id: Option<String>,
+    /// «Dobbelttime»: this lesson runs on into the next lesson period, every
+    /// week. `#[serde(default)]` — an absent key is a single lesson, which is
+    /// also why the TypeScript field is optional (`#[ts(optional = nullable)]`):
+    /// the shape a caller may send is the shape the type describes.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub merged_with_next: bool,
 }
 
 /// One date override's content.
@@ -57,6 +64,14 @@ pub struct OverrideSpec {
     pub scene_id: Option<String>,
     #[serde(default)]
     pub title: String,
+    /// The tri-state: absent/`null` inherits the weekly plan, `true` merges
+    /// on this date alone, `false` splits on this date alone. Written on its
+    /// own — with every other field left empty — it is the resolver's FLAG
+    /// CARRIER, which is how «slå sammen i dag» avoids copying the week's
+    /// content into the date.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub merged_with_next: Option<bool>,
 }
 
 /// One agenda item in a per-lesson save.
@@ -98,6 +113,79 @@ fn valid_any_weekday(weekday: u8) -> AppResult<()> {
         return Err(AppError::Validation("weekday must be 1..=7".into()));
     }
     Ok(())
+}
+
+/// A screen a PLAN points at must exist and must be a LIBRARY screen.
+///
+/// The same rule `lesson_switch` enforces at switch time, moved to the write
+/// so the plan cannot hold a pointer the switch would later refuse — a lesson
+/// that silently lands on the class default is the quiet kind of wrong. A
+/// class's DEFAULT screen is refused outright rather than only when it belongs
+/// to another class: a weekly cell can change class (or have none at all), so
+/// "the right class's default" is not a property the row can keep.
+///
+/// `None` is always fine — it means «klassens egen skjerm» at switch time.
+async fn valid_plan_scene(pool: &SqlitePool, scene_id: &Option<String>) -> AppResult<()> {
+    let Some(id) = scene_id.as_deref() else {
+        return Ok(());
+    };
+    match crate::db::store::get_scene(pool, id).await? {
+        None => Err(AppError::Validation(format!("scene «{id}» does not exist"))),
+        Some(scene) if scene.class_id.is_some() => Err(AppError::Validation(
+            "a class's default screen cannot be planned for a lesson".into(),
+        )),
+        Some(_) => Ok(()),
+    }
+}
+
+pub async fn slot_set_for(
+    pool: &SqlitePool,
+    weekday: u8,
+    period_id: &str,
+    slot: Option<&SlotSpec>,
+) -> AppResult<()> {
+    valid_lesson_weekday(weekday)?;
+    if let Some(s) = slot {
+        valid_plan_scene(pool, &s.scene_id).await?;
+    }
+    pstore::set_slot(
+        pool,
+        weekday,
+        period_id,
+        slot.map(|s| pstore::SlotWrite {
+            class_id: &s.class_id,
+            subject: s.subject.as_str(),
+            scene_id: &s.scene_id,
+            merged_with_next: s.merged_with_next,
+        }),
+    )
+    .await
+}
+
+pub async fn override_set_for(
+    pool: &SqlitePool,
+    date: &str,
+    period_id: &str,
+    ovr: Option<&OverrideSpec>,
+) -> AppResult<()> {
+    valid_date(date)?;
+    if let Some(o) = ovr {
+        valid_plan_scene(pool, &o.scene_id).await?;
+    }
+    pstore::set_override(
+        pool,
+        date,
+        period_id,
+        ovr.map(|o| pstore::OverrideWrite {
+            kind: o.kind,
+            class_id: &o.class_id,
+            subject: &o.subject,
+            scene_id: &o.scene_id,
+            title: &o.title,
+            merged_with_next: o.merged_with_next,
+        }),
+    )
+    .await
 }
 
 pub async fn periods_set_for(pool: &SqlitePool, specs: Vec<PeriodSpec>) -> AppResult<Vec<Period>> {
@@ -187,15 +275,7 @@ pub async fn planner_slot_set(
     period_id: String,
     slot: Option<SlotSpec>,
 ) -> AppResult<()> {
-    valid_lesson_weekday(weekday)?;
-    pstore::set_slot(
-        db.pool(),
-        weekday,
-        &period_id,
-        slot.as_ref()
-            .map(|s| (&s.class_id, s.subject.as_str(), &s.scene_id)),
-    )
-    .await
+    slot_set_for(db.pool(), weekday, &period_id, slot.as_ref()).await
 }
 
 #[tauri::command]
@@ -205,20 +285,7 @@ pub async fn planner_override_set(
     period_id: String,
     ovr: Option<OverrideSpec>,
 ) -> AppResult<()> {
-    valid_date(&date)?;
-    pstore::set_override(
-        db.pool(),
-        &date,
-        &period_id,
-        ovr.as_ref().map(|o| pstore::OverrideWrite {
-            kind: o.kind,
-            class_id: &o.class_id,
-            subject: &o.subject,
-            scene_id: &o.scene_id,
-            title: &o.title,
-        }),
-    )
-    .await
+    override_set_for(db.pool(), &date, &period_id, ovr.as_ref()).await
 }
 
 #[tauri::command]
@@ -308,6 +375,15 @@ mod tests {
         }
     }
 
+    fn slot_spec(class_id: Option<&str>, subject: &str, scene_id: Option<&str>) -> SlotSpec {
+        SlotSpec {
+            class_id: class_id.map(String::from),
+            subject: subject.into(),
+            scene_id: scene_id.map(String::from),
+            merged_with_next: false,
+        }
+    }
+
     #[tokio::test]
     async fn periods_reconcile_preserves_slots_and_agenda_across_retiming() {
         let (pool, _d) = temp_pool().await;
@@ -321,7 +397,12 @@ mod tests {
             &pool,
             1,
             &p1,
-            Some((&Some(class.id.clone()), "Norsk", &None)),
+            Some(pstore::SlotWrite {
+                class_id: &Some(class.id.clone()),
+                subject: "Norsk",
+                scene_id: &None,
+                merged_with_next: false,
+            }),
         )
         .await
         .unwrap();
@@ -378,9 +459,19 @@ mod tests {
         .await
         .unwrap();
         let gone = saved[1].id.clone();
-        pstore::set_slot(&pool, 2, &gone, Some((&None, "KRLE", &None)))
-            .await
-            .unwrap();
+        pstore::set_slot(
+            &pool,
+            2,
+            &gone,
+            Some(pstore::SlotWrite {
+                class_id: &None,
+                subject: "KRLE",
+                scene_id: &None,
+                merged_with_next: false,
+            }),
+        )
+        .await
+        .unwrap();
 
         periods_set_for(
             &pool,
@@ -416,7 +507,12 @@ mod tests {
             &pool,
             1,
             &p1,
-            Some((&Some(class.id.clone()), "Norsk", &None)),
+            Some(pstore::SlotWrite {
+                class_id: &Some(class.id.clone()),
+                subject: "Norsk",
+                scene_id: &None,
+                merged_with_next: false,
+            }),
         )
         .await
         .unwrap();
@@ -431,6 +527,7 @@ mod tests {
                 subject: "Matte",
                 scene_id: &None,
                 title: "Prøve",
+                merged_with_next: None,
             }),
         )
         .await
@@ -507,7 +604,12 @@ mod tests {
             &pool,
             1,
             &p1,
-            Some((&Some(class.id.clone()), "Norsk", &None)),
+            Some(pstore::SlotWrite {
+                class_id: &Some(class.id.clone()),
+                subject: "Norsk",
+                scene_id: &None,
+                merged_with_next: false,
+            }),
         )
         .await
         .unwrap();
@@ -546,5 +648,242 @@ mod tests {
             "validation"
         );
         assert!(super::valid_lesson_weekday(5).is_ok());
+    }
+
+    // ── The screen a plan points at ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn a_plan_only_accepts_a_screen_the_switch_could_actually_show() {
+        let (pool, _d) = temp_pool().await;
+        let a = store::insert_class(&pool, "7B").await.unwrap();
+        let b = store::insert_class(&pool, "8A").await.unwrap();
+        let library = store::insert_global_scene(&pool, "Prøve").await.unwrap();
+        let saved = periods_set_for(&pool, vec![spec("Time 1", 510, 555)])
+            .await
+            .unwrap();
+        let p1 = saved[0].id.clone();
+
+        // A library screen is the whole point.
+        slot_set_for(
+            &pool,
+            1,
+            &p1,
+            Some(&slot_spec(Some(&a.id), "Norsk", Some(&library.id))),
+        )
+        .await
+        .expect("a global screen is what the picker offers");
+
+        // `None` = «klassens egen skjerm», resolved at switch time.
+        slot_set_for(&pool, 1, &p1, Some(&slot_spec(Some(&a.id), "Norsk", None)))
+            .await
+            .expect("no screen is a legal, meaningful state");
+
+        // A screen that does not exist.
+        assert_eq!(
+            slot_set_for(
+                &pool,
+                1,
+                &p1,
+                Some(&slot_spec(Some(&a.id), "Norsk", Some("no-such-scene")))
+            )
+            .await
+            .unwrap_err()
+            .code(),
+            "validation"
+        );
+
+        // ANOTHER class's default screen — the pointer `lesson_switch` refuses
+        // at switch time, refused here instead of at the projector.
+        assert_eq!(
+            slot_set_for(
+                &pool,
+                1,
+                &p1,
+                Some(&slot_spec(
+                    Some(&a.id),
+                    "Norsk",
+                    Some(&store::default_scene_id(&b.id))
+                ))
+            )
+            .await
+            .unwrap_err()
+            .code(),
+            "validation"
+        );
+
+        // The same four answers for a date override.
+        let ovr = |scene: Option<&str>| OverrideSpec {
+            kind: OverrideKind::Lesson,
+            class_id: Some(a.id.clone()),
+            subject: "Matte".into(),
+            scene_id: scene.map(String::from),
+            title: "Prøve".into(),
+            merged_with_next: None,
+        };
+        override_set_for(&pool, "2026-08-31", &p1, Some(&ovr(Some(&library.id))))
+            .await
+            .expect("global");
+        override_set_for(&pool, "2026-08-31", &p1, Some(&ovr(None)))
+            .await
+            .expect("none");
+        for bad in [
+            "no-such-scene".to_string(),
+            store::default_scene_id(&b.id),
+            store::default_scene_id(&a.id),
+        ] {
+            assert_eq!(
+                override_set_for(&pool, "2026-08-31", &p1, Some(&ovr(Some(&bad))))
+                    .await
+                    .unwrap_err()
+                    .code(),
+                "validation",
+                "{bad} must be refused"
+            );
+        }
+    }
+
+    // ── Double lessons, through the database ────────────────────────────────
+
+    #[tokio::test]
+    async fn a_weekly_double_lesson_is_stored_and_resolved() {
+        let (pool, _d) = temp_pool().await;
+        let class = store::insert_class(&pool, "7B").await.unwrap();
+        let saved = periods_set_for(
+            &pool,
+            vec![spec("Time 1", 510, 555), spec("Time 2", 565, 610)],
+        )
+        .await
+        .unwrap();
+        let (p1, p2) = (saved[0].id.clone(), saved[1].id.clone());
+
+        slot_set_for(
+            &pool,
+            1,
+            &p1,
+            Some(&SlotSpec {
+                merged_with_next: true,
+                ..slot_spec(Some(&class.id), "Norsk", None)
+            }),
+        )
+        .await
+        .unwrap();
+        slot_set_for(
+            &pool,
+            1,
+            &p2,
+            Some(&slot_spec(Some(&class.id), "KRLE", None)),
+        )
+        .await
+        .unwrap();
+
+        // The column survives the round trip…
+        let week = pstore::list_week_slots(&pool).await.unwrap();
+        assert!(
+            week.iter()
+                .find(|s| s.period_id == p1)
+                .unwrap()
+                .merged_with_next
+        );
+        assert!(
+            !week
+                .iter()
+                .find(|s| s.period_id == p2)
+                .unwrap()
+                .merged_with_next
+        );
+
+        // …and the resolver turns it into a block.
+        let day = day_get_for(&pool, "2026-08-31", 1).await.unwrap();
+        assert!(day.entries[0].merged_with_next);
+        assert!(day.entries[1].continuation);
+        assert_eq!(day.entries[1].lesson.as_ref().unwrap().subject, "Norsk");
+    }
+
+    #[tokio::test]
+    async fn the_override_tri_state_survives_the_column() {
+        // NULL is not `false`: «ingenting skrevet» has to come back as
+        // «arv fra ukeplanen», or «del opp i dag» becomes unexpressible.
+        let (pool, _d) = temp_pool().await;
+        let saved = periods_set_for(
+            &pool,
+            vec![spec("Time 1", 510, 555), spec("Time 2", 565, 610)],
+        )
+        .await
+        .unwrap();
+        let p1 = saved[0].id.clone();
+        let carrier = |merged: Option<bool>| OverrideSpec {
+            kind: OverrideKind::Lesson,
+            class_id: None,
+            subject: String::new(),
+            scene_id: None,
+            title: String::new(),
+            merged_with_next: merged,
+        };
+        for want in [Some(true), Some(false), None] {
+            override_set_for(&pool, "2026-08-31", &p1, Some(&carrier(want)))
+                .await
+                .unwrap();
+            let rows = pstore::overrides_for_date(&pool, "2026-08-31")
+                .await
+                .unwrap();
+            assert_eq!(rows[0].merged_with_next, want, "{want:?} round-trips");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_carrier_row_merges_one_date_without_forking_the_week() {
+        let (pool, _d) = temp_pool().await;
+        let class = store::insert_class(&pool, "7B").await.unwrap();
+        let saved = periods_set_for(
+            &pool,
+            vec![spec("Time 1", 510, 555), spec("Time 2", 565, 610)],
+        )
+        .await
+        .unwrap();
+        let (p1, p2) = (saved[0].id.clone(), saved[1].id.clone());
+        slot_set_for(
+            &pool,
+            1,
+            &p1,
+            Some(&slot_spec(Some(&class.id), "Norsk", None)),
+        )
+        .await
+        .unwrap();
+        slot_set_for(
+            &pool,
+            1,
+            &p2,
+            Some(&slot_spec(Some(&class.id), "KRLE", None)),
+        )
+        .await
+        .unwrap();
+
+        override_set_for(
+            &pool,
+            "2026-08-31",
+            &p1,
+            Some(&OverrideSpec {
+                kind: OverrideKind::Lesson,
+                class_id: None,
+                subject: String::new(),
+                scene_id: None,
+                title: String::new(),
+                merged_with_next: Some(true),
+            }),
+        )
+        .await
+        .unwrap();
+
+        let day = day_get_for(&pool, "2026-08-31", 1).await.unwrap();
+        let head = day.entries[0].lesson.as_ref().unwrap();
+        assert_eq!(head.subject, "Norsk", "content still comes from the week");
+        assert!(!head.overridden, "a carrier shadows nothing");
+        assert!(day.entries[0].merged_with_next);
+        assert!(day.entries[1].continuation);
+
+        // The NEXT week is untouched — the carrier is one date's word only.
+        let other = day_get_for(&pool, "2026-09-07", 1).await.unwrap();
+        assert!(!other.entries[0].merged_with_next);
+        assert_eq!(other.entries[1].lesson.as_ref().unwrap().subject, "KRLE");
     }
 }

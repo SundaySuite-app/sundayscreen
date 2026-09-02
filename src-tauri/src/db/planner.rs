@@ -117,8 +117,8 @@ where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
     let rows = sqlx::query(
-        "SELECT id, weekday, period_id, class_id, subject, scene_id FROM week_slot
-         ORDER BY weekday, period_id",
+        "SELECT id, weekday, period_id, class_id, subject, scene_id, merged_with_next
+         FROM week_slot ORDER BY weekday, period_id",
     )
     .fetch_all(executor)
     .await?;
@@ -127,8 +127,8 @@ where
 
 pub async fn slots_for_weekday(pool: &SqlitePool, weekday: u8) -> AppResult<Vec<WeekSlot>> {
     let rows = sqlx::query(
-        "SELECT id, weekday, period_id, class_id, subject, scene_id FROM week_slot
-         WHERE weekday = ?1",
+        "SELECT id, weekday, period_id, class_id, subject, scene_id, merged_with_next
+         FROM week_slot WHERE weekday = ?1",
     )
     .bind(weekday as i64)
     .fetch_all(pool)
@@ -144,7 +144,21 @@ fn row_to_slot(r: sqlx::sqlite::SqliteRow) -> WeekSlot {
         class_id: r.get("class_id"),
         subject: r.get("subject"),
         scene_id: r.get("scene_id"),
+        merged_with_next: r.get::<i64, _>("merged_with_next") != 0,
     }
+}
+
+/// The content of one weekly cell's write.
+///
+/// A struct rather than the tuple this used to be: `merged_with_next` made it
+/// a four-tuple, and a bare `true` in fourth position at a call site is
+/// exactly the shape a reader cannot check.
+pub struct SlotWrite<'a> {
+    pub class_id: &'a Option<String>,
+    pub subject: &'a str,
+    pub scene_id: &'a Option<String>,
+    /// Does this lesson run on into the next lesson period? (Migration 0007.)
+    pub merged_with_next: bool,
 }
 
 /// Upsert (Some) or clear (None) one weekly cell.
@@ -152,7 +166,7 @@ pub async fn set_slot(
     pool: &SqlitePool,
     weekday: u8,
     period_id: &str,
-    slot: Option<(&Option<String>, &str, &Option<String>)>,
+    slot: Option<SlotWrite<'_>>,
 ) -> AppResult<()> {
     match slot {
         None => {
@@ -162,20 +176,22 @@ pub async fn set_slot(
                 .execute(pool)
                 .await?;
         }
-        Some((class_id, subject, scene_id)) => {
+        Some(w) => {
             sqlx::query(
                 "INSERT INTO week_slot
-                   (id, weekday, period_id, class_id, subject, scene_id, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                   (id, weekday, period_id, class_id, subject, scene_id,
+                    merged_with_next, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(weekday, period_id) DO UPDATE SET
-                   class_id = ?4, subject = ?5, scene_id = ?6",
+                   class_id = ?4, subject = ?5, scene_id = ?6, merged_with_next = ?7",
             )
             .bind(new_id())
             .bind(weekday as i64)
             .bind(period_id)
-            .bind(class_id)
-            .bind(subject)
-            .bind(scene_id)
+            .bind(w.class_id)
+            .bind(w.subject)
+            .bind(w.scene_id)
+            .bind(w.merged_with_next as i64)
             .bind(now_ms())
             .execute(pool)
             .await?;
@@ -188,7 +204,8 @@ pub async fn set_slot(
 
 pub async fn overrides_for_date(pool: &SqlitePool, date: &str) -> AppResult<Vec<DateOverride>> {
     let rows = sqlx::query(
-        "SELECT id, date, period_id, kind, class_id, subject, scene_id, title
+        "SELECT id, date, period_id, kind, class_id, subject, scene_id, title,
+                merged_with_next
          FROM date_override WHERE date = ?1",
     )
     .bind(date)
@@ -205,6 +222,8 @@ pub async fn overrides_for_date(pool: &SqlitePool, date: &str) -> AppResult<Vec<
             subject: r.get("subject"),
             scene_id: r.get("scene_id"),
             title: r.get("title"),
+            // NULL stays None — the tri-state's «inherit the week» (0007).
+            merged_with_next: r.get::<Option<i64>, _>("merged_with_next").map(|n| n != 0),
         })
         .collect())
 }
@@ -216,6 +235,9 @@ pub struct OverrideWrite<'a> {
     pub subject: &'a str,
     pub scene_id: &'a Option<String>,
     pub title: &'a str,
+    /// The tri-state (migration 0007): `None` inherits the weekly plan,
+    /// `Some(x)` decides for this date alone.
+    pub merged_with_next: Option<bool>,
 }
 
 /// Upsert (Some) or clear (None) one (date, period) override.
@@ -236,10 +258,12 @@ pub async fn set_override(
         Some(w) => {
             sqlx::query(
                 "INSERT INTO date_override
-                   (id, date, period_id, kind, class_id, subject, scene_id, title, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                   (id, date, period_id, kind, class_id, subject, scene_id, title,
+                    merged_with_next, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
                  ON CONFLICT(date, period_id) DO UPDATE SET
-                   kind = ?4, class_id = ?5, subject = ?6, scene_id = ?7, title = ?8",
+                   kind = ?4, class_id = ?5, subject = ?6, scene_id = ?7, title = ?8,
+                   merged_with_next = ?9",
             )
             .bind(new_id())
             .bind(date)
@@ -249,6 +273,7 @@ pub async fn set_override(
             .bind(w.subject)
             .bind(w.scene_id)
             .bind(w.title)
+            .bind(w.merged_with_next.map(|b| b as i64))
             .bind(now_ms())
             .execute(pool)
             .await?;
@@ -379,6 +404,42 @@ pub async fn replace_notes(
     }
     tx.commit().await?;
     notes_for_date(pool, date).await
+}
+
+// ── Scene usage ─────────────────────────────────────────────────────────────
+
+/// How many places in the PLAN point at this screen: weekly cells, and date
+/// overrides from `today` onwards.
+///
+/// It lives here rather than in `db::store` because both tables it counts are
+/// the planner's; `store` owns the scene ROW, this owns what refers to it.
+///
+/// `today` is a `YYYY-MM-DD` string minted by the FRONTEND — JS owns the wall
+/// clock, and this crate never reads one (the house rule, and the same reason
+/// the picker's attendance date is passed in). Overrides in the PAST are
+/// deliberately not counted: they are noise in the one sentence this feeds,
+/// «this screen is used in N lessons — delete it anyway?».
+///
+/// Returns `(week_slots, future_overrides)`.
+pub async fn scene_usage_counts(
+    pool: &SqlitePool,
+    scene_id: &str,
+    today: &str,
+) -> AppResult<(i64, i64)> {
+    let week_slots: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM week_slot WHERE scene_id = ?1")
+        .bind(scene_id)
+        .fetch_one(pool)
+        .await?;
+    // String comparison IS date comparison for `YYYY-MM-DD` — fixed width,
+    // most significant field first. The same property `is_valid_date` exists
+    // to protect: a shape that is not this one would sort meaninglessly here.
+    let future_overrides: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM date_override WHERE scene_id = ?1 AND date >= ?2")
+            .bind(scene_id)
+            .bind(today)
+            .fetch_one(pool)
+            .await?;
+    Ok((week_slots, future_overrides))
 }
 
 // ── Name lookups for the resolver's join ────────────────────────────────────

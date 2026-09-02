@@ -10,4 +10,23 @@ export type DayEntry = { period: Period,
 /**
  * `None`: a break, a free period, or a cancelled lesson.
  */
-lesson: LessonInfo | null, agenda: Array<AgendaItem>, };
+lesson: LessonInfo | null, agenda: Array<AgendaItem>, 
+/**
+ * RESOLVED, not stored: this entry is the HEAD of a double lesson that
+ * runs on into the next lesson period. A stored flag with nowhere to go
+ * (the day's last lesson period) never reaches this field.
+ *
+ * `#[ts(optional = nullable)]` on both this and [`Self::continuation`]:
+ * the field is `#[serde(default)]`, i.e. its absence is a legal way to
+ * say `false`, and saying so in the TypeScript type is what lets a
+ * frontend written before double lessons existed keep compiling —
+ * exactly the tolerance ADR-007 gives a widget config, applied to a
+ * generated type.
+ */
+mergedWithNext?: boolean, 
+/**
+ * RESOLVED: this entry is the TAIL of a double lesson — its `lesson` was
+ * copied from the head, and a view that lists lessons should fold it
+ * into the head rather than draw it twice.
+ */
+continuation?: boolean, };

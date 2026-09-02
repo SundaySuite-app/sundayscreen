@@ -226,6 +226,20 @@ pub struct TransferSlot {
     pub subject: String,
     #[serde(default)]
     pub scene_id: Option<String>,
+    /// «Dobbelttime»: does this cell run on into the next lesson period?
+    ///
+    /// ADDITIVE, so `SCHEMA_VERSION` stays at 1: an older file has no key,
+    /// `#[serde(default)]` reads it as `false`, and the setup arrives as
+    /// ordinary single lessons — a degradation, not a loss. Carrying it at
+    /// all is the point: without this field a teacher who moves her setup to
+    /// a new machine would find every double lesson quietly split in two,
+    /// with nothing in the receipt to say so.
+    ///
+    /// Per-DATE merges (the resolver's flag carriers) do NOT travel — they
+    /// live on `date_override`, which the file deliberately has no field for
+    /// at all (see the module header).
+    #[serde(default)]
+    pub merged_with_next: bool,
 }
 
 /// The school day half of the file. All-or-nothing on import: the period
@@ -734,8 +748,44 @@ mod tests {
                 class_id: None,
                 subject: String::new(),
                 scene_id: None,
+                merged_with_next: false,
             })
             .collect();
         assert_eq!(check_limits(&file).unwrap_err().what, "weekSlots");
+    }
+
+    // ── Double lessons in the file ──────────────────────────────────────────
+
+    #[test]
+    fn a_double_lesson_survives_a_write_and_read() {
+        let mut file = TransferFile::new("0.5.0", 0.0);
+        file.planner.week.push(TransferSlot {
+            weekday: 2,
+            period_id: "p1".into(),
+            class_id: Some("c1".into()),
+            subject: "Matte".into(),
+            scene_id: None,
+            merged_with_next: true,
+        });
+        let json = serde_json::to_string(&file).unwrap();
+        assert!(
+            json.contains(r#""mergedWithNext":true"#),
+            "the flag is written in camelCase: {json}"
+        );
+        assert_eq!(parse(&json).unwrap(), file);
+    }
+
+    #[test]
+    fn a_file_written_before_double_lessons_reads_as_single_ones() {
+        // The tolerant road, at the field this round added: no key, no
+        // failure, no double lesson.
+        let raw = format!(
+            r#"{{"kind":"{KIND}","schemaVersion":1,"planner":{{
+                 "periods":[{{"id":"p1","label":"1. time","startMin":480,"endMin":525}}],
+                 "week":[{{"weekday":1,"periodId":"p1","subject":"Norsk"}}]}}}}"#
+        );
+        let file = parse(&raw).expect("an absent field is not an unreadable one");
+        assert!(!file.planner.week[0].merged_with_next);
+        assert_eq!(file.planner.week[0].subject, "Norsk");
     }
 }

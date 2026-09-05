@@ -202,7 +202,22 @@ test("Escape peels the popover, then the session, then the panel", async ({
   await expect(overlay).toHaveCount(0);
   await expect(panel.getByText("Du designer «Terningskjerm»")).toBeVisible();
 
-  // Rung 2 — the session, and the panel STAYS. Below «overlay» in the ladder
+  // Rung 2 — an enlarged card, and the session BELOW it (R6-F3). On the wall
+  // a panel is drawn over the big card, so «overlay» outranks «focus»; inside
+  // the panel the big card is drawn over the SESSION, and the order swaps.
+  // With one rung for both, this press ended the session and shrank the card
+  // in one go — two layers, one press — and the teacher who pressed Escape to
+  // put a card down was back at the week grid.
+  await dice.hover();
+  await dice.getByRole("button", { name: "Vis stort" }).click();
+  const scrim = page.locator("[data-focus-scrim]");
+  await expect(scrim).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(scrim).toHaveCount(0);
+  await expect(panel.getByText("Du designer «Terningskjerm»")).toBeVisible();
+
+  // Rung 3 — the session, and the panel STAYS. Below «overlay» in the ladder
   // one press would have undone two layers, and a teacher who pressed Escape
   // to leave a screen she was editing would be back at the board.
   await page.keyboard.press("Escape");
@@ -210,9 +225,137 @@ test("Escape peels the popover, then the session, then the panel", async ({
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("button", { name: "Ukeplan" })).toBeVisible();
 
-  // Rung 3 — the panel. Through `closePlanner`, which is the one door out.
+  // Rung 4 — the panel. Through `closePlanner`, which is the one door out.
   await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: "Planlegger" })).toHaveCount(0);
+});
+
+// ── The board has to FIT ────────────────────────────────────────────────────
+
+test("the whole board and its header fit on a 1024×768 screen (F1)", async ({
+  page,
+}) => {
+  // The target machine. A classroom PC on the projector's own resolution is
+  // the ONE screen this app is written for, and the little board ran 103 px
+  // past the bottom of it: 938 × 704 with its top edge at y = 167. Reaching
+  // the last row of cards meant scrolling the panel body — and «Ferdig», «Legg
+  // til verktøy på skjermen» and the `saveError` chip all live in the header
+  // that scrolled away with it. A failed save in the middle of a design
+  // session was then invisible at the exact moment the teacher was working.
+  //
+  // Measured, not eyeballed: an assertion on a screenshot would pass on a
+  // board hanging half off the screen.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await installFixtures(page);
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  const panel = await planLessonOnNewScreen(page, "Trangskjerm");
+  await panel.getByRole("button", { name: "Design skjermen" }).click();
+  await expect(panel.getByText("Du designer «Trangskjerm»")).toBeVisible();
+
+  const done = panel.getByRole("button", { name: "Ferdig" });
+  const board = page.locator('[style*="aspect-ratio"]').first();
+  const [doneBox, boardBox] = await Promise.all([
+    done.boundingBox(),
+    board.boundingBox(),
+  ]);
+  expect(doneBox, "«Ferdig» is on screen").not.toBeNull();
+  expect(boardBox, "the board is on screen").not.toBeNull();
+
+  // BOTH at once, which is the whole finding: it was never «the board is too
+  // big» on its own, it was that reaching the board cost the header.
+  expect(boardBox!.y + boardBox!.height).toBeLessThanOrEqual(768);
+  expect(doneBox!.y + doneBox!.height).toBeLessThanOrEqual(768);
+  expect(doneBox!.y).toBeGreaterThanOrEqual(0);
+
+  // …and nothing scrolls to make that true.
+  const overflow = await page.evaluate(() => {
+    const el = document.querySelector('[style*="aspect-ratio"]');
+    let sc = el?.parentElement ?? null;
+    while (sc && sc.scrollHeight <= sc.clientHeight) sc = sc.parentElement;
+    return sc
+      ? { cls: sc.className, ch: sc.clientHeight, sh: sc.scrollHeight }
+      : null;
+  });
+  expect(overflow, "no ancestor of the board scrolls").toBeNull();
+
+  // The SHAPE survives the cap, and that is the reason the fix is a
+  // `max-width` rather than a `max-height`: the little board must keep the
+  // wall's proportion, or a card placed against its edge lands somewhere else
+  // on the projector. Asserted against the ratio the panel itself asked for —
+  // a height cap would have left this style in place and drawn a box that
+  // ignores it.
+  // Chromium reports the computed value as «w / h» even for a bare number, so
+  // it is parsed as a fraction rather than with `Number()`.
+  const asked = await board.evaluate((el) => {
+    const [w, h] = getComputedStyle(el)
+      .aspectRatio.split("/")
+      .map((s) => Number(s.trim()));
+    return h ? w / h : w;
+  });
+  expect(asked).toBeGreaterThan(0);
+  expect(boardBox!.width / boardBox!.height).toBeCloseTo(asked, 2);
+});
+
+// ── The class default's own colour ──────────────────────────────────────────
+
+test("designing a class's default screen draws its REAL backdrop (F4)", async ({
+  page,
+}) => {
+  // R6-F4. A class default lives outside `scene_list` on purpose (it cannot be
+  // renamed, listed or deleted as a library screen), so the planner had no row
+  // to read and SYNTHESISED one — with `theme: "standard"` baked in, because
+  // the frontend had nowhere to get the real value from. The teacher then
+  // designed on white a screen her class sees on near-black, in an editor whose
+  // whole justification is that a preview which lies is not an editor. The
+  // `scene_get` command is the row this journey proves is being read.
+  await installFixtures(page);
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  // The board on the wall IS the class default — recolour it there.
+  await page.getByRole("button", { name: "Bytt skjerm" }).click();
+  await page.getByRole("button", { name: "Tavle", exact: true }).click();
+  await expect(page.locator("main > [data-theme]")).toHaveAttribute(
+    "data-theme",
+    "tavle",
+  );
+  await page.keyboard.press("Escape");
+
+  // Now put something ELSE on the wall, and that step is load-bearing rather
+  // than scene-setting: with the class default already on the projector,
+  // `enterDesign` takes its same-scene path and uses the REAL row it has in
+  // hand — the bug is invisible there. It only shows on the BORROW path, i.e.
+  // when the screen being designed is not the one the class is looking at,
+  // which is the whole point of designing from the planner.
+  const panel = await planLessonOnNewScreen(page, "Bibliotekskjerm");
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await panel.getByRole("button", { name: "Lukk" }).click();
+  await page.getByRole("button", { name: "Bytt skjerm" }).click();
+  await page.getByRole("menuitem", { name: "Bibliotekskjerm" }).click();
+  await expect(page.locator("main > [data-theme]")).toHaveAttribute(
+    "data-theme",
+    "standard",
+  );
+
+  // Back into the planner, and point the lesson at «Standard» — the class's
+  // own screen, the one with no library row to look up.
+  await page.getByRole("button", { name: "Planlegger" }).click();
+  await panel.getByRole("button", { name: "Ukeplan" }).click();
+  await panel.getByRole("button", { name: "7B Norsk" }).click();
+  await panel.getByLabel("Skjerm", { exact: true }).selectOption("");
+
+  await panel.getByRole("button", { name: "Design skjermen" }).click();
+  await expect(panel.getByText("Du designer")).toBeVisible();
+
+  // The little board wears the colour the class sees, not the colour the
+  // frontend could name without asking — while the wall behind the panel is
+  // still on «standard», so this cannot be the wall's attribute leaking in.
+  await expect(panel.locator("[data-theme]")).toHaveAttribute(
+    "data-theme",
+    "tavle",
+  );
 });
 
 // ── A session that never opens ──────────────────────────────────────────────

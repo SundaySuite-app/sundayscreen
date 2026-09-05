@@ -1,8 +1,10 @@
 // Global keys: F11 toggles fullscreen, Cmd/Ctrl+Z takes back the deletion the
 // snackbar is offering, and Escape peels ONE layer at a time (text field → a
 // widget's own popover → the add menu → class menu → the design session →
-// an overlay panel → an enlarged widget → fullscreen). Installed once from
-// main.tsx.
+// an overlay panel → an enlarged widget → fullscreen — with the last two
+// swapped while a design session runs, because the big card is then INSIDE
+// the panel rather than under it; `chrome-core.ts` owns that argument).
+// Installed once from main.tsx.
 
 import { attendancePanelOpen } from "../state/attendance";
 import { classMenuOpen, managePanelOpen } from "../state/classes";

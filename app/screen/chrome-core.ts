@@ -32,7 +32,8 @@ export function shouldHide(
 /** What one Escape press closes, in order: a widget's own popover, then the
  *  add menu, then the class menu, then the design session, then the manage
  *  panel, then the enlarged widget, then fullscreen — one layer per press,
- *  innermost first.
+ *  innermost first. INSIDE a design session the last two swap places; see the
+ *  «focus» paragraph at the bottom of this note.
  *
  *  «widgetoverlay» is OUTERMOST-first, above even the add menu, because it is
  *  the only layer that can be open over any of the others: it belongs to a
@@ -63,7 +64,18 @@ export function shouldHide(
  *  a panel is drawn ON TOP of an enlarged card, so an inner focus rung would
  *  shrink the card back while the thing the teacher was actually dismissing
  *  stayed on the board — the mirror image of the missing-overlay bug that put
- *  `overlayOpen` in this chain in the first place. */
+ *  `overlayOpen` in this chain in the first place.
+ *
+ *  …with ONE exception, and it is the design session (R6-F3). «Vis stort» on
+ *  the wall enlarges a card that the panel is drawn over, which is the case
+ *  the paragraph above describes. Inside a session the layering is the other
+ *  way round: the enlarged card belongs to the panel's own little board and is
+ *  drawn INSIDE it, over the session — so with both open the innermost thing
+ *  on screen is the big card. Answering «design» there peels two layers at
+ *  once: the card shrinks back AND the session ends, and the teacher who
+ *  pressed Escape to put one card down is back at the week grid. Hence the
+ *  swap below: while `designOpen`, focus outranks design. On the wall
+ *  (`designOpen` false) the order is untouched. */
 export type EscapeLayer =
   | "widgetoverlay"
   | "addmenu"
@@ -87,6 +99,9 @@ export function escapeTarget(state: {
   if (state.widgetOverlayOpen) return "widgetoverlay";
   if (state.addMenuOpen) return "addmenu";
   if (state.menuOpen) return "menu";
+  // The enlarged card is INSIDE the session's board here, not under the panel
+  // the way it is on the wall — so it is the inner layer and goes first.
+  if (state.designOpen && state.focused) return "focus";
   if (state.designOpen) return "design";
   if (state.overlayOpen) return "overlay";
   if (state.focused) return "focus";

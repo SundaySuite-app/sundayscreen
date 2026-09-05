@@ -5,6 +5,7 @@ import {
   escapeTarget,
   inRevealZone,
   shouldHide,
+  type EscapeLayer,
 } from "./chrome-core";
 
 describe("inRevealZone", () => {
@@ -58,12 +59,16 @@ describe("escapeTarget", () => {
     expect(
       escapeTarget({ ...all, widgetOverlayOpen: false, addMenuOpen: false }),
     ).toBe("menu");
+    // `focused: false` here, and it is not tidying: with a card enlarged INSIDE
+    // the session the two rungs swap places (R6-F3, asserted below). This line
+    // is about where «design» sits among the menus and the panel.
     expect(
       escapeTarget({
         ...all,
         widgetOverlayOpen: false,
         addMenuOpen: false,
         menuOpen: false,
+        focused: false,
       }),
     ).toBe("design");
     expect(
@@ -159,6 +164,78 @@ describe("escapeTarget", () => {
     expect(
       escapeTarget({ ...none, widgetOverlayOpen: true, designOpen: true }),
     ).toBe("widgetoverlay");
+  });
+
+  it("peels the enlarged card BEFORE the session it is drawn inside", () => {
+    // R6-F3. «Vis stort» on a card on the little board draws the big card
+    // INSIDE the panel, over the session — the opposite of the wall, where a
+    // panel covers an enlarged card. Answering «design» here would peel two
+    // layers with one press: the card shrinks back AND the session ends, and
+    // the teacher who pressed Escape to put one card down lands on the week
+    // grid. The rung order is contextual for exactly this reason.
+    const inSession = {
+      ...none,
+      designOpen: true,
+      overlayOpen: true,
+      focused: true,
+    };
+    expect(escapeTarget(inSession)).toBe("focus");
+    // Second press: NOW the session. Third: the panel. One layer each.
+    expect(escapeTarget({ ...inSession, focused: false })).toBe("design");
+    expect(
+      escapeTarget({ ...inSession, focused: false, designOpen: false }),
+    ).toBe("overlay");
+  });
+
+  it("the swap is the SESSION's, not the panel's", () => {
+    // On the wall the panel still outranks the enlarged card: there the card
+    // is under the panel, and shrinking it first would leave the panel
+    // standing over a board that just changed under it.
+    expect(escapeTarget({ ...none, overlayOpen: true, focused: true })).toBe(
+      "overlay",
+    );
+    // And a session with no card enlarged is unaffected either way.
+    expect(escapeTarget({ ...none, designOpen: true, overlayOpen: true })).toBe(
+      "design",
+    );
+  });
+
+  it("«peels ONE layer» holds for all 128 states", () => {
+    // The contract the whole ladder exists for, asserted as a walk instead of
+    // as prose — and the walk is what catches the F3 shape, where one press
+    // took two rungs down. Two things must hold from EVERY state: the answer
+    // names a layer that is actually open (never a rung nothing is standing
+    // on), and pressing Escape until the answer is `null` takes exactly as
+    // many presses as there are open layers.
+    const flag: Record<Exclude<EscapeLayer, null>, keyof typeof none> = {
+      widgetoverlay: "widgetOverlayOpen",
+      addmenu: "addMenuOpen",
+      menu: "menuOpen",
+      design: "designOpen",
+      overlay: "overlayOpen",
+      focus: "focused",
+      fullscreen: "fullscreen",
+    };
+    const keys = Object.keys(none) as (keyof typeof none)[];
+    for (let mask = 0; mask < 1 << keys.length; mask++) {
+      const start = { ...none };
+      keys.forEach((k, i) => {
+        start[k] = (mask & (1 << i)) !== 0;
+      });
+      const open = keys.filter((k) => start[k]).length;
+
+      let state = start;
+      let presses = 0;
+      for (let layer = escapeTarget(state); layer !== null; presses++) {
+        // The rung answered for is one the teacher can actually see.
+        expect(state[flag[layer]]).toBe(true);
+        state = { ...state, [flag[layer]]: false };
+        layer = escapeTarget(state);
+        // A runaway is a bug, not a hang.
+        expect(presses).toBeLessThan(keys.length);
+      }
+      expect(presses).toBe(open);
+    }
   });
 
   it("a session without a panel still answers for the press", () => {

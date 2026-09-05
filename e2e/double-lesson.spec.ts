@@ -263,6 +263,106 @@ test("«Del opp i dag» splits the date without touching the week", async ({
   );
 });
 
+// ── The flag with nothing under it ──────────────────────────────────────────
+
+test("a merge flag on an EMPTY head is not a double lesson (F2)", async ({
+  page,
+}) => {
+  // R6-F2, and it is a seam bug of the classic shape: two layers each correct
+  // on their own, disagreeing where they meet, both green.
+  //
+  // `apply_merges` (schedule.rs:389) skips a merge whose head resolves to no
+  // lesson — «a cancelled or free A has nothing to run on: a flag left on it is
+  // dangling, and dangling flags are ignored in silence». The week grid checked
+  // only `mergedWithNext` and never asked whether the head HELD anything, so it
+  // drew the tail as a dimmed «fortsettelse» of a lesson that does not exist —
+  // hiding a real lesson behind a label, in the tab that is supposed to be the
+  // weekly truth. The day tab, reading the resolver, showed it correctly the
+  // whole time; nothing was red anywhere.
+  //
+  // The way in is ordinary: she empties a double lesson's head through the
+  // FIELDS and presses «Lagre» instead of «Tøm» (`set_slot` stores an empty row
+  // quite happily), and the checkbox is still ticked because the editor
+  // initialised it from the row.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+
+  const panel = await buildSchoolDay(page);
+
+  // Monday Time 2 has a real lesson of its own.
+  await fillWeekCell(panel, {
+    cell: 5,
+    title: "Mandag · Time 2 09:30",
+    subject: "Norsk",
+  });
+
+  // Monday Time 1: the flag, and nothing else. No class, no subject — saved.
+  await weekCells(panel).nth(0).click();
+  await expect(panel.getByText("Mandag · Time 1 08:30")).toBeVisible();
+  await panel.getByLabel("Slå sammen med neste time").check();
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+
+  // THE FINDING: Time 2's cell shows its own lesson, not a continuation of
+  // nothing.
+  await expect(panel.getByText("fortsettelse")).toHaveCount(0);
+  await expect(weekCells(panel).nth(5)).not.toHaveAttribute(
+    "data-continuation",
+    "true",
+  );
+  await expect(weekCells(panel).nth(5)).toContainText("Norsk");
+  await expect(weekCells(panel).nth(5)).toContainText("7B");
+  // …and the emptied head reads as empty, the same word `effective_lesson`
+  // uses for it, rather than as a card with no writing on it.
+  await expect(weekCells(panel).nth(0)).toContainText("—");
+
+  // The resolver agreed all along — this is the half that was never wrong, and
+  // asserting it is what names the divergence as a DIVERGENCE.
+  await panel.getByRole("button", { name: "I dag", exact: true }).click();
+  await expect(panel.getByText("Time 2 · 09:30–10:15")).toBeVisible();
+  await expect(panel).toContainText("Norsk");
+  await expect(panel.getByText("Dobbelttime")).toHaveCount(0);
+  await expect(panel.getByText("fortsettelse")).toHaveCount(0);
+
+  // And the flag still WORKS the moment the head has a lesson again: the fix
+  // is a content check, not a way of ignoring the checkbox.
+  await panel.getByRole("button", { name: "Ukeplan" }).click();
+  await weekCells(panel).nth(0).click();
+  await panel
+    .getByLabel("Klasse", { exact: true })
+    .selectOption({ label: "7B" });
+  await panel.getByLabel("Fag").fill("Matte");
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(panel.getByText("fortsettelse")).toHaveCount(1);
+  await expect(weekCells(panel).nth(5)).toHaveAttribute(
+    "data-continuation",
+    "true",
+  );
+});
+
+// ── «Fortsettelse av hva?» ──────────────────────────────────────────────────
+
+test("the week grid's continuation cell names the period it belongs to (F8)", async ({
+  page,
+}) => {
+  // In a 5 × 8 grid a bare «fortsettelse» made the teacher count rows upwards
+  // to find out what it was a continuation OF. The cell is a standalone label
+  // there, so it carries the head period's name; the day tab keeps the bare
+  // word, where it stands next to the period's own clock times as an
+  // apposition and reads as a sentence.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+
+  const panel = await buildSchoolDay(page);
+  await mergeMondayDouble(panel);
+
+  await expect(weekCells(panel).nth(5)).toContainText("Fortsettelse av Time 1");
+
+  // The day tab's wording is untouched.
+  await panel.getByRole("button", { name: "I dag", exact: true }).click();
+  await expect(panel.getByText("Time 2 · 09:30–10:15")).toBeVisible();
+  await expect(panel.getByText("Fortsettelse av")).toHaveCount(0);
+});
+
 test("editing a deviation does not silently undo the day's merge choice", async ({
   page,
 }) => {

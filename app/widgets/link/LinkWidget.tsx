@@ -41,6 +41,22 @@ export function LinkWidget({ widget }: { widget: WidgetInstance }) {
   // The QR hint can be answered without loading the encoder — `fitsInQr`
   // measures, it does not encode (link-core.ts).
   const qrTooLong = presentable && cfg.showQr && !fitsInQr(cfg.url);
+  // R6/F6. `sanitized_url` CLEARS an address it will not vouch for — by FORM,
+  // never by filter (ADR-017), and that stays. What was missing was the WORD.
+  // The card said «Ingen lenke satt ennå» immediately, but this input kept
+  // showing what she typed for the rest of the session, so the only moment the
+  // loss became visible was the next boot, and by then there was nothing left
+  // to point at. Trimmed, because a field holding nothing but a space has lost
+  // nothing worth reporting — `isPresentableUrl` trims before judging too.
+  const urlInvalid = cfg.url.trim() !== "" && !presentable;
+  // R6/F7, WCAG 2.5.3 «Label in Name»: the accessible name must CONTAIN the
+  // visible text. The visible text on this button is the HOST — or, with
+  // nothing to open, the «not set» line — while the name was a fixed «Åpne
+  // lenken» that appeared nowhere on screen. A voice-control user could not
+  // say the name of the only control the widget has.
+  const openLabel = presentable
+    ? `${t("link.open")} — ${host}`
+    : t("link.notSet");
 
   return (
     <div class={styles.link}>
@@ -92,8 +108,8 @@ export function LinkWidget({ widget }: { widget: WidgetInstance }) {
         data-no-drag
         data-link-open
         disabled={!presentable}
-        aria-label={t("link.open")}
-        title={t("link.open")}
+        aria-label={openLabel}
+        title={openLabel}
         onClick={() => {
           if (!presentable) return;
           // The shim's `linkOpen` is the write form, so the rejection also
@@ -122,6 +138,14 @@ export function LinkWidget({ widget }: { widget: WidgetInstance }) {
           and is imported by qr-core, never restated there). */}
       {cfg.showQr && presentable && !qrTooLong && <LazyQr url={cfg.url} />}
       {qrTooLong && <p class={styles.qrHint}>{t("link.qrTooLong")}</p>}
+
+      {/* …and the OTHER reason the board is not showing what she expected.
+          The two hints are mutually exclusive by construction — `qrTooLong`
+          needs an address the app vouches for, this one needs the opposite —
+          so the card never grows more than one line of prose. It says what
+          WILL be kept rather than what is wrong, because the sentence has to
+          be actionable from the input she is standing in. */}
+      {urlInvalid && <p class={styles.urlHint}>{t("link.invalidUrl")}</p>}
 
       <div data-settings-row data-no-drag>
         <input

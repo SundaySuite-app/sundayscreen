@@ -332,6 +332,13 @@ const SCENE_LIGHT_MIN = 0.6;
 /** The dark board's ceiling — it must read as a chalkboard, not as a tint. */
 const SCENE_DARK_MAX = 0.06;
 
+/** The alpha `Surface.module.css` puts the empty board's HINT line at on a
+ *  themed board, so the title and the hint are two levels there the way they
+ *  are on the default board (R6/F9). Read out of the dictionary rather than
+ *  restated: two numbers for one dim is the seam bug this house keeps
+ *  finding, and the number is what decides whether the hint clears AA. */
+const SCENE_HINT_DIM = Number(TOKENS.get("--scene-hint-dim"));
+
 describe("skjermtemaene: a backdrop, and the one ink it carries", () => {
   for (const { name, bg, ink } of SCENE_THEMES) {
     it(`${name}: the empty-board text clears the AA floor on its own backdrop`, () => {
@@ -348,7 +355,31 @@ describe("skjermtemaene: a backdrop, and the one ink it carries", () => {
       // `tavle`'s is chalk on a blackboard.
       expect(INKS.map((entry) => entry.name)).not.toContain(ink);
     });
+
+    // `standard` renders --ink-2/--ink-3 and is deliberately not dimmed.
+    if (name === "standard") continue;
+
+    it(`${name}: the DIMMED hint line still clears the AA floor`, () => {
+      // The guard above proves the INK. It does not prove what RENDERS: on a
+      // themed board the empty-state hint is drawn at `--scene-hint-dim` so it
+      // reads as a level under the title (R6/F9), and an alpha is a contrast
+      // change. `varm` is the tight one — 4.60:1 at 0.9, 4.14:1 at 0.85 — so
+      // a considered nudge to either the dim or an ink goes red here first,
+      // which is the whole reason the number lives in tokens.css.
+      const b = paint(bg);
+      const dimmed = over({ rgb: paint(ink).rgb, a: SCENE_HINT_DIM }, b.rgb);
+      expect(contrast(dimmed, b.rgb)).toBeGreaterThanOrEqual(FLOOR);
+    });
   }
+
+  it("the hint dim is a real alpha, and a DIM", () => {
+    // `Number("")` is 0 and `Number(undefined)` is NaN — both would make every
+    // assertion above pass or throw for the wrong reason. And a dim of 1 is
+    // the collapsed hierarchy the rule exists to undo, silently green.
+    expect(Number.isFinite(SCENE_HINT_DIM)).toBe(true);
+    expect(SCENE_HINT_DIM).toBeGreaterThan(0);
+    expect(SCENE_HINT_DIM).toBeLessThan(1);
+  });
 
   it("the default theme IS today's board, byte for byte", () => {
     // The promise to a teacher who never opens the picker: nothing moved.

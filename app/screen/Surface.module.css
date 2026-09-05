@@ -84,6 +84,27 @@
   text-wrap: balance;
 }
 
+/* R6/F9 — the hint is a LEVEL under the title, and a theme had flattened it.
+   The two declarations above name --ink-2 and --ink-3, which is a real level
+   difference (5.47:1 against 4.19:1 on --bg) — but every theme block up top
+   hands out ONE ink, so both fallbacks are overridden with the same value and
+   the levels merge. Measured on `tavle` before this rule: title and hint both
+   rgb(232, 239, 233).
+
+   `standard` has no block, so it still renders --ink-2/--ink-3 and needs no
+   alpha; `[data-theme]:not([data-theme="standard"])` is therefore exactly the
+   set of boards whose ink is a single value. (Surface.tsx always writes the
+   attribute — `?? "standard"` — so the bare-attribute half of the selector is
+   about intent, not about a missing case.)
+
+   The value lives in tokens.css because it is load-bearing for AA, not for
+   taste: at 0.9 the tightest board (`varm`) renders the hint at 4.60:1 and at
+   0.85 it is 4.14:1. Only tokens.test.ts can see that, and only if the number
+   is in the dictionary it reads. */
+.surface[data-theme]:not([data-theme="standard"]) .emptyHint {
+  opacity: var(--scene-hint-dim);
+}
+
 .emptyAction {
   pointer-events: auto;
   border: none;

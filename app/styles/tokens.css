@@ -145,6 +145,34 @@
   --scene-tavle-bg: #1e2a24;
   --scene-tavle-ink: #e8efe9;
 
+  /* ── The themed board's HINT level (R6/F9) ─────────────────────────────
+   *
+   * The empty board says two things — a title and a hint — and they are two
+   * LEVELS. The default board has always drawn them as two: --ink-2 at 5.47:1
+   * over --ink-3 at 4.19:1. A themed board had only ONE ink to hand out, so it
+   * gave both lines `--scene-ink` and the levels collapsed: on `tavle` the
+   * title and the hint measured the identical rgb(232, 239, 233).
+   *
+   * An ALPHA on the theme's own ink rather than a fifth pair of «dim»
+   * colours. Five more literals would be five more contrast proofs to keep,
+   * for one relationship stated four times.
+   *
+   * ⚠️ 0.9 is not a taste value, it is the widest dim the LIGHT boards can
+   * pay for. Composited on its own backdrop the hint measures papir 5.01:1,
+   * varm 4.60:1, kjolig 4.69:1, tavle 10.57:1 — all still over the 4.5:1 floor
+   * the pairs above are held to, with `varm` the tight one. At 0.85 varm falls
+   * to 4.14:1 and kjolig to 4.21:1: text a pupil reads from the back row,
+   * pushed under AA to buy a slightly bigger visual step. And the step 0.9
+   * buys is the one the DEFAULT board already has — a 17–21 % drop in
+   * contrast against that board's own 23 %. Copying the default hierarchy is
+   * the brief; exceeding it is not.
+   *
+   * `standard` is NOT dimmed (Surface.module.css keys the rule off
+   * `:not([data-theme="standard"])`): it has two ink levels of its own and
+   * needs no alpha to say so. Pinned per theme in `tokens.test.ts` — the
+   * guard above proves the INK, and an alpha changes what actually renders. */
+  --scene-hint-dim: 0.9;
+
   /* ── Ink, three levels — every one of them a READING level ───────────
    *
    * `--ink-3` is not «the third grey»; it is MUTED TEXT WITH A CONTRAST

@@ -153,6 +153,24 @@ pub async fn scene_list(db: State<'_, Db>) -> AppResult<Vec<SceneRow>> {
     store::list_global_scenes(db.pool()).await
 }
 
+/// ONE screen's row, by id — including a class's default screen.
+///
+/// Deliberately NOT `require_global`: this exists precisely for the rows
+/// `scene_list` cannot return. The planner's little board needs a class
+/// default's real BACKDROP before it draws it (R6-F4); synthesising the row
+/// frontend-side meant designing on white a screen the class sees on
+/// near-black. Reading it changes nothing, and the two restricted verbs
+/// (rename, delete) stay restricted — they would take a row the class
+/// lifecycle owns, while a read takes nothing.
+///
+/// A miss is `NotFound`, never `None`: the caller asked about a specific
+/// screen, and «here is no answer» dressed as an empty one is how a deleted
+/// class's id turns into a blank board instead of an error.
+#[tauri::command]
+pub async fn scene_get(db: State<'_, Db>, scene_id: String) -> AppResult<SceneRow> {
+    require_scene(db.pool(), &scene_id).await
+}
+
 #[tauri::command]
 pub async fn scene_create(db: State<'_, Db>, name: String) -> AppResult<SceneRow> {
     let name = valid_scene_name(&name)?;
@@ -340,6 +358,33 @@ mod tests {
         // …and an unknown id is still a NotFound, not a silent no-op.
         assert_eq!(
             set_theme_for(&pool, "no-such-scene", SceneTheme::Tavle)
+                .await
+                .unwrap_err()
+                .code(),
+            "not_found"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_class_default_screen_can_be_read_by_id() {
+        // The row `scene_list` cannot return, and the whole reason `scene_get`
+        // exists: the planner's little board draws a class default and needs
+        // its real backdrop, not a synthesised «standard» (R6-F4).
+        let (pool, _d) = temp_pool().await;
+        let class = store::insert_class(&pool, "7B").await.unwrap();
+        let default_id = store::default_scene_id(&class.id);
+        set_theme_for(&pool, &default_id, SceneTheme::Tavle)
+            .await
+            .unwrap();
+
+        let scene = require_scene(&pool, &default_id).await.unwrap();
+        assert_eq!(scene.theme, SceneTheme::Tavle, "the STORED colour");
+        assert_eq!(scene.class_id.as_deref(), Some(class.id.as_str()));
+        assert_eq!(scene.name, "7B");
+
+        // A miss is an error, not an empty screen.
+        assert_eq!(
+            require_scene(&pool, "no-such-scene")
                 .await
                 .unwrap_err()
                 .code(),

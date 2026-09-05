@@ -25,6 +25,24 @@ async function storedLinkWidgetId(page: import("@playwright/test").Page) {
   });
 }
 
+/** The click surface, found by its data hook rather than by name.
+ *
+ *  Its accessible NAME is now derived from what the card shows (R6/F7, WCAG
+ *  2.5.3 — see LinkWidget.tsx), so it is «Ingen lenke satt ennå» on an empty
+ *  card and «Åpne lenken — udir.no» on a filled one. A by-name locator would
+ *  therefore have to change meaning halfway through every journey below, and
+ *  a by-name locator that finds NOTHING is the failure mode CLAUDE.md warns
+ *  about one door over: it does not go red, it times out on the assertion
+ *  after it. The name is asserted explicitly instead, which is what F7 is
+ *  actually about. */
+function openSurface(card: import("@playwright/test").Locator) {
+  return card.locator("button[data-link-open]");
+}
+
+/** The R6/F6 sentence, `link.invalidUrl`. */
+const INVALID_HINT =
+  "Bare adresser som starter med http:// eller https:// kan brukes";
+
 test("a link is typed, opens on click, and survives a reload", async ({
   page,
 }) => {
@@ -35,8 +53,15 @@ test("a link is typed, opens on click, and survives a reload", async ({
   const card = page.locator('[data-widget-kind="link"]');
   await expect(card).toContainText("Ingen lenke satt ennå");
 
-  const open = card.getByRole("button", { name: "Åpne lenken" });
+  const open = openSurface(card);
   await expect(open).toBeDisabled();
+  // R6/F7: with nothing to open, the visible line and the accessible name are
+  // one sentence. They used to be two («Ingen lenke satt ennå» on screen,
+  // «Åpne lenken» to a screen reader), which is the WCAG 2.5.3 mismatch.
+  await expect(open).toHaveAccessibleName("Ingen lenke satt ennå");
+  // An EMPTY field has lost nothing, so it is not warned about (F6 is gated
+  // on a non-empty field, not merely on an unpresentable one).
+  await expect(card).not.toContainText(INVALID_HINT);
 
   // The settings row is a hover row (WidgetShell), so reach it the way the
   // deadline journey reaches its date picker.
@@ -58,6 +83,11 @@ test("a link is typed, opens on click, and survives a reload", async ({
   await expect(card).toContainText("Oppgaver");
   await expect(card).toContainText("udir.no");
   await expect(card).not.toContainText("/oppgaver");
+
+  // …and the name follows it. The visible word is «udir.no», so the name must
+  // contain «udir.no» — a fixed «Åpne lenken» named a control whose only text
+  // on screen appeared nowhere in its name (R6/F7).
+  await expect(open).toHaveAccessibleName("Åpne lenken — udir.no");
 
   // THE RULE: no anchor anywhere in the card. An `<a href>` could navigate
   // the one window the app has, and a `javascript:` href would execute.
@@ -81,9 +111,10 @@ test("a link is typed, opens on click, and survives a reload", async ({
   const after = page.locator('[data-widget-kind="link"]');
   await expect(after).toContainText("Oppgaver");
   await expect(after).toContainText("udir.no");
-  await expect(
-    after.getByRole("button", { name: "Åpne lenken" }),
-  ).toBeEnabled();
+  await expect(openSurface(after)).toBeEnabled();
+  await expect(openSurface(after)).toHaveAccessibleName(
+    "Åpne lenken — udir.no",
+  );
 });
 
 test("an address the app will not vouch for never lights the click surface", async ({
@@ -97,10 +128,18 @@ test("an address the app will not vouch for never lights the click surface", asy
   await card.hover();
   await card.getByLabel("https://…").fill("javascript:alert(1)");
 
-  const open = card.getByRole("button", { name: "Åpne lenken" });
+  const open = openSurface(card);
   await expect(open).toBeDisabled();
   await expect(card).toContainText("Ingen lenke satt ennå");
   await expect(card.locator("a[href]")).toHaveCount(0);
+
+  // R6/F6 — AND IT SAYS SO. `sanitized_url` clears this value on the way into
+  // the database (ADR-017: by form, never by filter), and that is right; what
+  // was wrong is that it happened in silence. The input kept showing what she
+  // typed for the rest of the session, the card said only «Ingen lenke satt
+  // ennå», and the loss surfaced at the next boot with nothing left to point
+  // at. The sentence has to be here, in the moment she is typing.
+  await expect(card).toContainText(INVALID_HINT);
 
   // Nothing was ever asked to open. (The fixture backend stores what was
   // typed — clearing the value is Rust's job, and Rust's tests pin it — so
@@ -116,11 +155,21 @@ test("an address the app will not vouch for never lights the click surface", asy
   for (const bad of ["/oppgaver", "http://"]) {
     await card.getByLabel("https://…").fill(bad);
     await expect(open).toBeDisabled();
+    await expect(card).toContainText(INVALID_HINT);
   }
 
-  // …and the moment it becomes a real address, the surface lights up.
+  // …and the moment it becomes a real address, the surface lights up and the
+  // warning goes away — a hint that outlives the thing it warns about is the
+  // next version of the same silence.
   await card.getByLabel("https://…").fill("https://udir.no");
   await expect(open).toBeEnabled();
+  await expect(card).not.toContainText(INVALID_HINT);
+  await expect(open).toHaveAccessibleName("Åpne lenken — udir.no");
+
+  // Cleared back to empty, there is nothing to warn about either.
+  await card.getByLabel("https://…").fill("");
+  await expect(open).toBeDisabled();
+  await expect(card).not.toContainText(INVALID_HINT);
 });
 
 test("the QR toggle persists and says so when the address is too long", async ({
@@ -143,8 +192,10 @@ test("the QR toggle persists and says so when the address is too long", async ({
   // where the code would have been: no plate, no frame, no «loading» square.
   // A shape on a projector tells a class there is something to scan.
   await expect(card.locator("svg[data-qr]")).toHaveCount(0);
-  // It is still openable — «no QR» is not «no link».
-  await expect(card.getByRole("button", { name: "Åpne lenken" })).toBeEnabled();
+  // It is still openable — «no QR» is not «no link» — and the address is one
+  // the app vouches for, so the F6 warning is not on screen beside the QR one.
+  await expect(openSurface(card)).toBeEnabled();
+  await expect(card).not.toContainText(INVALID_HINT);
 
   // Turning the code off turns the hint off with it, and the choice survives
   // a reload.

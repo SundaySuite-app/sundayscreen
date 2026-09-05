@@ -309,6 +309,20 @@ const api = {
   // ── Scenes (the screen library) ─────────────────────────────────────────
   sceneList: async (): Promise<Scene[]> => call("scene_list", undefined, []),
 
+  /**
+   * ONE screen's row, by id — the door to the rows `sceneList` cannot return,
+   * which is to say a class's DEFAULT screen.
+   *
+   * A REJECTING read, deliberately. A typed fallback here could only be a
+   * synthesised row, and a synthesised row is exactly the thing this command
+   * exists to stop being the normal case (R6-F4): the planner drew every class
+   * default on the standard white backdrop because it had nowhere to read the
+   * real colour from. Let the rejection travel and the caller decides whether
+   * a guess is better than nothing — here, once, it is.
+   */
+  sceneGet: async (sceneId: string): Promise<Scene> =>
+    invoke<Scene>("scene_get", { sceneId }),
+
   sceneCreate: async (name: string): Promise<Scene> =>
     invoke<Scene>("scene_create", { name }),
 

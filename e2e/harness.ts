@@ -499,6 +499,17 @@ export async function installFixtures(
 
           // ── Scenes ─────────────────────────────────────────────────────────
           scene_list: () => load().scenes.filter((s) => s.classId == null),
+          // Mirrors `commands::scenes::scene_get` — WITHOUT the library-only
+          // guard, like `scene_set_theme` next door: a class's default screen
+          // is exactly the row this command exists to hand out. A miss is
+          // `not_found`, never an empty answer.
+          scene_get: (args?: Record<string, unknown>) => {
+            const scene = load().scenes.find(
+              (s) => s.id === arg(args, "sceneId"),
+            );
+            if (!scene) throw new Error("not_found");
+            return scene;
+          },
           scene_create: (args?: Record<string, unknown>) => {
             const db = load();
             // The 80 here is commands::scenes::NAME_MAX_CHARS (scene/class

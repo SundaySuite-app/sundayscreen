@@ -62,10 +62,57 @@ export const thumbCache = signal<ReadonlyMap<string, ThumbEntry>>(new Map());
  */
 let generation = 0;
 
+/**
+ * Which load OWNS each scene's entry right now — one token per in-flight
+ * `layout_load`, minted below.
+ *
+ * The generation alone cannot answer «is this entry still mine?». A load that
+ * is discarded must clear the `loading` it wrote (see `settle`), and between
+ * that clearing and the land there may already be a NEWER load holding a
+ * `loading` of its own for the same screen. Deleting that one would put the
+ * cell back to «no entry», which is the render that starts a THIRD read — the
+ * exact spin this module exists to prevent.
+ */
+const owner = new Map<string, number>();
+let loadSeq = 0;
+
 function put(sceneId: string, entry: ThumbEntry): void {
   const next = new Map(thumbCache.peek());
   next.set(sceneId, entry);
   thumbCache.value = next;
+}
+
+function drop(sceneId: string): void {
+  const before = thumbCache.peek();
+  if (!before.has(sceneId)) return;
+  const next = new Map(before);
+  next.delete(sceneId);
+  thumbCache.value = next;
+}
+
+/**
+ * A load has come back. May it write?
+ *
+ * Three answers, and the middle one is R6-F5:
+ *
+ *   - NOT THE OWNER — a newer load holds this screen's entry. Say nothing and
+ *     touch nothing; the owner will answer.
+ *   - OWNER, BUT STALE — the answer is about a board that has since changed.
+ *     It must not be written… and the `loading` written before the `await`
+ *     must not be left behind either. That is what the bug was: `ensureThumb`
+ *     no-ops on an entry of ANY kind, so a `loading` nobody will ever resolve
+ *     is ABSORBING — the cell shows a placeholder until the planner is closed
+ *     and reopened, and a load that FAILED never reaches the honest `error`
+ *     state the header promises. So the entry is DROPPED, and the next render
+ *     of the cell asks again.
+ *   - OWNER AND FRESH — write.
+ */
+function settle(sceneId: string, token: number, bornAt: number): boolean {
+  if (owner.get(sceneId) !== token) return false;
+  owner.delete(sceneId);
+  if (bornAt === generation) return true;
+  drop(sceneId);
+  return false;
 }
 
 /**
@@ -80,29 +127,29 @@ function put(sceneId: string, entry: ThumbEntry): void {
 export async function ensureThumb(sceneId: string): Promise<void> {
   if (thumbCache.peek().has(sceneId)) return;
 
-  const mine = generation;
+  const bornAt = generation;
+  const token = ++loadSeq;
+  owner.set(sceneId, token);
   put(sceneId, { status: "loading" });
 
   try {
     const items = await window.api.layoutLoad(sceneId);
-    if (generation !== mine) return;
+    if (!settle(sceneId, token, bornAt)) return;
     put(sceneId, { status: "ready", items });
   } catch (e) {
     console.warn("[thumbs] layout_load failed for", sceneId, e);
-    if (generation !== mine) return;
+    if (!settle(sceneId, token, bornAt)) return;
     put(sceneId, { status: "error" });
   }
 }
 
 /** Forget one screen's picture — it was just edited, duplicated or created.
- *  The next render of a cell pointing at it reads it again. */
+ *  The next render of a cell pointing at it reads it again. Removing the entry
+ *  is the whole mechanism: `ensureThumb` reads exactly when there is nothing
+ *  to read from. */
 export function invalidateThumb(sceneId: string): void {
   generation++;
-  const before = thumbCache.peek();
-  if (!before.has(sceneId)) return;
-  const next = new Map(before);
-  next.delete(sceneId);
-  thumbCache.value = next;
+  drop(sceneId);
 }
 
 /** Forget everything. The planner opening is the one moment where a stale

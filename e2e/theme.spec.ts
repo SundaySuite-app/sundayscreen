@@ -53,6 +53,14 @@ test("a screen keeps the colour it was given, across a restart", async ({
   // The board recolours behind the still-open menu — the choice is its own
   // preview — and the swatch says which one is on.
   await expect(surface(page)).toHaveAttribute("data-theme", "tavle");
+  // R6/F9: the empty-state HIERARCHY survives a themed backdrop — the hint is
+  // dimmed against the title (tokens.test.ts pins the AA floor of the dimmed
+  // ink; THIS line pins that the rule is actually applied), and standard
+  // keeps its two real ink levels untouched (asserted further down).
+  await expect(surface(page).locator("[class*='emptyHint']")).toHaveCSS(
+    "opacity",
+    "0.9",
+  );
   await expect(swatch(page, "Tavle")).toHaveAttribute("aria-pressed", "true");
   await expect(swatch(page, "Standard")).toHaveAttribute(
     "aria-pressed",

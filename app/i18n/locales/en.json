@@ -316,7 +316,8 @@
     "splitLessonToday": "Split today",
     "mergeLessonToday": "Merge with the next today",
     "mergedBadge": "Double lesson",
-    "mergedContinuation": "continuation"
+    "mergedContinuation": "continuation",
+    "continuationOf": "Continuation of {label}"
   },
   "design": {
     "done": "Done",
@@ -430,7 +431,8 @@
     "openFailed": "Could not open the link",
     "showQr": "QR code",
     "qrTooLong": "The link is too long for a QR code",
-    "notSet": "No link set yet"
+    "notSet": "No link set yet",
+    "invalidUrl": "Only addresses starting with http:// or https:// can be used"
   },
   "image": {
     "pick": "Choose a picture …",

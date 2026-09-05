@@ -316,7 +316,8 @@
     "splitLessonToday": "Del opp i dag",
     "mergeLessonToday": "Slå sammen med neste i dag",
     "mergedBadge": "Dobbelttime",
-    "mergedContinuation": "fortsettelse"
+    "mergedContinuation": "fortsettelse",
+    "continuationOf": "Fortsettelse av {label}"
   },
   "design": {
     "done": "Ferdig",
@@ -430,7 +431,8 @@
     "openFailed": "Fikk ikke åpnet lenken",
     "showQr": "QR-kode",
     "qrTooLong": "Lenken er for lang for en QR-kode",
-    "notSet": "Ingen lenke satt ennå"
+    "notSet": "Ingen lenke satt ennå",
+    "invalidUrl": "Bare adresser som starter med http:// eller https:// kan brukes"
   },
   "image": {
     "pick": "Velg bilde …",

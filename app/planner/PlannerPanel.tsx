@@ -82,17 +82,26 @@ function sceneLabel(sceneId: string | null): string {
 }
 
 /**
- * The `Scene` object for a class's DEFAULT screen.
+ * A class's DEFAULT screen, GUESSED from what the frontend already knows.
  *
- * Class defaults deliberately live outside `scene_list` (commands/scenes.rs),
- * so there is no row to look up and the design session's write key has to be
- * synthesised. Only `id` is load-bearing — it is the key every `layout_save`
- * in the session carries — and `name` reaches the panel header. `theme` is a
- * KNOWN LIE: the stored backdrop is not readable from here, so the little
- * board draws the standard one. It is never persisted (the session writes
- * widgets, never the scene row), and designing the screen that is already on
- * the projector takes the same-scene path in `enterDesign`, where the REAL
- * object is used instead of this one.
+ * Class defaults live outside `scene_list` (commands/scenes.rs), so `scenes`
+ * does not hold this row and the fields have to come from somewhere. Only `id`
+ * is load-bearing — it is the key every `layout_save` in the session carries,
+ * and it is deterministic — while `name` reaches the panel header and matches
+ * what the store actually holds (a default scene is created with the class's
+ * own name, store.rs `insert_class`).
+ *
+ * `theme` is the one field this cannot know, and it is a LIE: the guess says
+ * «standard», so the little board drew a white backdrop for a class that sees
+ * near-black on the wall — a WYSIWYG lie in the editor that exists to prevent
+ * WYSIWYG lies (R6-F4). Since `scene_get` that lie is the FALLBACK and not the
+ * rule: `designTarget` below reads the real row, and only a rejected read
+ * falls back here. A failed read must not cost the teacher her session — but
+ * it is the exception now, not what happens every time.
+ *
+ * Never persisted either way (the session writes widgets, never the scene
+ * row), and designing the screen already on the projector takes the same-scene
+ * path in `enterDesign`, where the REAL object is used instead of this one.
  */
 function defaultSceneFor(classId: string): Scene | null {
   const cls = classes.peek().find((c) => c.id === classId);
@@ -105,6 +114,34 @@ function defaultSceneFor(classId: string): Scene | null {
     createdAt: 0,
     theme: "standard",
   };
+}
+
+/**
+ * The `Scene` to open a design session on: the screen the lesson points at, or
+ * the class's default screen — READ, not assembled.
+ *
+ * `scene` is already a real row when the lesson names a library screen
+ * (`scenes` holds those). The default screen is the case that needed a door,
+ * and `scene_get` is it. The fallback on rejection is deliberate and narrow:
+ * the id is deterministic and the widgets are loaded by `enterDesign` anyway,
+ * so a failed read costs the teacher a backdrop colour, not the session — and
+ * blocking «Design skjermen» on a read that only decorates would be a worse
+ * trade in the five minutes before a lesson.
+ */
+async function designTarget(
+  scene: Scene | null,
+  classId: string | null,
+): Promise<Scene | null> {
+  if (scene) return scene;
+  if (!classId) return null;
+  const guess = defaultSceneFor(classId);
+  if (!guess) return null;
+  try {
+    return await window.api.sceneGet(guess.id);
+  } catch (e) {
+    console.warn("[planner] scene_get failed — designing on a guessed row", e);
+    return guess;
+  }
 }
 
 export function PlannerPanel() {
@@ -447,6 +484,19 @@ function WeekTab() {
     );
 
   /**
+   * Does a slot hold a lesson at all?
+   *
+   * The mirror of `effective_lesson` in schedule.rs:428 — «an empty slot is no
+   * lesson», and empty there means BOTH fields blank, not either. A row with a
+   * class and no subject is a lesson; so is one with a subject and no class.
+   * `classId != null` rather than a truthiness test, because Rust's `Some("")`
+   * is falsy in JS and the two halves must not disagree about a row nobody
+   * would look at twice.
+   */
+  const slotHasLesson = (slot: { classId: string | null; subject: string }) =>
+    slot.classId != null || slot.subject !== "";
+
+  /**
    * Which cell is the TAIL of a weekly double lesson, and whose tail it is.
    *
    * The same walk `apply_merges` does in schedule.rs, over the lesson periods
@@ -454,6 +504,16 @@ function WeekTab() {
    * claims `mergedWithNext` hands the NEXT lesson period to itself. The grid
    * cannot see date overrides — this is the recurring week — so the answer
    * here is the weekly truth, which is exactly what this tab edits.
+   *
+   * FILLED is half the rule, and the half this walk used to be missing (R6-F2).
+   * `apply_merges` skips a merge whose head resolves to no lesson
+   * (schedule.rs:389, «a cancelled or free A has nothing to run on: a flag left
+   * on it is dangling, and dangling flags are ignored in silence») — and a flag
+   * survives on an emptied row easily enough: the teacher clears the head's
+   * fields and presses «Lagre» instead of «Tøm», and the checkbox is still
+   * ticked because it was initialised from the row. The resolver then showed
+   * the tail's own lesson while this grid drew it as a dimmed «fortsettelse»
+   * of nothing — the grid lying about a lesson the day tab showed correctly.
    */
   const continuationHead = (
     weekday: number,
@@ -462,7 +522,8 @@ function WeekTab() {
     const i = lessons.findIndex((p) => p.id === periodId);
     if (i <= 0) return null;
     const head = slotFor(weekday, lessons[i - 1].id);
-    return head && head.mergedWithNext ? head.periodId : null;
+    if (!head || !head.mergedWithNext) return null;
+    return slotHasLesson(head) ? head.periodId : null;
   };
 
   /**
@@ -533,10 +594,24 @@ function WeekTab() {
                     onClick={() => setCell({ weekday: d, periodId: p.id })}
                   >
                     {head != null ? (
+                      /* Standalone, so it says fortsettelse OF WHAT: this is a
+                         5 × 8 grid, and «fortsettelse» alone made the teacher
+                         look up the row above to find out. The day tab's line
+                         keeps the bare word — there it stands next to the
+                         period's own times, as an apposition. */
                       <span class={styles.cellEmpty}>
-                        {t("planner.mergedContinuation")}
+                        {tf("planner.continuationOf", {
+                          label:
+                            periods.value.find((p) => p.id === head)?.label ??
+                            "",
+                        })}
                       </span>
-                    ) : slot ? (
+                    ) : /* A saved row with both fields blank is NOT a lesson —
+                          `effective_lesson` says so (schedule.rs:428), and a
+                          cell that renders it as an empty card while the day
+                          tab shows nothing there is the same divergence
+                          `continuationHead` above just stopped telling. */
+                    slot && slotHasLesson(slot) ? (
                       <>
                         <b>
                           {classes.value.find((c) => c.id === slot.classId)
@@ -644,9 +719,9 @@ function CellEditor(props: {
    */
   const design = async (scene: Scene | null) => {
     if (!(await save(props.weekday, props.periodId, draft()))) return;
-    // `null` = «the class's default screen» — never a guess: ScenePicker
-    // disables the button when there is no class to have a default.
-    const target = scene ?? (classId ? defaultSceneFor(classId) : null);
+    // `null` = «the class's default screen» — never a guess about WHICH one:
+    // ScenePicker disables the button when there is no class to have a default.
+    const target = await designTarget(scene, classId || null);
     if (!target) return;
     await enterDesign(target);
   };
@@ -1048,8 +1123,7 @@ function OverrideEditor(props: {
    *  is lost — and a rejected write stops the session from opening at all. */
   const design = async (scene: Scene | null) => {
     if (!(await save(false))) return;
-    const target =
-      scene ?? (defaultOwner ? defaultSceneFor(defaultOwner) : null);
+    const target = await designTarget(scene, defaultOwner);
     if (!target) return;
     await enterDesign(target);
   };

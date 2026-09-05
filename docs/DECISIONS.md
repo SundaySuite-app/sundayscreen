@@ -489,14 +489,19 @@ veggen, ikke til skjermen som tegnes). Alternativet er en forhåndsvisnings-
 modus, altså en andre sannhet om hva en widget er, i tolv mapper. Prisen er
 lavere enn det.
 
-⚠️ **Theme-løgnen i den syntetiserte default-scenen.** Klassens standardskjerm
-ligger med vilje utenfor `scene_list`, så det finnes ingen rad å slå opp og
-skrivenøkkelen må syntetiseres (`defaultSceneFor`). Bare `id` er
-load-bearing; `theme` er en KJENT løgn — den lagrede bakgrunnsfargen er ikke
-lesbar derfra, så minitavla tegner standardfargen. Den persisteres aldri
-(økta skriver widgets, aldri scene-raden), og å designe skjermen som ALLEREDE
-står på projektoren tar samme-scene-veien i `enterDesign`, der det ekte
-objektet brukes.
+⚠️ **Theme-løgnen i den syntetiserte default-scenen — nedgradert til
+FALLBACK.** Klassens standardskjerm ligger med vilje utenfor `scene_list`, så
+det finnes ingen rad i den lista å slå opp og skrivenøkkelen må fortsatt
+syntetiseres (`defaultSceneFor`). Bare `id` er load-bearing. `theme` var i
+tillegg en KJENT løgn: den lagrede bakgrunnsfargen ble ikke lest, så minitavla
+tegnet standardfargen uansett hva klassen faktisk ser. Granskingen av runden
+(funn F4) avviste begrunnelsen — dette er en WYSIWYG-løgn i editoren som
+finnes nettopp for å hindre WYSIWYG-løgner, og raden FINNES, den var bare ikke
+etterspurt. **Per fiksebølgen leses radens ekte tema, og den syntetiserte
+standard-bakgrunnen er nå kun fallback ved lesefeil.** Uendret: temaet
+persisteres aldri herfra (økta skriver widgets, aldri scene-raden), og å
+designe skjermen som ALLEREDE står på projektoren tar samme-scene-veien i
+`enterDesign`, der det ekte objektet brukes.
 
 **Dobbelttimen er et FELT, ikke en ny radtype.** «En time = en periode» består
 som strukturell nøkkel: bijeksjonen entries↔periods beholdes, én entry per
@@ -527,6 +532,11 @@ et merge ville overskrevet det hun sa. Et dinglende flagg (avlyst hode, eller
 flagg på dagens siste timeperiode) ignoreres i STILLHET: en malendring som
 korter dagen skal ikke bli en feilmelding læreren ikke kan gjøre noe med.
 
+I en kjede av sammenslåtte timer (A→B→C) tegnes midtperioden i dagfanen
+som en ren fortsettelses-rad uten «Slå sammen med neste i dag» / «Del opp
+i dag», så en tre-perioders blokk som bare skal gjelde én dato kan ikke
+uttrykkes derfra — den må settes i ukegrida, som kan det (R6-F10).
+
 **Én felles agenda for blokka (eiervalg 5), med «aldri skjult data» som
 betingelse.** En dobbelttime er ÉN time med ÉN plan, så hodets `date:periodId`
 er utkastnøkkel, skrivemål og lista som tegnes — hvert minutt fra A sin start
@@ -556,6 +566,33 @@ trunkeres aldri, for en trunkert URL er en annen ressurs. Ingenting fjernes
 fra midten: en skrubber som strøk «ulovlige» tegn og beholdt resten ville
 smuglet innhold gjennom (husnotatet `reference-scrub-by-form-not-filter`).
 Hele verdien består, eller hele verdien går.
+
+**…og siden granskingen (funn F6): klemma tømmer fortsatt ved FORM — VARSELET
+bor i UI-et.** En ugyldig adresse ble klarert i stillhet. Kortet sa «Ingen
+lenke satt ennå» med det samme, men input-feltet beholdt teksten hun skrev ut
+økta, så det ENESTE øyeblikket tapet ble synlig var neste oppstart — og da var
+det ingenting igjen å peke på. Den nærliggende fiksen er å la lagringen beholde
+verdien og bare merke den som ugyldig. Den er avvist: `sanitized_url` er porten
+mot operativsystemet, og en database som lagrer en adresse den ikke vil åpne,
+er en database som lyver om hva den inneholder — «Flytt oppsettet» importerer
+configs rått, så re-valideringen i `link_open` må kunne stole på at det som
+ligger der er dømt. **Lagringen forblir ærlig streng.** Det som manglet var
+ordet, og ordet hører hjemme der hun skriver: `LinkWidget` viser
+`link.invalidUrl` så snart feltet er ikke-tomt og adressen ikke består
+`isPresentableUrl`, på samme plate som «for lang for en QR-kode» og gjensidig
+utelukkende med den. Hun får vite det i det hun skriver, ikke ved neste
+oppstart.
+
+**Klikkflatens tilgjengelige navn er AVLEDET av det som står på kortet (funn
+F7, WCAG 2.5.3).** Navnet var en fast «Åpne lenken» mens den synlige teksten
+var verten — «udir.no» — eller «Ingen lenke satt ennå». Et navn som ikke
+inneholder den synlige teksten gir en talestyrt bruker ingen måte å si navnet
+på den eneste kontrollen widgeten har. Navnet er nå «Åpne lenken — «vert»»,
+eller den samme «ikke satt»-setningen som står i knappen, og `title` er
+identisk med det. Merk følgen for testene: e2e finner klikkflaten på
+`data-link-open` og ASSERTERER navnet, i stedet for å lete etter en fast
+streng — en `getByRole`-søking på et navn som har endret seg finner ingenting
+og blir tom uten å bli rød (CLAUDE.md, e2e-konvensjonen).
 
 **`link_open` tar en WIDGET-ID, aldri en URL.** Kommandoen slår opp raden,
 sjekker at `kind`-KOLONNEN sier «link» (en config som påstår noe annet enn

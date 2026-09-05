@@ -155,11 +155,19 @@
 
 /* The little board.
    `aspect-ratio` here is only the FALLBACK — DesignPanel.tsx sets the measured
-   one inline, and an inline style wins over any rule in this file.
-   No `max-height`: a cap would be honoured ahead of the ratio (width stays
-   100 %), which is precisely the lie the ratio exists to prevent. The panel
-   body scrolls instead, and a scrollbar is a smaller cost than a board whose
-   shape does not match the wall. */
+   one inline, together with the `max-width` that makes the board fit, and an
+   inline style wins over any rule in this file.
+
+   Still no `max-height`, and that half of the old note stands: with the
+   `width: 100 %` below, a height cap IS honoured ahead of the ratio, and the
+   board would stop matching the wall — the one lie the ratio exists to
+   prevent. What the note got wrong was the conclusion it drew from that («so
+   let the panel body scroll instead»). A MAX-WIDTH governs the same short side
+   without touching the ratio: the width shrinks, `aspect-ratio` derives the
+   height from it, and the shape survives. Measured at 1024×768 the scrolling
+   cost was never a scrollbar — it was 103 px of board below the bottom of the
+   screen, and a header carrying «Ferdig» and the save-error chip that scrolled
+   out of sight to reach it (R6-F1). */
 .board {
   position: relative;
   width: 100%;

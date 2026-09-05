@@ -355,6 +355,7 @@ pub fn run() {
             commands::images::image_load,
             commands::links::link_open,
             commands::scenes::scene_list,
+            commands::scenes::scene_get,
             commands::scenes::scene_create,
             commands::scenes::scene_rename,
             commands::scenes::scene_delete,

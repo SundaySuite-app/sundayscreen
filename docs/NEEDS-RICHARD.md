@@ -35,7 +35,43 @@ reinstallasjonen TRYGG: en versjonskonflikt rører aldri databasen lenger,
 appen forklarer seg selv på skjermen i stedet for å boote tomt, og en
 sikkerhetskopi finnes uansett — se docs/ROLLBACK.md.
 
-- [ ] **Riggtest Runde 5 «Terningen i rommet» (nyest):** fire punkter, alle
+- [ ] **Riggtest Runde 6 «Skjermen er planen» (nyest):** fem punkter. De
+      fire første er ting ingen test kan se etter — de handler om et rom, en
+      telefonavstand og et ekte friminutt.
+
+  1. **Design en skjerm i planleggeren PÅ PROJEKTORMASKINEN, midt i en
+     time.** Åpne planleggeren, klikk «Design skjermen» på en time, legg til
+     et par verktøy og trykk «Ferdig». Det du skal se etter er hva klassen
+     ser: **blinker tavla bak?** Den skal ikke det — skjermen du designer
+     står inne i panelet, og tavla bak er urørt hele veien, også når du
+     lukker panelet. Ser du så mye som ett glimt av den nye skjermen på
+     veggen, si fra: det er rundens viktigste løfte.
+  2. **Skann QR-koden fra bakerste pult.** Legg til en lenke-widget med en
+     ekte adresse, la QR-koden stå på, og be en elev bakerst prøve å skanne
+     den med telefonen — også litt på skrå. Geometrien er bevist (koden er
+     lest tilbake av en uavhengig dekoder), men om den er STOR nok på DIN
+     projektor fra DIN bakerste pult er et øye-spørsmål. Blir det for smått,
+     kan kortet gjøres større eller adressen kortes ned.
+  3. **Kjør en ekte dobbelttime, gjennom friminuttet.** Kryss av «Slå sammen
+     med neste time» på en ekte dobbelttime i ukeplanen. Sjekk så to ting
+     NÅR friminuttet er over: sier «Dagens time» fortsatt riktig fag med
+     hele blokka som klokkeslett, og står tidtakerens «resten av
+     timen»-pille der og peker på slutten av ANDRE halvdel? Begge skal
+     holde tvers gjennom pausen.
+  4. **Legg inn et ekte klassebilde, og flytt oppsettet.** Bruk et vanlig
+     bilde fra telefonen eller kameraet (ikke et lite testbilde) i en
+     bilde-widget, og kjør deretter «Flytt oppsettet» → «Eksporter oppsett
+     …» til en annen maskin. **Fila inneholder nå bildene** — kjenn på hvor
+     stor den blir, og på om det føles greit å sende den. Dette var ditt
+     valg mot rådet mitt (ADR-018), så inntrykket ditt her er det som
+     avgjør om det står.
+  5. **Se skjermfargene på projektoren.** Bytt bakgrunn i «Bytt skjerm» →
+     «Skjermfarge» og se særlig på **Tavle** (mørk bakgrunn med hvite
+     kort): er kortene lesbare fra bakerst, eller blir kontrasten for hard i
+     et lyst klasserom? De fire andre (Standard, Papir, Varm, Kjølig) er
+     lyse og mindre risikable.
+
+- [ ] **Riggtest Runde 5 «Terningen i rommet»:** fire punkter, alle
       på ekte projektor. Terningen er nå en ekte 3D-modell — og det er
       nøyaktig det ingen test kan se etter.
 

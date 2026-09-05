@@ -7,6 +7,7 @@ import { useEffect, useRef } from "preact/hooks";
 
 import { t } from "../i18n";
 import { addMenuOpen, chromeActivity } from "../state/chrome";
+import { designSession } from "../state/design-session";
 import {
   activeScene,
   clearFocus,
@@ -66,7 +67,24 @@ export function Surface() {
         <div class={styles.empty}>
           <div class={styles.emptyCard}>
             <h2 class={styles.emptyTitle}>{t("board.emptyTitle")}</h2>
-            <p class={styles.emptyHint}>{t("board.emptyHint")}</p>
+            {/* The hint POINTS somewhere, so it has to know where it is
+                standing. On the wall the toolbar is along the bottom edge;
+                inside the planner's design session the toolbar is not merely
+                hidden but UNMOUNTED (Shell.tsx: two «Legg til verktøy» in one
+                accessibility tree is an ambiguous target, and the class
+                switcher behind a scrim is a way to swap the borrowed globals
+                out from under the session). The old sentence therefore sent a
+                teacher looking along an edge that had nothing on it — the same
+                widget, the same empty board, a direction that was true in one
+                place and false in the other. The design wording names the
+                button that IS on screen, one line up, and is kept in step with
+                `design.addTool` on purpose: the sentence and the control it
+                points at are one thing said twice. */}
+            <p class={styles.emptyHint}>
+              {designSession.value
+                ? t("board.emptyHintDesign")
+                : t("board.emptyHint")}
+            </p>
             {/* ONE door, not three: the same menu the toolbar opens.
                 `chromeActivity()` is what makes it work when the toolbar
                 has already slid away. Its own wording, NOT the toolbar's

@@ -53,6 +53,7 @@
   "board": {
     "emptyTitle": "The board is empty",
     "emptyHint": "The toolbar sits along the bottom edge.",
+    "emptyHintDesign": "Use “Add a tool to the screen” at the top.",
     "emptyAction": "Choose a tool",
     "focusExit": "Exit large view"
   },
@@ -379,10 +380,10 @@
   },
   "transfer": {
     "title": "Move the setup",
-    "note": "Export makes one file with your classes, the pupil names in the clear, the screens, the school day and the week plan — which class, which subject and which screen each period has. Attendance marks are never included.",
+    "note": "Export makes one file with your classes, the pupil names in the clear, the screens with the pictures you have put on them, the school day and the week plan — which class, which subject and which screen each period has. Attendance marks are never included.",
     "export": "Export setup …",
     "import": "Import setup …",
-    "exportDialog": "Save the setup — the file contains pupil names",
+    "exportDialog": "Save the setup — the file contains pupil names and pictures",
     "importDialog": "Choose a SundayScreen setup file",
     "fileStem": "sundayscreen-setup",
     "exported": "Saved: {path}",

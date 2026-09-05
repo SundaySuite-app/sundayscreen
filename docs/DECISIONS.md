@@ -455,3 +455,200 @@ et kroppsbytte: paret ER tallrommet. Les-sømmen speiles i TS gjennom
 ville vært uenig om en fremtidig d11). ⚠️ To feller runden fant: `map(solidFor)`
 sender INDEKSEN som zeroBased-argument (og indeks 3 ER d10); og 0 er falsy —
 `die-paint.test` pinner `data-face-up="0"` ved skrivesømmen.
+
+## ADR-016 — Designøkta er en LÅNT TAVLE, og dobbelttimen er et felt (2026-09-05)
+
+To beslutninger fra samme runde, samlet fordi de deler premiss: **planen og
+tavla skal aldri bli to sannheter.**
+
+**Lånt tavle, ikke en parameterisert store.** «Rediger skjermen for onsdag, 3. time» kunne vært løst med en andre, parameterisert layout-store — en
+kontekst trædd gjennom tolv widget-mapper, to persistere, to angre-stabler,
+to sannheter. Den er forkastet. Dette er en ETT-VINDUS-app, så «å designere
+rører aldri det klassen ser» er uansett ikke en pikselinvariant; det er tre
+TILSTANDS-invarianter, og de er akkurat det en lånt tavle gjør testbare:
+skriveisolasjon (hver `layout_save` i økta bærer designscenens id),
+pekerisolasjon (`settings.activeSceneId` og backend-pekeren rører seg aldri —
+en krasj midt i økta er derfor ingenting å rydde opp i), og restitusjon (én
+dør ut, som flusher før globalene leveres tilbake). Editoren læreren får er
+DEN EKTE — Surface, WidgetShell, useDrag, angre-slotten, samme persister — og
+det eneste som skiller «designe» fra «jobbe på veggen» er hvilken id skrivene
+bærer.
+
+**Den farlige linja er FLUSH-REKKEFØLGEN, begge veier.** Persisteren leser
+`activeScene` på SKRIVE-tidspunktet, ikke i kø-øyeblikket. Det er nøyaktig det
+som gjør den trygg under et bytte — og nøyaktig det som gjør den dødelig under
+et dårlig ordnet et: en debounced designredigering som lander ETTER
+restitusjonen skrives inn i TIMENS scene, i stillhet, med klassen foran tavla.
+Derfor `flushPending()` både før lånet og før hand-backen, og derfor er
+mutasjonstesten på begge to den første testen i `design-session.test.ts`.
+
+**Akseptert sideeffekt: data-widgets virker EKTE i økta.** Navnetrekkeren på
+minitavla trekker dagens klasse, og «Dagens time» skriver i dagens plan —
+fordi klassepekeren med vilje ikke lånes ut (medlemmene hører til timen på
+veggen, ikke til skjermen som tegnes). Alternativet er en forhåndsvisnings-
+modus, altså en andre sannhet om hva en widget er, i tolv mapper. Prisen er
+lavere enn det.
+
+⚠️ **Theme-løgnen i den syntetiserte default-scenen.** Klassens standardskjerm
+ligger med vilje utenfor `scene_list`, så det finnes ingen rad å slå opp og
+skrivenøkkelen må syntetiseres (`defaultSceneFor`). Bare `id` er
+load-bearing; `theme` er en KJENT løgn — den lagrede bakgrunnsfargen er ikke
+lesbar derfra, så minitavla tegner standardfargen. Den persisteres aldri
+(økta skriver widgets, aldri scene-raden), og å designe skjermen som ALLEREDE
+står på projektoren tar samme-scene-veien i `enterDesign`, der det ekte
+objektet brukes.
+
+**Dobbelttimen er et FELT, ikke en ny radtype.** «En time = en periode» består
+som strukturell nøkkel: bijeksjonen entries↔periods beholdes, én entry per
+periode, alltid. Sammenslåing er et flagg som `resolve_day` løser i et andre
+pass og uttrykker som to AVLEDEDE booleaner — `mergedWithNext` på hodet,
+`continuation` på halen. Alternativet (en blokk-rad, eller to perioder slått
+til én) ville brutt bijeksjonen for hver eneste konsument som indekserer på
+periode, og oppdeling etterpå kunne ikke gjenskapt det som sto der. Friminuttet
+mellom halvdelene hoppes over av passet og består som seg selv — det ligger
+INNI blokka, ikke etter den.
+
+**Tri-state på override-raden, fordi «del opp akkurat i dag» krever en tredje
+verdi.** `NULL` = arv uka, `1` = slå sammen, `0` = del opp. En boolean-kolonne
+kunne uttrykt de to første og ikke den tredje.
+
+**Bærer-rader, fordi et innholdskopi ville forket planen i stillhet.** «Slå
+sammen i dag» skrives som en `kind = Lesson`-override med flagget satt og
+INGENTING annet — ingen klasse, ingen skjerm, tom tittel og tomt fag. Da løses
+innholdet fortsatt fra ukeslotten, `overridden` blir `false`, og neste ukes
+endring i ukeplanen når fortsatt denne datoen. Hadde vi kopiert ukas innhold
+inn i datoen, ville koblingen vært brutt uten at noe sa fra. Det er også
+grunnen til at en bærer ALDRI gir «Avvik»-merke: merket er en påstand om at
+læreren har overstyrt timen, og det har hun ikke.
+
+**En skyggende override-RAD på B bryter merget for den datoen** — time eller
+avlyst, det spiller ingen rolle: hun har sagt noe bestemt om den perioden, og
+et merge ville overskrevet det hun sa. Et dinglende flagg (avlyst hode, eller
+flagg på dagens siste timeperiode) ignoreres i STILLHET: en malendring som
+korter dagen skal ikke bli en feilmelding læreren ikke kan gjøre noe med.
+
+**Én felles agenda for blokka (eiervalg 5), med «aldri skjult data» som
+betingelse.** En dobbelttime er ÉN time med ÉN plan, så hodets `date:periodId`
+er utkastnøkkel, skrivemål og lista som tegnes — hvert minutt fra A sin start
+til B sin slutt. Rader som allerede lå under HALENS nøkkel (skrevet før
+periodene ble slått sammen) foldes bevisst IKKE inn: det ville vært å skrive
+gjennom en visning, og en senere oppdeling kunne ikke skilt dem fra hverandre
+igjen. De er heller ikke skjult — planleggerpanelet lister hver periodes egne
+rader, så læreren ser dem nøyaktig der hun skrev dem, og kan flytte dem selv.
+
+⚠️ To feller runden fant: `#[serde(default)]` gjør IKKE feltet valgfritt i
+TS-bindingen — `#[ts(optional = nullable)]` må stå på de fire feltene der
+fravær er lovlig, ellers brekker eksisterende frontend på et felt Rust anser
+som frivillig. Og på TS-siden er `undefined` en lovlig måte å si `false` på,
+så hver lesning tester `=== true`, aldri sannhetsverdi.
+
+## ADR-017 — Lenka: knappen er aldri et anker, URL-en kommer fra databasen, og opener registreres uten klikk-lytter (2026-09-05)
+
+**Klikkflaten er en `button`, aldri en `<a href>`.** To grunner, og begge er
+harde: en `javascript:`-href ville EKSEKVERT, og et vanlig anker ville
+navigert appens ENESTE vindu vekk fra tavla — midt i en time, uten vei
+tilbake. Kortet har derfor ingen anker i det hele tatt, og det er pinnet i
+e2e, ikke bare i en kodekommentar.
+
+**`sanitized_url` dømmer ved FORM, ikke ved filter.** Kun `http`/`https` med
+noe bak, kontrolltegn avvises, og over 2000 tegn CLEARES adressen — den
+trunkeres aldri, for en trunkert URL er en annen ressurs. Ingenting fjernes
+fra midten: en skrubber som strøk «ulovlige» tegn og beholdt resten ville
+smuglet innhold gjennom (husnotatet `reference-scrub-by-form-not-filter`).
+Hele verdien består, eller hele verdien går.
+
+**`link_open` tar en WIDGET-ID, aldri en URL.** Kommandoen slår opp raden,
+sjekker at `kind`-KOLONNEN sier «link» (en config som påstår noe annet enn
+raden beviser at raden er ødelagt), leser adressen ut av lagret config og
+kjører den gjennom SAMME funksjon som klemma. Re-valideringen er ikke
+belte-og-bukseseler for syns skyld: «Flytt oppsettet» importerer configs RÅTT,
+så mellom en import og første lagring finnes det bytes i databasen klemma
+aldri har sett. Porten som snakker med operativsystemet kan ikke anta noe
+annet.
+
+**Opener-pluginen registreres med `open_js_links_on_click(false)` — rundens
+funn, og det måtte LESES, ikke antas.** `tauri_plugin_opener::init()` er
+`Builder::default().build()`, og den defaulten er `true`: den injiserer et
+skript i HVER side som legger på en global klikk-lytter, går `composedPath()`
+etter et anker, og `preventDefault()`-er Ctrl/Shift-klikk før ACL-en rekker å
+nekte invoket. Resultatet ville vært en plattformdivergent svelget klikk (kun
+på Windows, der siden serveres fra `http://tauri.localhost` — på macOS faller
+skriptets egen protokolltest gjennom), kjøpt for en funksjon denne appen ikke
+bruker. Posituren skal hvile på hva som er REGISTRERT, ikke på hva en ACL
+tilfeldigvis avviser.
+
+**QR-koden er håndrullet, lazy-lastet, og frosset først etter uavhengig
+dekoding.** ADR-015-presedensen igjen: en motor som får plass i en ren kjerne
+og kan pinnes mot publiserte vektorer er verdt mer enn en avhengighet i en app
+som skipper offline. Delmengden er valgt av hva et KLASSEROM kan bruke —
+byte-modus (en URL er stort sett små bokstaver, som alfanumerisk modus ikke
+engang kan uttrykke), versjon 1–10 (over v10 blir modulene for små til å
+oppløses fra bakerste pult, og en kode ingen kan skanne er verre enn den
+ærlige «for lang for en QR-kode»), EC-nivå M med L kun på siste strekk.
+Encoderen nås KUN gjennom `import("./qr-core")`: en statisk import hvor som
+helst smelter hele tabellverket inn i index-chunken, som hver lærer laster ved
+hver oppstart enten hun eier en lenke-widget eller ikke.
+
+Matrise-fixturen ble frosset FØRST etter at en UAVHENGIG dekoder — egen
+modulkartlegging, egen de-interleaving — leste tilbake 274 tilfeller i
+bytelengde 1–271 med null feil. Det fanget to ekte feil før merge, og den
+første er lærdommen: **timing-mønsteret ble tegnet OVER finderne, og koden
+dekodet perfekt** (en dekoder hopper over funksjonsmoduler) mens den var
+uskannbar for et kamera. Kun strukturtesten så det; tegnerekkefølgen er nå
+kommentert som load-bearing. Den andre var en byggfelle: komma-separert
+`@container` krasjer lightningcss i PROD-bygget mens dev er grønn.
+
+## ADR-018 — Bildene: filer i app-data, boot-sweep-GC, og eiervalget om flyttefila (2026-09-05)
+
+**Bytene ligger i en FIL, configen bærer en uuid.** Alternativet — bildet som
+data-URI i widget-configen — ble forkastet på tre samtidige kostnader:
+`layout_save` er replace-all PER SCENE og går ved hvert eneste dra i hver
+eneste widget, `duplicate` `structuredClone`-er configen, og
+backup-rotasjonen holder tre generasjoner. Et fotografi ville ridd alle tre,
+og sprengt `WIDGET_CONFIG_MAX_CHARS` på det første. Configen bærer derfor en
+uuid, og aldri lærerens filsti.
+
+**Asset-protokollen er avvist.** `asset://` + `convertFileSrc` ville vært
+færre bytes over IPC, men den koster to ting appen ikke vil ha: en utvidet CSP
+med et nytt skjema (`img-src` er i dag `'self' data: blob:` og ordrett lik i
+`index.html` og `tauri.conf.json`), og en protokoll som serverer FILER til
+siden under et scope — altså en generell filbro, nøyaktig det `image_pick`/
+`image_load` finnes for å slippe (SECURITY.mds «ingen filsystemtilgang fra
+webviewet»). Et scope er dessuten et STIMØNSTER, og huset har allerede bestemt
+at den regelklassen er dårligere enn en verdi dømt hel. Prisen vi betaler i
+stedet er base64 over IPC — ~13 MiB JSON for et 10 MiB fotografi — ÉN gang per
+bilde per oppstart, fordi den refcountede blob-cachen holder object-URL-en så
+lenge et kort viser bildet.
+
+**Det finnes ingen `image_delete`.** «Fjern bilde» skriver `imageId: ""` og
+ingenting mer. Tre veier gjør «slett når widgeten går» galt, og alle tre er
+ekte her: `scene_duplicate` kopierer configs rått, så samme id kan leve på
+flere skjermer; `removeWidget` har 15 sekunders angre, så en sletting ville
+latt «angre» gjenopprette et tomt kort; og fila kan være referert av en config
+for en widget-kind DENNE builden ikke kan tegne (løfte 3), som ingen per-kind-
+regel noensinne ville sett. GC-en er derfor et BOOT-SWEEP, etter at poolen er
+åpen og sikkerhetskopien er tatt, aldri fatalt og aldri på en degradert boot:
+uten pool finnes det ingen bevis for at noe er foreldreløst, og «vi fikk ikke
+lest referansene» må aldri bli til «så vi slettet bildene». Den ærlige
+kostnaden står i PRIVACY.md: et bilde læreren fjerner ligger på disk til neste
+oppstart.
+
+**Sweepens konvensjon er STRENGEN `"imageId"`, på et hvilket som helst nivå i
+en hvilken som helst config — også ukjente kinds.** Det er den ene linja som
+gjør at en nyere versjons bilder overlever en nedgradering: en per-kind-regel
+ville regnet dem som søppel. Nøkkelen er stavet ÉN gang og dokumentert som
+konvensjon på configen. `sanitized_image_id` speiler `sanitized_url` med
+vilje: alfabetet er små hex-siffer og bindestrek, som ikke INNEHOLDER noen
+separator å glemme å avvise — og verdien dømmes hel, før stien bygges.
+
+**EIERVALG: flyttefila bærer bildene — mot arkitektens personvernanbefaling.**
+Begge deler står, og det er poenget med å skrive det ned. Anbefalingen var å
+la bildene bli igjen: ansikter av mindreårige veier tyngre enn navnelister, og
+en fil som er lett å sende er lett å sende feil. Eieren valgte innbaking,
+fordi en flyttefil som ikke flytter klassebildet ikke flytter oppsettet.
+Kostnaden gjøres da SYNLIG i stedet for bortargumentert: PRIVACY.md eskalerer
+ærlig (behandle fila som klasselistene dine), dialogteksten og
+lærernotatet sier at bildene er med, og overløpet er kvitteringsveien — taket
+er 32 bilder / 20 MiB base64, og det som ikke fikk plass eller ikke ble funnet
+TELLES og VISES («… bilder fikk ikke plass i fila»), aldri svelges. Importen
+sniffer bytene på nytt, og en fiendtlig id i fila blir aldri en sti.

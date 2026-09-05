@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.6.0-beta.1] — 2026-09-05
+
+Runde 6 «Skjermen er planen». Planleggeren har visst siden runde 2 hvilken
+skjerm hver time skal ha, og det har vært umulig å GJØRE noe med det uten å
+sette skjermen opp på veggen først. Nå planlegger du timen ved å designe
+skjermen dens.
+
+- **Design skjermen for en time — tavla bak røres aldri.** Åpne
+  planleggeren, velg en time og trykk «Design skjermen». Du får den ekte
+  editoren i miniatyr inne i panelet: legg til verktøy, flytt dem, skriv i
+  dem. Klassen ser hele tiden skjermen som allerede står på veggen, og den
+  er nøyaktig som du forlot den når du trykker «Ferdig» — også hvis
+  maskinen skulle bli slått av midt i.
+- **Velg skjerm med bilde, ikke bare navn.** Både ukeplanen og dagsfanen
+  viser nå en miniatyr av skjermen timen peker på — tre skjermnavn er tre
+  ord, og du husker hvilken som har tidtakeren på seg når du ser den. Er
+  det ingen som passer, lager du en tom på stedet med «Lag ny skjerm for
+  denne timen».
+- **Dobbelttimer.** Kryss av «Slå sammen med neste time» i ukeplanen, så
+  blir de to øktene én time overalt: «Dagens time» viser hele spennet
+  (08:30–10:15), «Dagen i dag» viser én linje i stedet for to, og
+  tidtakerens «resten av timen» holder helt til andre halvdel er ferdig —
+  friminuttet imellom er inne i timen, ikke etter den. De to halvdelene
+  deler ÉN aktivitetsliste. Passer det ikke akkurat i dag, deler du opp
+  bare den datoen med «Del opp i dag»; ukeplanen står som den står.
+- **Lenke.** En tittel og en adresse på tavla — klikk, og siden åpnes i
+  nettleseren din. Slå på QR-koden, så kan elevene skanne adressen rett fra
+  pultene i stedet for å taste den. Er adressen for lang for en kode som
+  kan leses fra bakerst, sier kortet det i stedet for å vise noe uskannbart.
+- **Bilde.** Klassebildet, kartet eller illustrasjonen på tavla. Velg en
+  PNG-, JPEG- eller WebP-fil, sett bildetekst under, og velg om hele bildet
+  skal vises eller om det skal fylle kortet. Bildene blir med når du flytter
+  oppsettet til en annen maskin — fila blir da større, og den skal
+  behandles som klasselistene dine.
+- **Skjermfarge.** Fem bakgrunner per skjerm (Standard, Tavle, Papir, Varm,
+  Kjølig), valgt i «Bytt skjerm». Fargen følger skjermen, ikke appen, så
+  morgensamlingen kan være lys og matteøkta mørk — og den kommer tilbake med
+  skjermen etter en omstart.
+- **«Brukes av 3 timer — slett likevel?»** Sletting av en skjerm sier nå hvor
+  mange timer i planen som fortsatt peker på den. Er det ingen — eller får
+  appen ikke svar — står den vanlige teksten, aldri «Brukes av 0 timer».
+
 ## [0.5.0-beta.3] — 2026-09-02
 
 - **Skolens timelengde** (eierønske): sett 30, 45 eller 60 minutter i

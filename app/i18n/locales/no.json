@@ -53,6 +53,7 @@
   "board": {
     "emptyTitle": "Tavla er tom",
     "emptyHint": "Verktøylinja ligger langs nederste kant.",
+    "emptyHintDesign": "Bruk «Legg til verktøy på skjermen» øverst.",
     "emptyAction": "Velg et verktøy",
     "focusExit": "Avslutt stor visning"
   },
@@ -379,10 +380,10 @@
   },
   "transfer": {
     "title": "Flytt oppsettet",
-    "note": "Eksport lager én fil med klassene dine, elevnavnene i klartekst, skjermene, timeoppsettet og ukeplanen — hvilken klasse, hvilket fag og hvilken skjerm hver økt har. Fraværsmarkeringer blir aldri med.",
+    "note": "Eksport lager én fil med klassene dine, elevnavnene i klartekst, skjermene med bildene du har lagt på dem, timeoppsettet og ukeplanen — hvilken klasse, hvilket fag og hvilken skjerm hver økt har. Fraværsmarkeringer blir aldri med.",
     "export": "Eksporter oppsett …",
     "import": "Importer oppsett …",
-    "exportDialog": "Lagre oppsettet — fila inneholder elevnavn",
+    "exportDialog": "Lagre oppsettet — fila inneholder elevnavn og bilder",
     "importDialog": "Velg en SundayScreen-oppsettfil",
     "fileStem": "sundayscreen-oppsett",
     "exported": "Lagret: {path}",

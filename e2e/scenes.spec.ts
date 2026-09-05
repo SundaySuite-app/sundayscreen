@@ -218,3 +218,86 @@ test("a double-click on Slett does NOT delete the screen", async ({ page }) => {
   await confirm.click();
   await expect(page.getByRole("menuitem", { name: "Dyrebar" })).toHaveCount(0);
 });
+
+// ── The screen a lesson still points at ─────────────────────────────────────
+//
+// «Slett skjermen» used to be the same sentence whether the screen was on
+// three lessons in the week plan or on none at all. `scene_usage` answers the
+// question the confirmation was missing — and the way it answers is the whole
+// point: it REJECTS rather than returning a typed zero, because «Slett
+// skjermen» and «Brukes av 0 timer — slett likevel?» are different sentences
+// and only one of them is a claim. The count only ever ADDS to the wording;
+// zero and «we could not find out» read alike, and neither says anything the
+// app has not earned.
+
+/** One row of the screen library, scoped by the screen it names. The rows
+ *  carry no attribute of their own (CSS-module class names are hashed, and
+ *  differently in a build), so the menu item inside is what identifies one. */
+function sceneRow(page: import("@playwright/test").Page, name: string) {
+  return page
+    .locator('[role="menu"] > div')
+    .filter({ has: page.getByRole("menuitem", { name, exact: true }) });
+}
+
+test("the delete confirmation says how many lessons still point at the screen", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+
+  // Two library screens: one the week plan will point at, one nothing uses.
+  for (const name of ["Skriveøkt", "Ubrukt"]) {
+    await openSceneMenu(page);
+    await page.getByRole("menuitem", { name: "Lagre som ny skjerm …" }).click();
+    await page.getByPlaceholder("Navn på skjermen …").fill(name);
+    await page.getByPlaceholder("Navn på skjermen …").press("Enter");
+  }
+
+  // Monday × Time 1 is planned onto «Skriveøkt».
+  await page.goto("/?goto=planner:periods");
+  await page.waitForLoadState("networkidle");
+  const panel = page.getByRole("region", { name: "Planlegger" });
+  await panel.getByRole("button", { name: "Legg til time" }).click();
+  await panel.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await expect(panel.getByText("Lagret")).toBeVisible();
+  await panel.getByRole("button", { name: "Ukeplan" }).click();
+  await panel.locator("button:has-text('—')").first().click();
+  await panel
+    .getByLabel("Klasse", { exact: true })
+    .selectOption({ label: "7B" });
+  await panel.getByLabel("Fag").fill("Norsk");
+  await panel
+    .getByLabel("Skjerm", { exact: true })
+    .selectOption({ label: "Skriveøkt" });
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await panel.getByRole("button", { name: "Lukk" }).click();
+  await expect(page.getByRole("region", { name: "Planlegger" })).toHaveCount(0);
+
+  // The screen the plan needs: the confirmation names the cost of pressing it.
+  await openSceneMenu(page);
+  const used = sceneRow(page, "Skriveøkt");
+  await used.getByRole("button", { name: "Slett", exact: true }).click();
+  await expect(
+    used.getByRole("button", { name: "Brukes av 1 time — slett likevel?" }),
+  ).toBeVisible();
+
+  // The screen nothing uses: the SAME wording it has always had. The wait is
+  // the arming delay the confirmation needs anyway (CONFIRM_ARM_MS), and it
+  // is what makes this assertion about the answer rather than about the
+  // moment before it arrived.
+  const unused = sceneRow(page, "Ubrukt");
+  await unused.getByRole("button", { name: "Slett", exact: true }).click();
+  await page.waitForTimeout(500);
+  await expect(
+    unused.getByRole("button", { name: "Slett skjermen", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Brukes av")).toHaveCount(0);
+
+  // …and it really is the confirmation, not a look-alike. «Ubrukt» is the
+  // active screen, so deleting it lands on the class default and closes the
+  // menu with it — the library is opened again to read the answer.
+  await unused.getByRole("button", { name: "Slett skjermen" }).click();
+  await openSceneMenu(page);
+  await expect(page.getByRole("menuitem", { name: "Ubrukt" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Skriveøkt" })).toBeVisible();
+});

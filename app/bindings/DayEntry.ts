@@ -29,4 +29,15 @@ mergedWithNext?: boolean,
  * copied from the head, and a view that lists lessons should fold it
  * into the head rather than draw it twice.
  */
-continuation?: boolean, };
+continuation?: boolean, 
+/**
+ * The override ROW's own `merged_with_next`, RAW — not the resolved
+ * answer above. It exists for exactly one writer: the day tab's
+ * override editor rewrites the whole row (`planner_override_set` is a
+ * replace), and a writer that cannot see the stored tri-state rewrites
+ * it as «inherit» — which is how editing a title used to silently undo
+ * «Slå sammen med neste i dag» (R6-funn F-R6-1). `None` covers both «no
+ * row» and «row that inherits», deliberately: those two round-trip to
+ * the same write, so one Option is exactly enough.
+ */
+overrideMergedWithNext?: boolean | null, };

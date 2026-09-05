@@ -830,12 +830,18 @@ export async function installFixtures(
               // Begge flaggene skrives ALLTID, som serde gjør det: feltene er
               // `#[serde(default)]` (valgfrie i bindingen) men har ingen
               // skip_serializing, så det ekte svaret bærer to booleaner.
+              // `overrideMergedWithNext` er radens RÅ tri-state (enhver rad,
+              // også bærere) — speiler resolve_day etter F-R6-1: editoren
+              // rundtripper den, og en rundtur som ikke ser Some(x) ville
+              // skrevet «arv» over dagens dobbelttime-valg.
+              const rawRow = overrideRow(p.id);
               return {
                 period: p,
                 lesson,
                 agenda,
                 mergedWithNext: false,
                 continuation: false,
+                overrideMergedWithNext: rawRow?.mergedWithNext ?? null,
               };
             });
 

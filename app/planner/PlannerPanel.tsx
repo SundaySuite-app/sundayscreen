@@ -963,6 +963,7 @@ function DayLesson(props: { date: string; entry: DayEntry; plan: DayPlan }) {
           periodId={period.id}
           existing={lesson?.overridden ? lesson : null}
           lessonClassId={lesson?.classId ?? null}
+          storedMergedWithNext={props.entry.overrideMergedWithNext ?? null}
           onDone={() => setEditing(false)}
         />
       )}
@@ -988,6 +989,16 @@ function OverrideEditor(props: {
    * one the class is on all week — would have no name to look up.
    */
   lessonClassId: string | null;
+  /**
+   * The override ROW's own stored tri-state (`DayEntry.overrideMergedWithNext`
+   * — RAW, not the resolved answer). `planner_override_set` is a replace, so
+   * this editor rewrites the WHOLE row — and a rewrite that cannot see the
+   * stored merge decision rewrites it as «inherit», which is how saving a
+   * title used to silently undo «Slå sammen med neste i dag» (F-R6-1).
+   * Round-tripped verbatim below; the merge buttons on the day card remain
+   * the only writers that CHANGE it.
+   */
+  storedMergedWithNext: boolean | null;
   onDone: () => void;
 }) {
   const [cancelled, setCancelled] = useState(false);
@@ -1011,6 +1022,8 @@ function OverrideEditor(props: {
               subject,
               sceneId: sceneId || null,
               title,
+              // Verbatim round-trip — see the prop's docstring.
+              mergedWithNext: props.storedMergedWithNext,
             },
       );
       await plannerChanged();

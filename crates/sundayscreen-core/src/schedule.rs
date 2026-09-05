@@ -236,6 +236,17 @@ pub struct DayEntry {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub continuation: bool,
+    /// The override ROW's own `merged_with_next`, RAW — not the resolved
+    /// answer above. It exists for exactly one writer: the day tab's
+    /// override editor rewrites the whole row (`planner_override_set` is a
+    /// replace), and a writer that cannot see the stored tri-state rewrites
+    /// it as «inherit» — which is how editing a title used to silently undo
+    /// «Slå sammen med neste i dag» (R6-funn F-R6-1). `None` covers both «no
+    /// row» and «row that inherits», deliberately: those two round-trip to
+    /// the same write, so one Option is exactly enough.
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub override_merged_with_next: Option<bool>,
 }
 
 /// Everything the widgets and the banner need about one date.
@@ -291,6 +302,12 @@ pub fn resolve_day(
                 agenda: items,
                 merged_with_next: false,
                 continuation: false,
+                // ANY row counts — a carrier is not `overridden`, but its
+                // flag is exactly what the editor must not drop.
+                override_merged_with_next: overrides
+                    .iter()
+                    .find(|o| o.period_id == period.id)
+                    .and_then(|o| o.merged_with_next),
             }
         })
         .collect();
@@ -1065,5 +1082,36 @@ mod tests {
         assert_eq!(out[0].text.chars().count(), TEXT_MAX_CHARS);
         assert_eq!(out[0].duration_min, Some(AGENDA_DURATION_MAX));
         assert_eq!(out[5].sort_index, 5);
+    }
+
+    /// The RAW tri-state reaches the frontend untouched — the derived
+    /// `merged_with_next` above answers «is this a double lesson today?»,
+    /// while THIS field answers «what must a rewrite of the row preserve?».
+    /// The two differ on every inherited merge, which is exactly the case
+    /// F-R6-1 lost: editing an override's title rewrote Some(x) as None.
+    #[test]
+    fn the_override_rows_own_tri_state_is_exposed_raw() {
+        let periods = day_periods();
+        // p1: carrier with Some(true); p2: real override inheriting (None);
+        // p3: no row at all.
+        let slots = vec![
+            slot("p1", Some("c1"), "Norsk"),
+            slot("p2", Some("c1"), "Norsk"),
+            slot("p3", Some("c1"), "Matte"),
+        ];
+        let overrides = vec![
+            carrier("p1", true),
+            ovr("p2", OverrideKind::Lesson, "Norsk", "Prøve"),
+        ];
+        let plan = resolve_day(DATE, 1, &periods, &slots, &overrides, &[], &[], &names());
+        assert_eq!(plan.entries[0].override_merged_with_next, Some(true));
+        assert_eq!(plan.entries[1].override_merged_with_next, None);
+        assert_eq!(plan.entries[2].override_merged_with_next, None);
+        // …and the derived answer is INDEPENDENT — here even opposite: p2's
+        // own row breaks p1's merge for the date (the B-override rule), so
+        // the resolved answer is «not merged» while the row a faithful
+        // rewrite of p1 must still produce is Some(true). Two fields, two
+        // questions; conflating them is exactly how F-R6-1 happened.
+        assert!(!plan.entries[0].merged_with_next);
     }
 }

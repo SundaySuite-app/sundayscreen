@@ -262,3 +262,69 @@ test("«Del opp i dag» splits the date without touching the week", async ({
     "true",
   );
 });
+
+test("editing a deviation does not silently undo the day's merge choice", async ({
+  page,
+}) => {
+  // F-R6-1. `planner_override_set` is a REPLACE, and the override editor
+  // rewrites the whole row — so before `DayEntry.overrideMergedWithNext`
+  // existed, saving a TITLE rewrote the stored Some(true) as «inherit» and
+  // the day's «Slå sammen med neste i dag» vanished without a word. The raw
+  // tri-state now rides the entry and the editor round-trips it verbatim;
+  // this journey is the probe that proved the bug, frozen as a guard.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+
+  const panel = await buildSchoolDay(page);
+  await fillWeekCell(panel, {
+    cell: 0,
+    title: "Mandag · Time 1 08:30",
+    subject: "Norsk",
+  });
+  await fillWeekCell(panel, {
+    cell: 5,
+    title: "Mandag · Time 2 09:30",
+    subject: "Matte",
+  });
+
+  // Merge TODAY only — the stored row is a carrier with Some(true).
+  await panel.getByRole("button", { name: "I dag", exact: true }).click();
+  await panel
+    .getByRole("button", { name: "Slå sammen med neste i dag" })
+    .first()
+    .click();
+  await expect(panel.getByText("Dobbelttime")).toHaveCount(1);
+
+  // Now refine the deviation: give the merged lesson a title. This is the
+  // write that used to eat the flag.
+  await panel.getByRole("button", { name: "Overstyr", exact: true }).click();
+  await panel.getByLabel("Tittel").fill("Prøve");
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+
+  // The title landed AND the double lesson survived the rewrite.
+  await expect(panel.getByText("Prøve")).toBeVisible();
+  await expect(panel.getByText("Dobbelttime")).toHaveCount(1);
+  await expect(panel.getByText("fortsettelse")).toHaveCount(1);
+
+  // The mirror image: a weekly double lesson split for today, then refined —
+  // the split must survive too (Some(false) is as much a choice as
+  // Some(true); «inherit» would re-merge the halves mid-day).
+  await panel.getByRole("button", { name: "Ukeplan" }).click();
+  await weekCells(panel).nth(0).click();
+  await panel.getByLabel("Slå sammen med neste time").check();
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await panel.getByRole("button", { name: "I dag", exact: true }).click();
+  // The day still shows ONE deviation row (title «Prøve», flag now false is
+  // NOT what we set — the carrier from earlier was replaced by the titled
+  // row carrying Some(true), so with the WEEK also merged the block stands.
+  await expect(panel.getByText("Dobbelttime")).toHaveCount(1);
+  await panel.getByRole("button", { name: "Del opp i dag" }).click();
+  await expect(panel.getByText("Dobbelttime")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Overstyr", exact: true }).click();
+  await panel.getByLabel("Tittel").fill("Prøve del 2");
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(panel.getByText("Prøve del 2")).toBeVisible();
+  // Still split — the rewrite preserved Some(false) against the merged week.
+  await expect(panel.getByText("Dobbelttime")).toHaveCount(0);
+  await expect(panel.getByText("fortsettelse")).toHaveCount(0);
+});

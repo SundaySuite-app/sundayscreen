@@ -8,6 +8,7 @@ import { checklistWidgetDef } from "./checklist";
 import { deadlineWidgetDef } from "./deadline";
 import { diceWidgetDef } from "./dice";
 import { groupsWidgetDef } from "./groups";
+import { imageWidgetDef } from "./image";
 import { linkWidgetDef } from "./link";
 import { namePickerWidgetDef } from "./name-picker";
 import { textWidgetDef } from "./text";
@@ -33,6 +34,7 @@ export const WIDGET_REGISTRY: Record<WidgetKind, WidgetDef> = {
   deadline: deadlineWidgetDef,
   checklist: checklistWidgetDef,
   link: linkWidgetDef,
+  image: imageWidgetDef,
 };
 
 export const WIDGET_KINDS = Object.keys(WIDGET_REGISTRY) as WidgetKind[];

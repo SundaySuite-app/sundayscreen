@@ -37,7 +37,8 @@
       "today": "Today",
       "deadline": "Deadline",
       "link": "Link",
-      "checklist": "Checklist"
+      "checklist": "Checklist",
+      "image": "Picture"
     },
     "text": {
       "placeholder": "Write a message …"
@@ -407,7 +408,19 @@
     "unreadable": "The file could not be read. Nothing was changed.",
     "noteAdds": "Import always adds new classes and screens; nothing you already have is changed or overwritten.",
     "notePlanner": "The school day and the week plan are only imported if this machine does not already have them.",
-    "boardUnsaved": "The board could not be saved, so the file was not written. Try again in a moment."
+    "boardUnsaved": "The board could not be saved, so the file was not written. Try again in a moment.",
+    "imagesSkipped": {
+      "one": "{n} picture did not come along — add it again.",
+      "other": "{n} pictures did not come along — add them again."
+    },
+    "imagesExported": {
+      "one": "{n} picture is in the file.",
+      "other": "{n} pictures are in the file."
+    },
+    "imagesLeftOut": {
+      "one": "{n} picture did not fit in the file — add it again on the other machine.",
+      "other": "{n} pictures did not fit in the file — add them again on the other machine."
+    }
   },
   "link": {
     "titlePlaceholder": "Title …",
@@ -417,5 +430,18 @@
     "showQr": "QR code",
     "qrTooLong": "The link is too long for a QR code",
     "notSet": "No link set yet"
+  },
+  "image": {
+    "pick": "Choose a picture …",
+    "replace": "Change picture …",
+    "remove": "Remove picture",
+    "pickDialog": "Choose a picture from this machine",
+    "pickFailed": "The picture could not be added. It must be a PNG, JPEG or WebP, and smaller than {mb} MB.",
+    "loading": "Fetching the picture …",
+    "missing": "The picture is not on this machine",
+    "caption": "Caption …",
+    "alt": "A picture the teacher added",
+    "fitContain": "Whole picture",
+    "fitCover": "Fill the card"
   }
 }

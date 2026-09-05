@@ -34,4 +34,23 @@ plannerSkipped: boolean,
  * «Fila er laget med SundayScreen X» sentence needs. Empty when the file
  * was never read that far.
  */
-fileAppVersion: string, };
+fileAppVersion: string, 
+/**
+ * Pictures a screen in this file POINTS AT and this machine did not get:
+ * the file was written by a build that did not carry pictures, or the
+ * picture did not fit under the export's ceiling, or its bytes were not
+ * a picture after all.
+ *
+ * A count rather than a silence, because the alternative is the shape
+ * this house keeps refusing: a receipt saying «Importert» over screens
+ * with holes in them, discovered mid-lesson. The affected cards say
+ * «bildet mangler» on the board, and this number is what tells her
+ * BEFORE she looks.
+ *
+ * `#[serde(default)]` is written for the reader rather than for serde —
+ * this struct is Serialize-only, so nothing deserialises it — and says
+ * the same thing the field's zero does: an older shell reading a newer
+ * receipt is not a case this app has, and the honest value when nobody
+ * counted is none.
+ */
+imagesSkipped: number, };

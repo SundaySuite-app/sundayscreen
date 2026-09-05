@@ -21,6 +21,7 @@ pub(crate) fn valid_date(date: &str) -> AppResult<()> {
 
 pub mod app;
 pub mod classes;
+pub mod images;
 pub mod layout;
 pub mod links;
 pub mod picker;

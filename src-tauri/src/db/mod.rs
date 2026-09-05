@@ -1,5 +1,6 @@
 //! Database state: the one pool, shared as managed Tauri state.
 
+pub mod images;
 pub mod import;
 pub mod planner;
 pub mod store;

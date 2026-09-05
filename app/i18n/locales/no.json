@@ -37,7 +37,8 @@
       "today": "Dagen i dag",
       "deadline": "Frist",
       "link": "Lenke",
-      "checklist": "Sjekkliste"
+      "checklist": "Sjekkliste",
+      "image": "Bilde"
     },
     "text": {
       "placeholder": "Skriv en beskjed …"
@@ -407,7 +408,19 @@
     "unreadable": "Fila kunne ikke leses. Ingenting ble endret.",
     "noteAdds": "Import legger alltid til som nye klasser og skjermer; ingenting du har fra før blir endret eller overskrevet.",
     "notePlanner": "Timeoppsettet og ukeplanen importeres bare hvis maskinen ikke har noe fra før.",
-    "boardUnsaved": "Tavla kunne ikke lagres, så fila ble ikke skrevet. Prøv igjen om litt."
+    "boardUnsaved": "Tavla kunne ikke lagres, så fila ble ikke skrevet. Prøv igjen om litt.",
+    "imagesSkipped": {
+      "one": "{n} bilde fulgte ikke med — legg det inn på nytt.",
+      "other": "{n} bilder fulgte ikke med — legg dem inn på nytt."
+    },
+    "imagesExported": {
+      "one": "{n} bilde ligger i fila.",
+      "other": "{n} bilder ligger i fila."
+    },
+    "imagesLeftOut": {
+      "one": "{n} bilde fikk ikke plass i fila — legg det inn på nytt på den andre maskinen.",
+      "other": "{n} bilder fikk ikke plass i fila — legg dem inn på nytt på den andre maskinen."
+    }
   },
   "link": {
     "titlePlaceholder": "Tittel …",
@@ -417,5 +430,18 @@
     "showQr": "QR-kode",
     "qrTooLong": "Lenken er for lang for en QR-kode",
     "notSet": "Ingen lenke satt ennå"
+  },
+  "image": {
+    "pick": "Velg bilde …",
+    "replace": "Bytt bilde …",
+    "remove": "Fjern bilde",
+    "pickDialog": "Velg et bilde fra maskinen",
+    "pickFailed": "Fikk ikke lagt inn bildet. Det må være PNG, JPEG eller WebP, og mindre enn {mb} MB.",
+    "loading": "Henter bildet …",
+    "missing": "Bildet mangler på denne maskinen",
+    "caption": "Bildetekst …",
+    "alt": "Bilde læreren har lagt inn",
+    "fitContain": "Hele bildet",
+    "fitCover": "Fyll kortet"
   }
 }

@@ -13,11 +13,31 @@
 // enten en falsk regresjon ingen kan reprodusere lokalt, eller en falsk grønn
 // som skjuler en ekte økning. Rå filstørrelse er den samme overalt.
 //
-// Budsjetter (dist-totalen målt 2026-09-02, R6-bølge W3 «QR-kjernen»:
-// 336 556 B — margin 3 444 B):
-//   - største enkelt-JS-fil   ≤ 192 000 B
-//   - største enkelt-CSS-fil  ≤  65 000 B
-//   - HELE dist/, alle filer  ≤ 340 000 B
+// Budsjetter (målt 2026-09-02, R6-bølge W4 «bilde-widgeten»: 200 833 /
+// 69 463 / 343 096 B):
+//   - største enkelt-JS-fil   ≤ 206 000 B
+//   - største enkelt-CSS-fil  ≤  73 000 B
+//   - HELE dist/, alle filer  ≤ 350 000 B
+//
+// ## Hva W4 la til, ISOLERT målt
+//
+// Samme arbeidstre, to bygg: ett med bilde-widgeten koblet fra (registry-linje
+// + ikon + i18n-nøkler ute) og ett med alt inne, ellers likt.
+//
+//   - største JS   196 858 → 200 833 B  (+3 975 B)
+//   - største CSS   68 158 →  69 463 B  (+1 305 B)
+//   - en-chunken    11 518 →  12 380 B  (+  862 B)
+//   - dist totalt  336 954 → 343 096 B  (+6 142 B = 3 975 + 1 305 + 862)
+//
+// De +3 975 B er komponenten, blob-cachen og bilde-ikonet; ingen ny
+// avhengighet (base64-dekodingen er `atob`, som allerede finnes i plattformen).
+// CSS-veksten er én ny widgetmappes modul. `en.json` vokser fordi katalogen
+// fikk elleve nye nøkler i begge språk — den lastes fortsatt som egen chunk,
+// så norsk drift betaler ingenting for den.
+//
+// W4 eier hevingen av JS-taket og dist-totalen (målte tall over, + ~5 kB
+// margin). CSS-taket står urørt: 69 463 B er innenfor 73 000 uten heving, og
+// et tak som holder skal ikke flyttes «for sikkerhets skyld».
 //
 // Forrige måling: 2026-09-02, W2 «lenke-widgeten» — 187 237 / 62 133 /
 // 315 889 B under taket 192 000 / 65 000 / 320 000. Og før den: 2026-08-31,
@@ -70,15 +90,13 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(root, "dist");
 
-// Målt 2026-09-02 etter R6-bølgene B1/2D/B3 (designøkta, ScenePicker/
-// SceneThumb, dobbelttime-UI i planleggeren): største JS 196 460 B,
-// største CSS 68 158 B. Veksten er RUNDENS — tre nye paneler og et helt
-// dobbelttime-UI i index-chunken — og takene heves med de målte tallene
-// pluss ~5 kB margin, per denne filens egen regel: heving skjer med et
-// målt tall og en eier, aldri ved chunk-flytting.
-const LARGEST_JS_MAX = 201_000;
+// Målt 2026-09-02 etter R6-bølge W4 (bilde-widgeten): største JS 200 833 B,
+// dist totalt 343 096 B — se §«Hva W4 la til» i docstringen over for den
+// isolerte målingen. Begge heves med det MÅLTE tallet pluss ~5 kB margin, og
+// W4 er eieren. CSS-taket står urørt fra forrige bølge: 69 463 B er innenfor.
+const LARGEST_JS_MAX = 206_000;
 const LARGEST_CSS_MAX = 73_000;
-const DIST_TOTAL_MAX = 340_000;
+const DIST_TOTAL_MAX = 350_000;
 
 function walk(dir) {
   const out = [];

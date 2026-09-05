@@ -38,15 +38,21 @@
 //! pool, a class list and a member list taken a moment apart can disagree,
 //! and the file would record a class whose names belong to another moment.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use base64::Engine as _;
+use serde::Serialize;
 use sqlx::SqlitePool;
+use sundayscreen_core::layout::sanitized_image_id;
 use sundayscreen_core::transfer::{
-    self, ImportRefusal, TransferClass, TransferFile, TransferScene, TransferSlot, TransferWidget,
+    self, ImportRefusal, TransferClass, TransferFile, TransferImage, TransferScene, TransferSlot,
+    TransferWidget, TRANSFER_IMAGES_MAX, TRANSFER_IMAGE_BYTES_MAX,
 };
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
+use ts_rs::TS;
 
+use crate::db::images;
 use crate::db::import::{self, ImportOutcome, ImportReceipt};
 use crate::db::planner as pstore;
 use crate::db::store::{self, WidgetRow};
@@ -128,6 +134,31 @@ fn without_names(kind: &str, config: String) -> String {
     }
 }
 
+/// What an export actually wrote. A RECEIPT rather than a bare path, because
+/// there is now a second thing a teacher has to be told.
+///
+/// The pictures ride along with the file (owner's decision, R6), and they are
+/// the one part of a setup that can be too big to carry: the caps in
+/// `sundayscreen_core::transfer` bound what any one file may hold. When a
+/// board has more pictures than fit, the file is still written — a setup with
+/// most of its pictures is worth having — and this receipt SAYS how many
+/// stayed behind. The alternative is the shape this house refuses: a
+/// «Lagret: …» chip over a file with holes in it, discovered on the other
+/// machine where nothing can be done about it.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "ExportReceipt.ts")]
+#[serde(rename_all = "camelCase")]
+pub struct ExportReceipt {
+    /// Where it landed — the sentence the panel already showed.
+    pub path: String,
+    /// Pictures written INTO the file. Worth saying out loud: this is the
+    /// number that makes the file heavier than a name list, and PRIVACY.md
+    /// treats it accordingly.
+    pub images: u32,
+    /// Pictures the board has and the file could not carry.
+    pub images_left_out: u32,
+}
+
 fn to_transfer_widgets(rows: Vec<WidgetRow>) -> Vec<TransferWidget> {
     rows.into_iter()
         .map(|r| TransferWidget {
@@ -165,11 +196,84 @@ fn to_transfer_widgets(rows: Vec<WidgetRow>) -> Vec<TransferWidget> {
 /// The message carries [`transfer::LimitBreach`]'s own text, which names WHAT
 /// was too long and by how much — the export's counterpart to naming the
 /// path.
+/// Pack the pictures the file's own screens point at, up to the caps, and
+/// answer with how many did NOT fit.
+///
+/// The referenced ids are read off the RAW config strings — the same style
+/// `without_names` uses, and for the same reason: a typed round trip would
+/// drop every widget kind this build does not know, and with it every picture
+/// such a kind points at.
+///
+/// The caps are the file format's ([`TRANSFER_IMAGES_MAX`],
+/// [`TRANSFER_IMAGE_BYTES_MAX`]), so what this function builds always passes
+/// `check_limits` — which is what lets the export be a partial success with
+/// an honest count instead of a refusal. That asymmetry with the IMPORT side
+/// (which refuses a file whose pictures breach the caps rather than dropping
+/// them) is deliberate: here the teacher is standing at the machine that has
+/// the pictures and can be told; there she is not.
+///
+/// Ids are walked in a STABLE order so the same board writes the same file
+/// twice running — a set's iteration order would make "which pictures fitted"
+/// a coin toss between two exports of an unchanged board.
+fn attach_images(file: &mut TransferFile, dir: &Path) -> (u32, u32) {
+    let mut wanted: Vec<String> = import::referenced_image_ids(file).into_iter().collect();
+    wanted.sort_unstable();
+
+    let mut packed: Vec<TransferImage> = Vec::new();
+    let mut bytes_so_far: usize = 0;
+    let mut left_out: u32 = 0;
+    for id in wanted {
+        let Some(id) = sanitized_image_id(&id) else {
+            // A config naming something that is not one of our ids. There is
+            // no file behind it here either, so the other machine is no worse
+            // off than this one — it is not counted as left behind.
+            continue;
+        };
+        let Some(path) = images::find_stored(dir, &id) else {
+            // The board points at a picture this machine does not have (an
+            // import that arrived without it, a sweep that has not run). It
+            // is already missing here; the file records the same truth.
+            continue;
+        };
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                tracing::warn!(file = %path.display(), "a stored picture could not be read: {e}");
+                left_out += 1;
+                continue;
+            }
+        };
+        let Some(format) = images::sniff(&bytes) else {
+            tracing::warn!(file = %path.display(), "a stored picture is not a picture any more");
+            left_out += 1;
+            continue;
+        };
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        if packed.len() + 1 > TRANSFER_IMAGES_MAX
+            || bytes_so_far + encoded.len() > TRANSFER_IMAGE_BYTES_MAX
+        {
+            left_out += 1;
+            continue;
+        }
+        bytes_so_far += encoded.len();
+        packed.push(TransferImage {
+            id,
+            mime: format.mime.to_string(),
+            bytes_base64: encoded,
+        });
+    }
+
+    let included = u32::try_from(packed.len()).unwrap_or(u32::MAX);
+    file.images = packed;
+    (included, left_out)
+}
+
 pub async fn export_payload(
     pool: &SqlitePool,
     app_version: &str,
     exported_at: f64,
-) -> AppResult<TransferFile> {
+    images_dir: Option<&Path>,
+) -> AppResult<(TransferFile, u32, u32)> {
     let mut file = TransferFile::new(app_version, exported_at);
     let mut tx = pool.begin().await?;
 
@@ -236,13 +340,22 @@ pub async fn export_payload(
 
     tx.commit().await?;
 
+    // The pictures, AFTER the rows: `attach_images` reads the configs the
+    // loop above just collected, so it cannot run before them. It fits what
+    // it packs to the format's own caps, which is why `check_limits` below
+    // still passes for a board with fifty photographs on it.
+    let (images, images_left_out) = match images_dir {
+        Some(dir) => attach_images(&mut file, dir),
+        None => (0, 0),
+    };
+
     if let Err(breach) = transfer::check_limits(&file) {
         tracing::warn!("setup export refused — {breach}");
         return Err(AppError::Validation(format!(
             "the setup cannot be written to a file — {breach}"
         )));
     }
-    Ok(file)
+    Ok((file, images, images_left_out))
 }
 
 /// A dialog's answer, turned into a real path. `FilePath::Url` only happens
@@ -266,11 +379,17 @@ pub async fn transfer_export(
     db: State<'_, Db>,
     dialog_title: String,
     suggested_name: String,
-) -> AppResult<Option<String>> {
-    let payload = export_payload(
+) -> AppResult<Option<ExportReceipt>> {
+    let images_dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|base| images::images_dir(&base));
+    let (payload, images, images_left_out) = export_payload(
         db.pool(),
         &app.package_info().version.to_string(),
         store::now_ms(),
+        images_dir.as_deref(),
     )
     .await?;
     let json = serde_json::to_string_pretty(&payload)?;
@@ -291,8 +410,12 @@ pub async fn transfer_export(
     };
     let path = to_path(picked)?;
     std::fs::write(&path, json)?;
-    tracing::info!(file = %path.display(), "setup exported");
-    Ok(Some(path.display().to_string()))
+    tracing::info!(file = %path.display(), images, images_left_out, "setup exported");
+    Ok(Some(ExportReceipt {
+        path: path.display().to_string(),
+        images,
+        images_left_out,
+    }))
 }
 
 /// Read a setup file the teacher picks and ADD what is in it.
@@ -326,8 +449,14 @@ pub async fn transfer_import(
     }
     let raw = std::fs::read_to_string(&path)?;
 
+    let images_dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|base| images::images_dir(&base));
+
     match transfer::parse(&raw) {
-        Ok(file) => import::import_setup(db.pool(), &file).await,
+        Ok(file) => import::import_setup(db.pool(), &file, images_dir.as_deref()).await,
         Err(ImportRefusal::NotOurFile) => Ok(ImportReceipt::refused(ImportOutcome::NotOurFile, "")),
         Err(ImportRefusal::TooNew {
             schema_version,
@@ -474,9 +603,10 @@ mod tests {
     }
 
     async fn payload_of(pool: &SqlitePool) -> TransferFile {
-        export_payload(pool, "0.4.0-test", 1_700_000_000_000.0)
+        export_payload(pool, "0.4.0-test", 1_700_000_000_000.0, None)
             .await
             .expect("export")
+            .0
     }
 
     #[tokio::test]
@@ -646,7 +776,7 @@ mod tests {
         .await
         .unwrap();
 
-        let err = export_payload(&pool, "0.4.0-test", 0.0)
+        let err = export_payload(&pool, "0.4.0-test", 0.0, None)
             .await
             .expect_err("a file the other machine would throw away is not written");
         assert_eq!(err.code(), "validation");
@@ -663,7 +793,7 @@ mod tests {
         let file = payload_of(&source).await;
 
         let (target, _dt) = temp_pool().await;
-        let receipt = import::import_setup(&target, &file).await.unwrap();
+        let receipt = import::import_setup(&target, &file, None).await.unwrap();
         assert_eq!(receipt.outcome, ImportOutcome::Imported);
         assert_eq!(receipt.classes, 2);
         assert_eq!(receipt.scenes, 1, "library screens; defaults ride along");
@@ -788,7 +918,7 @@ mod tests {
         assert!(first.merged_with_next, "the export carries it");
 
         let (target, _dt) = temp_pool().await;
-        import::import_setup(&target, &file).await.unwrap();
+        import::import_setup(&target, &file, None).await.unwrap();
         let week = pstore::list_week_slots(&target).await.unwrap();
         let mut flags: Vec<bool> = week.iter().map(|s| s.merged_with_next).collect();
         flags.sort_unstable();
@@ -813,7 +943,7 @@ mod tests {
         let file = payload_of(&source).await;
 
         let (target, _dt) = temp_pool().await;
-        import::import_setup(&target, &file).await.unwrap();
+        import::import_setup(&target, &file, None).await.unwrap();
 
         let library = store::list_global_scenes(&target).await.unwrap();
         let rows = store::load_widget_rows(&target, &library[0].id)
@@ -848,7 +978,7 @@ mod tests {
             .unwrap();
         let before = crate::settings::load(&target).await.unwrap();
 
-        import::import_setup(&target, &file).await.unwrap();
+        import::import_setup(&target, &file, None).await.unwrap();
 
         // Mine is untouched, and three classes now exist.
         assert_eq!(count(&target, "class").await, 3);
@@ -861,7 +991,7 @@ mod tests {
 
         // A SECOND import of the same file adds a second copy rather than
         // merging — "always new" is the whole semantics.
-        import::import_setup(&target, &file).await.unwrap();
+        import::import_setup(&target, &file, None).await.unwrap();
         assert_eq!(count(&target, "class").await, 5);
     }
 
@@ -888,7 +1018,7 @@ mod tests {
         .await
         .unwrap();
 
-        let receipt = import::import_setup(&target, &file).await.unwrap();
+        let receipt = import::import_setup(&target, &file, None).await.unwrap();
         assert_eq!(receipt.outcome, ImportOutcome::Imported);
         assert!(!receipt.planner_imported);
         assert!(receipt.planner_skipped, "and the receipt has to SAY so");
@@ -905,7 +1035,7 @@ mod tests {
         let file = payload_of(&source).await;
 
         let (target, _dt) = temp_pool().await;
-        let receipt = import::import_setup(&target, &file).await.unwrap();
+        let receipt = import::import_setup(&target, &file, None).await.unwrap();
         assert!(!receipt.planner_imported);
         assert!(!receipt.planner_skipped, "there was nothing to skip");
     }
@@ -923,7 +1053,7 @@ mod tests {
             default_scene: None,
         });
 
-        let receipt = import::import_setup(&target, &file).await.unwrap();
+        let receipt = import::import_setup(&target, &file, None).await.unwrap();
         assert_eq!(receipt.outcome, ImportOutcome::TooLarge);
         assert_eq!(receipt.classes, 0);
         assert_eq!(
@@ -947,7 +1077,10 @@ mod tests {
             default_scene: None,
         });
         assert_eq!(
-            import::import_setup(&target, &file).await.unwrap().outcome,
+            import::import_setup(&target, &file, None)
+                .await
+                .unwrap()
+                .outcome,
             ImportOutcome::Unreadable
         );
 
@@ -970,7 +1103,10 @@ mod tests {
             merged_with_next: false,
         });
         assert_eq!(
-            import::import_setup(&target, &file).await.unwrap().outcome,
+            import::import_setup(&target, &file, None)
+                .await
+                .unwrap()
+                .outcome,
             ImportOutcome::Unreadable
         );
 
@@ -987,7 +1123,10 @@ mod tests {
             });
         }
         assert_eq!(
-            import::import_setup(&target, &file).await.unwrap().outcome,
+            import::import_setup(&target, &file, None)
+                .await
+                .unwrap()
+                .outcome,
             ImportOutcome::Unreadable
         );
 
@@ -1024,7 +1163,7 @@ mod tests {
             merged_with_next: false,
         });
 
-        let receipt = import::import_setup(&target, &file).await.unwrap();
+        let receipt = import::import_setup(&target, &file, None).await.unwrap();
         assert_eq!(receipt.outcome, ImportOutcome::Unreadable);
         assert_eq!(receipt.classes, 0);
         assert_eq!(
@@ -1059,7 +1198,7 @@ mod tests {
             });
         }
 
-        let receipt = import::import_setup(&target, &file).await.unwrap();
+        let receipt = import::import_setup(&target, &file, None).await.unwrap();
         assert_eq!(receipt.outcome, ImportOutcome::Unreadable);
         assert_eq!(count(&target, "period").await, 0);
         assert_eq!(count(&target, "week_slot").await, 0);
@@ -1075,7 +1214,7 @@ mod tests {
             members: vec!["Kari".into()],
             default_scene: None,
         });
-        import::import_setup(&target, &file).await.unwrap();
+        import::import_setup(&target, &file, None).await.unwrap();
 
         let class = &store::list_classes(&target).await.unwrap()[0];
         let scene = store::get_scene(&target, &store::default_scene_id(&class.id))
@@ -1092,7 +1231,7 @@ mod tests {
         assert!(file.classes.is_empty());
 
         let (target, _dt) = temp_pool().await;
-        let receipt = import::import_setup(&target, &file).await.unwrap();
+        let receipt = import::import_setup(&target, &file, None).await.unwrap();
         assert_eq!(receipt.outcome, ImportOutcome::Imported);
         assert_eq!(receipt.classes, 0);
         assert_eq!(count(&target, "class").await, 0);
@@ -1124,7 +1263,7 @@ mod tests {
         let parsed = transfer::parse(&json).expect("our own file passes our own gate");
 
         let (target, _dt) = temp_pool().await;
-        import::import_setup(&target, &parsed).await.unwrap();
+        import::import_setup(&target, &parsed, None).await.unwrap();
         let new_class = &store::list_classes(&target).await.unwrap()[0];
         assert_eq!(
             store::get_scene(&target, &store::default_scene_id(&new_class.id))
@@ -1162,7 +1301,7 @@ mod tests {
 
         let (target, _dt) = temp_pool().await;
         assert_eq!(
-            import::import_setup(&target, &parsed)
+            import::import_setup(&target, &parsed, None)
                 .await
                 .unwrap()
                 .outcome,
@@ -1188,7 +1327,7 @@ mod tests {
         });
 
         let (target, _dt) = temp_pool().await;
-        import::import_setup(&target, &file).await.unwrap();
+        import::import_setup(&target, &file, None).await.unwrap();
         let scenes = store::list_global_scenes(&target).await.unwrap();
         assert_eq!(scenes.len(), 1, "the screen came through");
         assert_eq!(scenes[0].theme, SceneTheme::Standard);
@@ -1212,11 +1351,271 @@ mod tests {
         let parsed = transfer::parse(&json).expect("our own file must pass our own gate");
         let (target, _dt) = temp_pool().await;
         assert_eq!(
-            import::import_setup(&target, &parsed)
+            import::import_setup(&target, &parsed, None)
                 .await
                 .unwrap()
                 .outcome,
             ImportOutcome::Imported
         );
+    }
+
+    // ── The pictures, on the move ───────────────────────────────────────────
+
+    /// A one-pixel-ish PNG: enough bytes to sniff, which is the only question
+    /// the store ever asks of them.
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDRxxxxxxxxxxxxxxxx";
+
+    /// A board with `n` picture widgets on it, each pointing at a stored file.
+    /// Answers with the ids in the order they were minted.
+    async fn seed_pictures(pool: &SqlitePool, dir: &Path, n: usize, bytes: &[u8]) -> Vec<String> {
+        let class = store::insert_class(pool, "7B").await.unwrap();
+        let mut ids = Vec::new();
+        let mut rows = Vec::new();
+        for i in 0..n {
+            let id = store::new_id();
+            images::write_stored(dir, &id, bytes).unwrap().unwrap();
+            rows.push(raw_widget(
+                &format!("w{i}"),
+                "image",
+                &format!(r#"{{"kind":"image","imageId":"{id}","fit":"contain"}}"#),
+                i as i64,
+            ));
+            ids.push(id);
+        }
+        store::replace_widgets(pool, &store::default_scene_id(&class.id), &rows)
+            .await
+            .unwrap();
+        ids
+    }
+
+    #[tokio::test]
+    async fn a_picture_rides_along_and_lands_on_the_other_machine() {
+        let (source, ds) = temp_pool().await;
+        let source_images = ds.path().join("images");
+        let ids = seed_pictures(&source, &source_images, 1, PNG).await;
+
+        let (file, included, left_out) =
+            export_payload(&source, "0.6.0-test", 0.0, Some(&source_images))
+                .await
+                .unwrap();
+        assert_eq!((included, left_out), (1, 0));
+        assert_eq!(file.images.len(), 1);
+        assert_eq!(file.images[0].id, ids[0]);
+        assert_eq!(file.images[0].mime, "image/png");
+
+        // Through the port, text and all — the file has to survive its own
+        // gate before any of this is worth anything.
+        let json = serde_json::to_string(&file).unwrap();
+        let parsed = transfer::parse(&json).expect("our own file passes our own gate");
+
+        let (target, dt) = temp_pool().await;
+        let target_images = dt.path().join("images");
+        let receipt = import::import_setup(&target, &parsed, Some(&target_images))
+            .await
+            .unwrap();
+        assert_eq!(receipt.outcome, ImportOutcome::Imported);
+        assert_eq!(receipt.images_skipped, 0, "nothing was left behind");
+
+        // The file is on the new machine, under the id the config points at,
+        // with the bytes the old machine had.
+        let landed = images::find_stored(&target_images, &ids[0]).expect("the picture arrived");
+        assert_eq!(std::fs::read(landed).unwrap(), PNG);
+    }
+
+    #[tokio::test]
+    async fn a_referenced_picture_the_file_lacks_is_counted_on_the_receipt() {
+        // The honest-receipt case. A board whose config names a picture that
+        // is NOT in the file — an export from a build before pictures
+        // travelled, or one whose ceiling cut it. The screens still come; the
+        // teacher is TOLD the cards will be empty, rather than finding out
+        // in front of a class.
+        let (target, dt) = temp_pool().await;
+        let mut file = TransferFile::new("0.5.0", 0.0);
+        file.scenes.push(TransferScene {
+            id: "s1".into(),
+            name: "Tur".into(),
+            theme: String::new(),
+            widgets: vec![
+                TransferWidget {
+                    kind: "image".into(),
+                    config: r#"{"kind":"image","imageId":"0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f"}"#
+                        .into(),
+                    x: 0.1,
+                    y: 0.1,
+                    w: 0.3,
+                    h: 0.3,
+                    z: 0,
+                },
+                // A kind this build cannot render, pointing at a picture the
+                // file also lacks. It counts too: the sweep and the export
+                // both read `imageId` out of any kind, and so does this.
+                TransferWidget {
+                    kind: "collage".into(),
+                    config: r#"{"kind":"collage","imageId":"abcdef01"}"#.into(),
+                    x: 0.5,
+                    y: 0.1,
+                    w: 0.3,
+                    h: 0.3,
+                    z: 1,
+                },
+            ],
+        });
+
+        let receipt = import::import_setup(&target, &file, Some(&dt.path().join("images")))
+            .await
+            .unwrap();
+        assert_eq!(receipt.outcome, ImportOutcome::Imported);
+        assert_eq!(receipt.scenes, 1, "the screen still came");
+        assert_eq!(receipt.images_skipped, 2);
+    }
+
+    #[tokio::test]
+    async fn bytes_that_are_not_a_picture_are_never_written_and_are_counted() {
+        // `mime` in the file is a CLAIM. The import sniffs the decoded bytes
+        // itself — so a setup file carrying an HTML payload labelled
+        // `image/png` puts nothing on the disk, and says so on the receipt.
+        let (target, dt) = temp_pool().await;
+        let dir = dt.path().join("images");
+        let id = "0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f";
+        let mut file = TransferFile::new("9.9.9", 0.0);
+        file.scenes.push(TransferScene {
+            id: "s1".into(),
+            name: "Tur".into(),
+            theme: String::new(),
+            widgets: vec![TransferWidget {
+                kind: "image".into(),
+                config: format!(r#"{{"kind":"image","imageId":"{id}"}}"#),
+                x: 0.1,
+                y: 0.1,
+                w: 0.3,
+                h: 0.3,
+                z: 0,
+            }],
+        });
+        file.images.push(TransferImage {
+            id: id.into(),
+            mime: "image/png".into(),
+            bytes_base64: base64::engine::general_purpose::STANDARD
+                .encode(b"<script>alert(1)</script>"),
+        });
+
+        let receipt = import::import_setup(&target, &file, Some(&dir))
+            .await
+            .unwrap();
+        assert_eq!(receipt.images_skipped, 1);
+        assert!(images::find_stored(&dir, id).is_none());
+    }
+
+    #[tokio::test]
+    async fn a_hostile_id_in_a_file_never_becomes_a_path() {
+        // Transfer import writes configs RAW, so this is the one road into
+        // the store where the clamp has NOT run on the bytes. It must not
+        // write outside the picture directory.
+        let (target, dt) = temp_pool().await;
+        let dir = dt.path().join("images");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut file = TransferFile::new("9.9.9", 0.0);
+        file.scenes.push(TransferScene {
+            id: "s1".into(),
+            name: "Tur".into(),
+            theme: String::new(),
+            widgets: vec![TransferWidget {
+                kind: "image".into(),
+                config: r#"{"kind":"image","imageId":"../escaped"}"#.into(),
+                x: 0.1,
+                y: 0.1,
+                w: 0.3,
+                h: 0.3,
+                z: 0,
+            }],
+        });
+        file.images.push(TransferImage {
+            id: "../escaped".into(),
+            mime: "image/png".into(),
+            bytes_base64: base64::engine::general_purpose::STANDARD.encode(PNG),
+        });
+
+        import::import_setup(&target, &file, Some(&dir))
+            .await
+            .unwrap();
+        assert!(!dt.path().join("escaped.png").exists(), "nothing escaped");
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            0,
+            "and nothing was written inside either"
+        );
+    }
+
+    #[tokio::test]
+    async fn pictures_past_the_ceiling_stay_behind_and_the_export_says_how_many() {
+        // The owner's decision made honest: the file is still written — a
+        // setup with most of its pictures is worth having — and the receipt
+        // carries the count so the teacher hears it HERE, on the machine that
+        // still has them.
+        let (source, ds) = temp_pool().await;
+        let dir = ds.path().join("images");
+        let over = TRANSFER_IMAGES_MAX + 3;
+        seed_pictures(&source, &dir, over, PNG).await;
+
+        let (file, included, left_out) = export_payload(&source, "0.6.0-test", 0.0, Some(&dir))
+            .await
+            .unwrap();
+        assert_eq!(included as usize, TRANSFER_IMAGES_MAX);
+        assert_eq!(left_out, 3);
+        // …and what it built still passes the file's own gate, which is what
+        // makes a partial export legal rather than a refusal waiting to
+        // happen on the other machine.
+        transfer::check_limits(&file).expect("packed to the caps by construction");
+
+        // The same board twice running writes the same file: the ids are
+        // walked in a stable order, so «which pictures fitted» is not a coin
+        // toss between two exports of an unchanged board.
+        let (again, _, _) = export_payload(&source, "0.6.0-test", 0.0, Some(&dir))
+            .await
+            .unwrap();
+        assert_eq!(
+            file.images.iter().map(|i| &i.id).collect::<Vec<_>>(),
+            again.images.iter().map(|i| &i.id).collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn the_export_carries_no_picture_nothing_points_at() {
+        // The board's OWN pictures travel; an orphan on disk (removed from a
+        // screen, not yet swept) is not part of the setup and does not go
+        // onto a memory stick.
+        let (source, ds) = temp_pool().await;
+        let dir = ds.path().join("images");
+        seed_pictures(&source, &dir, 1, PNG).await;
+        images::write_stored(&dir, "0192f0a4-7b1e-7c3d-9f52-deadbeef0000", PNG)
+            .unwrap()
+            .unwrap();
+
+        let (file, included, left_out) = export_payload(&source, "0.6.0-test", 0.0, Some(&dir))
+            .await
+            .unwrap();
+        assert_eq!((included, left_out), (1, 0));
+        assert_eq!(file.images.len(), 1, "only what a screen points at");
+    }
+
+    #[tokio::test]
+    async fn a_setup_from_before_pictures_imports_whole_with_none_skipped() {
+        // The additive promise end to end: an R5 file has no `images` key AND
+        // no picture widget, so nothing is missing and the receipt says zero
+        // rather than "we could not tell".
+        let older = r#"{
+            "kind": "sundayscreen-setup",
+            "schemaVersion": 1,
+            "appVersion": "0.5.0",
+            "classes": [{ "id": "c1", "name": "7B", "members": ["Kari"] }],
+            "scenes": [{ "id": "s1", "name": "Prøve", "widgets": [] }]
+        }"#;
+        let parsed = transfer::parse(older).expect("an older file is still ours");
+        let (target, dt) = temp_pool().await;
+        let receipt = import::import_setup(&target, &parsed, Some(&dt.path().join("images")))
+            .await
+            .unwrap();
+        assert_eq!(receipt.outcome, ImportOutcome::Imported);
+        assert_eq!(receipt.images_skipped, 0);
     }
 }

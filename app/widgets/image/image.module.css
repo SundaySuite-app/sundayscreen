@@ -1,0 +1,110 @@
+.image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5cqmin;
+  padding: 3cqmin;
+}
+
+/* The picture takes every pixel the caption did not. `min-height: 0` is the
+   load-bearing half — without it a flex item refuses to shrink past its
+   CONTENT size, and a tall photograph would push the caption straight off the
+   bottom edge of the card. */
+.picture {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--r-sm);
+}
+
+/* The teacher's choice, and the reason `contain` is the default: a class
+   photo with heads cropped off is worse than one with a margin. */
+.picture[data-fit="contain"] {
+  object-fit: contain;
+}
+
+.picture[data-fit="cover"] {
+  object-fit: cover;
+  width: 100%;
+  height: 100%;
+}
+
+/* The empty card: one button, and it says what it does. `min-height: 36px` is
+   the house touch target — the same floor the link widget's click surface
+   keeps. */
+.pick {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 36px;
+  padding: 1cqmin 3cqmin;
+  border: 1px solid var(--gold-line);
+  border-radius: var(--r-pill);
+  background: var(--gold-soft);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 5cqmin;
+  cursor: pointer;
+}
+
+.pick:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+/* «Bildet mangler» and «Laster …» share this: both are a SENTENCE where the
+   picture would be, never a dashed frame. A frame on a projector reads as
+   "still loading" for the rest of the lesson, and one of these two states
+   never resolves. */
+.missing {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 2cqmin;
+  font-size: 5cqmin;
+  color: var(--ink-3);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* The caption is UNDER the picture and part of the board — it is typed in
+   place rather than behind a settings row, because it is content the class
+   reads, not a setting. It looks like text until it is hovered. */
+.caption {
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 0.5cqmin 1cqmin;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 5cqmin;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.caption:hover,
+.caption:focus {
+  border-color: var(--gold-line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* Squeezed short, the caption is the first thing to go — the PICTURE is the
+   widget, and a one-line text field in a 120 px card just crowds it. `or`,
+   never a comma list: a comma-separated container query is legal CSS that the
+   dev server serves happily and lightningcss (Vite 8's minifier) refuses in a
+   production build — see the note at the bottom of link.module.css. */
+@container (max-height: 150px) or (max-width: 150px) {
+  .caption {
+    display: none;
+  }
+}

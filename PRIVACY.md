@@ -17,6 +17,28 @@ Kort versjon: **alt bor på din maskin.**
   opp fraværshistorikk gjelder databasen appen leser og skriver; kopiene er
   øyeblikksbilder med kort levetid — tre generasjoner, så er den eldste
   borte.
+- **Bilder du legger på en skjerm er persondata, og de er den tyngste sorten
+  appen håndterer.** Et klassebilde er ansikter av mindreårige — kvalitativt
+  noe annet enn en navneliste. Slik behandles de:
+  - Bildet kopieres til appens egen datamappe (`images/` ved siden av
+    databasen) når du velger det. Originalen din røres ikke, og appen leser
+    aldri noe annet sted på maskinen.
+  - Skjermoppsettet lagrer bare et tilfeldig id-nummer, aldri selve bildet og
+    aldri filstien din. Id-en sier ingenting om hvem eller hva bildet viser.
+  - **Bildene ligger I eksportfila.** «Flytt oppsettet» tar dem med, slik at
+    skjermene dine kommer hele over på den andre maskinen. Det betyr at fila
+    er tyngre enn en navneliste: den inneholder både elevnavn i klartekst OG
+    bilder. Behandle den deretter — samme sted som klasselistene dine, ikke
+    løsere. Kvitteringen etter eksport sier hvor mange bilder som ble med.
+  - Fila har et tak (32 bilder, ca. 20 MB til sammen). Har tavla flere,
+    skrives fila likevel, og kvitteringen sier hvor mange som ikke fikk plass
+    — de må legges inn på nytt på den andre maskinen.
+  - **Fjerner du et bilde fra en skjerm, ligger fila på disken til neste gang
+    appen startes.** Da rydder appen bort bildefiler ingen skjerm peker på.
+    Dette er en ærlig kostnad ved måten opprydningen er bygd: den kjører ett
+    sted, ved oppstart, der den kan bevise at ingen bruker fila — i stedet
+    for å slette midt i en time og ta et bilde en annen skjerm fortsatt
+    bruker. Haster det, kan du slette fila selv fra `images/`-mappa.
 - Merker du en elev som borte, husker appen kun DAGENS dato på den eleven, og
   overskriver den neste gang. Det bygges aldri opp en fraværshistorikk — appen
   vet hvem som er her akkurat i dag, og ingenting om i går. Fraværsføring hører
@@ -25,8 +47,9 @@ Kort versjon: **alt bor på din maskin.**
   du lagre hele oppsettet ditt til én fil for å flytte det til en annen
   maskin. Fila lages først når du har trykket på knappen OG valgt hvor den
   skal ligge — appen sender den ingen steder, og det finnes ingen automatisk
-  eller planlagt eksport. Fila inneholder **elevnavnene i klartekst**, så den
-  hører hjemme samme sted som resten av klasselistene dine. Den inneholder
+  eller planlagt eksport. Fila inneholder **elevnavnene i klartekst** og
+  **bildene du har lagt på skjermene** (se punktet over), så den hører hjemme
+  samme sted som resten av klasselistene dine. Den inneholder
   ALDRI fraværsmarkeringer (se punktet over), og heller ikke dagens
   trekningsrunde, dagens gruppedeling, agendaer eller dagsnotater —
   navnetrekkerens og gruppegeneratorens siste resultat fjernes fra fila når

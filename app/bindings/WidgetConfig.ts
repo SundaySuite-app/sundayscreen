@@ -5,6 +5,7 @@ import type { ClockFace } from "./ClockFace";
 import type { DieColor } from "./DieColor";
 import type { DieMaterial } from "./DieMaterial";
 import type { GroupMode } from "./GroupMode";
+import type { ImageFit } from "./ImageFit";
 import type { ManualAgendaItem } from "./ManualAgendaItem";
 import type { TextAlign } from "./TextAlign";
 import type { TimerMode } from "./TimerMode";
@@ -62,4 +63,10 @@ zeroBased: boolean, lastRoll: Array<number>,
  * roll stays true across a re-colour, which is why neither field
  * clears `last_roll` the way `faces` does.
  */
-color: DieColor, material: DieMaterial, } | { "kind": "trafficlight", active: TrafficColor, } | { "kind": "worksymbol", mode: WorkMode, } | { "kind": "agenda", source: AgendaSource, showTimes: boolean, manualItems: Array<ManualAgendaItem>, pinnedItemId: string | null, } | { "kind": "deadline", title: string, targetEpochMs: number, showHours: boolean, } | { "kind": "checklist", items: Array<ChecklistItem>, } | { "kind": "today", showLessons: boolean, showNotes: boolean, } | { "kind": "link", title: string, url: string, showQr: boolean, };
+color: DieColor, material: DieMaterial, } | { "kind": "trafficlight", active: TrafficColor, } | { "kind": "worksymbol", mode: WorkMode, } | { "kind": "agenda", source: AgendaSource, showTimes: boolean, manualItems: Array<ManualAgendaItem>, pinnedItemId: string | null, } | { "kind": "deadline", title: string, targetEpochMs: number, showHours: boolean, } | { "kind": "checklist", items: Array<ChecklistItem>, } | { "kind": "today", showLessons: boolean, showNotes: boolean, } | { "kind": "link", title: string, url: string, showQr: boolean, } | { "kind": "image", 
+/**
+ * The stored file's id — `""` means "not set". Shape-clamped to the
+ * UUID alphabet so a path separator is not merely rejected later but
+ * unrepresentable here.
+ */
+imageId: string, fit: ImageFit, caption: string, };

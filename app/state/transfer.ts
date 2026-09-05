@@ -57,7 +57,15 @@ function importedText(r: ImportReceipt): string {
     : r.plannerSkipped
       ? ` ${t("transfer.plannerSkipped")}`
       : "";
-  return `${tf("transfer.imported", { what })}${planner}`;
+  // Pictures the screens point at that this machine did not get. Said HERE,
+  // in the receipt, for the same reason the skipped week plan is: the cards
+  // will be empty on the board, and «Monday morning» is the wrong moment to
+  // find that out.
+  const images =
+    r.imagesSkipped > 0
+      ? ` ${tn("transfer.imagesSkipped", r.imagesSkipped)}`
+      : "";
+  return `${tf("transfer.imported", { what })}${planner}${images}`;
 }
 
 /** …and for one that did not. Every refusal wrote NOTHING, and each has its
@@ -99,16 +107,35 @@ export async function runExport(): Promise<void> {
       };
       return;
     }
-    const path = await window.api.transferExport(
+    const written = await window.api.transferExport(
       t("transfer.exportDialog"),
       `${t("transfer.fileStem")}-${localDateStr(new Date())}.json`,
     );
     // `null` is the teacher closing the dialog — not a failure, and not a
     // receipt either.
-    if (path !== null) {
+    if (written !== null) {
+      // Two things beyond the path, and both are hers to know while she is
+      // still at the machine that has the pictures:
+      //
+      //  - what the file now WEIGHS in privacy terms. Since R6 the pictures
+      //    ride along, so this file is not only a name list any more; saying
+      //    how many are in it is what makes PRIVACY.md's «treat it like your
+      //    class lists» something she can act on.
+      //  - what did NOT fit. The export packs pictures up to the format's
+      //    caps and writes the file anyway — a setup with most of its
+      //    pictures is worth having — so the count is the honest half of
+      //    that bargain.
+      const images =
+        written.images > 0
+          ? ` ${tn("transfer.imagesExported", written.images)}`
+          : "";
+      const leftOut =
+        written.imagesLeftOut > 0
+          ? ` ${tn("transfer.imagesLeftOut", written.imagesLeftOut)}`
+          : "";
       transferMessage.value = {
         kind: "receipt",
-        text: tf("transfer.exported", { path }),
+        text: `${tf("transfer.exported", { path: written.path })}${images}${leftOut}`,
       };
     }
   } catch (e) {

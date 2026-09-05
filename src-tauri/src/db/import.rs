@@ -45,10 +45,13 @@
 //! Otherwise it is skipped, and the receipt SAYS SO — the one thing a teacher
 //! must not have to discover on Monday morning.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
+use base64::Engine as _;
 use serde::Serialize;
 use sqlx::SqlitePool;
+use sundayscreen_core::layout::sanitized_image_id;
 use sundayscreen_core::schedule::{self, Period};
 use sundayscreen_core::theme::SceneTheme;
 use sundayscreen_core::transfer::{
@@ -56,6 +59,7 @@ use sundayscreen_core::transfer::{
 };
 use ts_rs::TS;
 
+use super::images;
 use super::planner::period_kind_tag;
 use super::store::{default_scene_id, new_id, now_ms};
 use crate::error::AppResult;
@@ -108,6 +112,24 @@ pub struct ImportReceipt {
     /// «Fila er laget med SundayScreen X» sentence needs. Empty when the file
     /// was never read that far.
     pub file_app_version: String,
+    /// Pictures a screen in this file POINTS AT and this machine did not get:
+    /// the file was written by a build that did not carry pictures, or the
+    /// picture did not fit under the export's ceiling, or its bytes were not
+    /// a picture after all.
+    ///
+    /// A count rather than a silence, because the alternative is the shape
+    /// this house keeps refusing: a receipt saying «Importert» over screens
+    /// with holes in them, discovered mid-lesson. The affected cards say
+    /// «bildet mangler» on the board, and this number is what tells her
+    /// BEFORE she looks.
+    ///
+    /// `#[serde(default)]` is written for the reader rather than for serde —
+    /// this struct is Serialize-only, so nothing deserialises it — and says
+    /// the same thing the field's zero does: an older shell reading a newer
+    /// receipt is not a case this app has, and the honest value when nobody
+    /// counted is none.
+    #[serde(default)]
+    pub images_skipped: u32,
 }
 
 impl ImportReceipt {
@@ -121,8 +143,121 @@ impl ImportReceipt {
             planner_imported: false,
             planner_skipped: false,
             file_app_version: file_app_version.into(),
+            images_skipped: 0,
         }
     }
+}
+
+/// Every picture id the screens in this file point at — the class defaults as
+/// well as the library, because a default screen is not in `file.scenes` and
+/// that is the easy half to forget (`check_limits` learned the same lesson).
+///
+/// Read off the RAW config strings, exactly the way `without_names` operates
+/// on the export side: a typed round trip through `WidgetConfig` would drop
+/// every kind this build does not know, and with it every picture such a kind
+/// points at.
+pub fn referenced_image_ids(file: &TransferFile) -> HashSet<String> {
+    let mut out = HashSet::new();
+    let mut scan = |scene: &TransferScene| {
+        for widget in &scene.widgets {
+            images::collect_referenced(&widget.config, &mut out);
+        }
+    };
+    for class in &file.classes {
+        if let Some(scene) = &class.default_scene {
+            scan(scene);
+        }
+    }
+    for scene in &file.scenes {
+        scan(scene);
+    }
+    out
+}
+
+/// Write the file's pictures into `dir`, and answer with how many of the
+/// REFERENCED ones this machine ends up without.
+///
+/// The order matters and is the whole reason this runs before the
+/// transaction: a config pointing at a picture that is not on disk yet draws
+/// «bildet mangler» for as long as that is true, so the bytes go down first
+/// and the rows arrive to find them already there.
+///
+/// Four ways a referenced picture can fail to land, and all four count the
+/// same on the receipt because they mean the same thing to a teacher — the
+/// picture is not on this machine and she must put it back:
+///
+/// 1. the file has no `TransferImage` with that id (it was written by a build
+///    from before pictures travelled, or the export's ceiling cut it),
+/// 2. the id is not one this app will turn into a file name,
+/// 3. the base64 does not decode,
+/// 4. the decoded bytes are not a PNG, JPEG or WebP — sniffed HERE too,
+///    because a file's `mime` field is a claim and the bytes are the evidence.
+///
+/// A picture the machine ALREADY has under that id is not written again and
+/// not counted: ids are UUIDs, so the same id is the same picture, and
+/// re-importing a setup onto the machine that made it costs nothing.
+///
+/// `dir` is `None` only where there is no app-data directory to write into —
+/// the storage tests. The COUNT is still exact there, because it is a fact
+/// about the file rather than about the disk.
+fn write_images(file: &TransferFile, dir: Option<&Path>) -> u32 {
+    let referenced = referenced_image_ids(file);
+    if referenced.is_empty() {
+        return 0;
+    }
+    let mut landed: HashSet<&str> = HashSet::new();
+    for image in &file.images {
+        let Some(id) = sanitized_image_id(&image.id) else {
+            continue;
+        };
+        if !referenced.contains(&id) {
+            // Bytes nothing points at. Not written: the boot sweep would
+            // collect them on the next start anyway, and a store only holds
+            // what something is asking for.
+            continue;
+        }
+        let Some(dir) = dir else {
+            // No disk to write to, but the file DID carry this picture — so
+            // it is not one of the missing ones.
+            landed.insert(&image.id);
+            continue;
+        };
+        if images::find_stored(dir, &id).is_some() {
+            landed.insert(&image.id);
+            continue;
+        }
+        let bytes = match base64::engine::general_purpose::STANDARD.decode(&image.bytes_base64) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                tracing::warn!(id = %id, "an imported picture is not valid base64: {e}");
+                continue;
+            }
+        };
+        match images::write_stored(dir, &id, &bytes) {
+            Ok(Some(_)) => {
+                landed.insert(&image.id);
+            }
+            Ok(None) => tracing::warn!(
+                id = %id,
+                "an imported picture's bytes are not a PNG, JPEG or WebP — not stored"
+            ),
+            Err(e) => tracing::warn!(id = %id, "storing an imported picture failed: {e}"),
+        }
+    }
+    // What the machine has, whichever way it got it.
+    let missing = referenced
+        .iter()
+        .filter(|id| {
+            if landed.contains(id.as_str()) {
+                return false;
+            }
+            match (dir, sanitized_image_id(id)) {
+                (Some(dir), Some(id)) => images::find_stored(dir, &id).is_none(),
+                _ => true,
+            }
+        })
+        .count();
+    u32::try_from(missing).unwrap_or(u32::MAX)
 }
 
 /// Names the store would refuse from the UI, so the import refuses them too
@@ -334,7 +469,23 @@ struct Maps {
 /// refused on its content (too large, malformed) — nothing was written in
 /// either case, and the panel has a specific sentence for each. Only a real
 /// storage failure travels as `Err`.
-pub async fn import_setup(pool: &SqlitePool, file: &TransferFile) -> AppResult<ImportReceipt> {
+///
+/// `images_dir` is where the file's pictures are written — BEFORE the
+/// transaction opens, so a config never arrives at a picture that is not
+/// there yet. `None` means "no disk for pictures" (the storage tests); the
+/// receipt's `images_skipped` is exact either way, because it is a fact about
+/// the file.
+///
+/// A picture written for an import that then REFUSES is not cleaned up here,
+/// and that is deliberate: it is an orphan, the boot sweep is what collects
+/// orphans, and adding a second deletion path — one that runs on the error
+/// road, where the least is known — is how a rollback learns to delete a file
+/// somebody else's screen was pointing at.
+pub async fn import_setup(
+    pool: &SqlitePool,
+    file: &TransferFile,
+    images_dir: Option<&Path>,
+) -> AppResult<ImportReceipt> {
     let app_version = file.app_version.clone();
 
     // Both gates run BEFORE the transaction opens: a refusal must cost
@@ -360,6 +511,10 @@ pub async fn import_setup(pool: &SqlitePool, file: &TransferFile) -> AppResult<I
             ));
         }
     };
+
+    // The pictures FIRST — after every gate that can still refuse the file,
+    // and before the first row that could point at one.
+    let images_skipped = write_images(file, images_dir);
 
     let stamp = now_ms();
     let mut maps = Maps::default();
@@ -492,6 +647,7 @@ pub async fn import_setup(pool: &SqlitePool, file: &TransferFile) -> AppResult<I
         planner_imported,
         planner_skipped: has_planner && !planner_imported,
         file_app_version: app_version,
+        images_skipped,
     })
 }
 

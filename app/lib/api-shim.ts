@@ -27,8 +27,10 @@ import type { WeekSlot } from "../bindings/WeekSlot";
 import type { ActiveContext } from "../bindings/ActiveContext";
 import type { ClassSnapshot } from "../bindings/ClassSnapshot";
 import type { DrawManyResult } from "../bindings/DrawManyResult";
+import type { ExportReceipt } from "../bindings/ExportReceipt";
 import type { GroupMode } from "../bindings/GroupMode";
 import type { ImportReceipt } from "../bindings/ImportReceipt";
+import type { StoredImage } from "../bindings/StoredImage";
 import type { Member } from "../bindings/Member";
 import type { Settings } from "../bindings/Settings";
 import type { UpdateStatus } from "../bindings/UpdateStatus";
@@ -341,6 +343,33 @@ const api = {
   linkOpen: async (widgetId: string): Promise<void> =>
     write<void>("link_open", { widgetId }),
 
+  /**
+   * Pick a picture and copy it into the app's own directory; answers with the
+   * stored id, or `null` when the teacher closed the dialog.
+   *
+   * A WRITE: the native dialog is opened in Rust and a file is copied, so a
+   * refusal (over the size ceiling, not a picture at all) must REJECT and
+   * land in the error ring. The widget catches it and says which of the two
+   * it was — this is the one place the app can name the limit while she is
+   * still standing at the file she chose.
+   *
+   * The webview never names a path and never receives one: it sends a dialog
+   * title and gets back a UUID.
+   */
+  imagePick: async (dialogTitle: string): Promise<string | null> =>
+    write<string | null>("image_pick", { dialogTitle }),
+
+  /**
+   * Read a stored picture back. A READ with a `null` fallback, and `null` is
+   * also the backend's own honest answer for "there is no such picture here"
+   * — a setup imported without its pictures lands exactly there, and the card
+   * says «bildet mangler» rather than lighting the error ring for something
+   * the teacher can simply fix. In a plain browser every call takes the
+   * fallback, so the shell boots with empty picture cards and no noise.
+   */
+  imageLoad: async (imageId: string): Promise<StoredImage | null> =>
+    call<StoredImage | null>("image_load", { imageId }, null),
+
   /** THE switch: class + scene in one atomic pointer move + snapshot.
    *  `sceneId = null` lands on the class's default scene. */
   lessonSwitch: async (
@@ -503,13 +532,20 @@ const api = {
   // is the same rule `classEnsureActive(defaultName)` follows — the backend
   // never owns a sentence a teacher reads.
 
-  /** Write the whole setup to a file the teacher picks. Answers with the
-   *  path written, or `null` when she closed the dialog (not a failure). */
+  /** Write the whole setup to a file the teacher picks. Answers with a
+   *  RECEIPT — where it landed, and how many pictures rode along or could
+   *  not — or `null` when she closed the dialog (not a failure). The
+   *  pictures are in the file since R6, so the count is not decoration: it
+   *  is what makes the file heavier than a name list, and what says which
+   *  cards will be empty on the other machine. */
   transferExport: async (
     dialogTitle: string,
     suggestedName: string,
-  ): Promise<string | null> =>
-    write<string | null>("transfer_export", { dialogTitle, suggestedName }),
+  ): Promise<ExportReceipt | null> =>
+    write<ExportReceipt | null>("transfer_export", {
+      dialogTitle,
+      suggestedName,
+    }),
 
   /** Read a setup file the teacher picks and ADD what is in it. Always
    *  answers with a receipt — the refusals (not our file, too new, too big)

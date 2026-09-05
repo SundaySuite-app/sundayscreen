@@ -77,6 +77,17 @@ pub const WIDGETS_MAX_PER_SCENE: usize = 200;
 /// Longest stored widget config, in characters. `TEXT_CONTENT_MAX_CHARS` is
 /// 10 000 on its own, so this leaves room for a long text card plus fields.
 pub const WIDGET_CONFIG_MAX_CHARS: usize = 64_000;
+/// Most PICTURES one file may carry. A board with more than a couple of dozen
+/// photographs on it is not a board; this is the bound on a file.
+pub const TRANSFER_IMAGES_MAX: usize = 32;
+/// The summed size of the ENCODED picture payload, in bytes.
+///
+/// Measured on the base64 text rather than on the raw image bytes, because
+/// base64 is what actually lands in the file — and the file has to come back
+/// in under `commands/transfer.rs`'s `MAX_FILE_BYTES` (32 MiB), which is a
+/// gate on the file as written. 20 MiB of base64 is about 15 MiB of picture,
+/// and it leaves the rest of the ceiling for the setup itself.
+pub const TRANSFER_IMAGE_BYTES_MAX: usize = 20_971_520; // 20 MiB
 /// Most periods in a school day's template.
 pub const PERIODS_MAX: usize = 40;
 /// Most cells in the weekly timetable — Monday–Friday × every period.
@@ -150,6 +161,39 @@ pub struct TransferScene {
     pub theme: String,
     #[serde(default)]
     pub widgets: Vec<TransferWidget>,
+}
+
+/// One transferred PICTURE — the bytes a board's image widget points at.
+///
+/// The pictures ride ALONG WITH the file (owner's decision, R6): a teacher who
+/// moves her setup to another machine gets her screens whole, pictures and
+/// all. The honest cost is written down in PRIVACY.md rather than hidden: a
+/// class photograph is a heavier kind of personal data than a name list, and
+/// it is now IN the file — so the file belongs wherever the class lists
+/// belong, and nowhere looser.
+///
+/// `id` is the same id the widget config's `imageId` carries, so the import
+/// can write the file under a name the configs already point at. It is a
+/// UUID — it says nothing about the picture, the teacher or the class.
+///
+/// ADDITIVE: a build that has never heard of pictures ignores the key, and
+/// `SCHEMA_VERSION` therefore stays at 1. What such a build lands with is a
+/// config naming a picture with no file behind it — which is exactly the
+/// «bildet mangler» state the widget already draws honestly, and exactly what
+/// [`crate::layout::WidgetConfig::Image`] documents `image_id` to mean.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferImage {
+    #[serde(default)]
+    pub id: String,
+    /// `image/png`, `image/jpeg`, `image/webp` — the format as the WRITER saw
+    /// it. A hint for choosing the file extension on import, never a proof:
+    /// the import sniffs the decoded bytes itself, exactly as the pick did.
+    #[serde(default)]
+    pub mime: String,
+    /// The picture, base64 (standard alphabet, padded).
+    #[serde(default)]
+    pub bytes_base64: String,
 }
 
 /// One transferred class: its name, its name LIST, and its own default
@@ -279,6 +323,10 @@ pub struct TransferFile {
     pub scenes: Vec<TransferScene>,
     #[serde(default)]
     pub planner: TransferPlanner,
+    /// The pictures the screens above point at, by `imageId`. ADDITIVE — see
+    /// [`TransferImage`]; an older file has no key and lands as an empty list.
+    #[serde(default)]
+    pub images: Vec<TransferImage>,
 }
 
 impl TransferFile {
@@ -292,6 +340,7 @@ impl TransferFile {
             classes: Vec::new(),
             scenes: Vec::new(),
             planner: TransferPlanner::default(),
+            images: Vec::new(),
         }
     }
 }
@@ -440,6 +489,19 @@ pub fn check_limits(file: &TransferFile) -> Result<(), LimitBreach> {
     for slot in &file.planner.week {
         cap("slotSubject", chars(&slot.subject), LABEL_MAX_CHARS)?;
     }
+
+    // The pictures, counted and weighed. BYTES on the base64 text, not
+    // characters: the alphabet is ASCII so the two agree, and `len()` is what
+    // the file-size gate on the other machine will actually measure.
+    //
+    // A breach REFUSES the whole file rather than dropping the pictures that
+    // do not fit — the module header's rule, and it holds here for the same
+    // reason it holds for a class of 40: on IMPORT, nobody can see what was
+    // dropped. The EXPORT side is the one that fits pictures to the ceiling,
+    // and it counts what it left behind onto the receipt.
+    cap("images", file.images.len(), TRANSFER_IMAGES_MAX)?;
+    let image_bytes: usize = file.images.iter().map(|i| i.bytes_base64.len()).sum();
+    cap("imageBytes", image_bytes, TRANSFER_IMAGE_BYTES_MAX)?;
     Ok(())
 }
 
@@ -787,5 +849,76 @@ mod tests {
         let file = parse(&raw).expect("an absent field is not an unreadable one");
         assert!(!file.planner.week[0].merged_with_next);
         assert_eq!(file.planner.week[0].subject, "Norsk");
+    }
+
+    // ── The pictures in the file ────────────────────────────────────────────
+
+    fn an_image(id: &str, bytes_base64: &str) -> TransferImage {
+        TransferImage {
+            id: id.into(),
+            mime: "image/png".into(),
+            bytes_base64: bytes_base64.into(),
+        }
+    }
+
+    #[test]
+    fn a_picture_survives_a_write_and_read() {
+        let mut file = TransferFile::new("0.6.0", 0.0);
+        file.images.push(an_image(
+            "0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f",
+            "iVBORw0KGgo=",
+        ));
+        let json = serde_json::to_string(&file).unwrap();
+        assert!(
+            json.contains(r#""bytesBase64":"iVBORw0KGgo=""#),
+            "camelCase in the file: {json}"
+        );
+        assert_eq!(parse(&json).unwrap(), file);
+    }
+
+    #[test]
+    fn a_file_written_before_pictures_reads_as_a_setup_without_any() {
+        // The additive-field promise at the key this round added: an R5
+        // export has no `images` key and `schemaVersion` is still 1, so it
+        // must read whole — with no pictures, which is what it had.
+        let raw = format!(r#"{{"kind":"{KIND}","schemaVersion":1,"classes":[]}}"#);
+        let file = parse(&raw).expect("an absent field is not an unreadable one");
+        assert!(file.images.is_empty());
+    }
+
+    #[test]
+    fn too_many_pictures_is_refused_by_name() {
+        let mut file = TransferFile::new("t", 0.0);
+        file.images = (0..TRANSFER_IMAGES_MAX + 1)
+            .map(|i| an_image(&format!("id{i}"), "AA=="))
+            .collect();
+        assert_eq!(
+            check_limits(&file).unwrap_err(),
+            LimitBreach {
+                what: "images",
+                found: TRANSFER_IMAGES_MAX + 1,
+                max: TRANSFER_IMAGES_MAX,
+            }
+        );
+    }
+
+    #[test]
+    fn too_many_picture_bytes_is_refused_by_name() {
+        // Under the COUNT ceiling and over the WEIGHT one — the two caps
+        // answer different questions and both have to be asked.
+        let mut file = TransferFile::new("t", 0.0);
+        let half = "A".repeat(TRANSFER_IMAGE_BYTES_MAX / 2 + 1);
+        file.images = vec![an_image("a", &half), an_image("b", &half)];
+        let breach = check_limits(&file).unwrap_err();
+        assert_eq!(breach.what, "imageBytes");
+        assert!(breach.found > TRANSFER_IMAGE_BYTES_MAX);
+    }
+
+    #[test]
+    fn a_setup_with_a_couple_of_pictures_passes_the_limits() {
+        let mut file = sample();
+        file.images.push(an_image("a", "iVBORw0KGgo="));
+        file.images.push(an_image("b", "iVBORw0KGgo="));
+        check_limits(&file).expect("two pictures is nowhere near a limit");
     }
 }

@@ -310,6 +310,39 @@ pub const LINK_TITLE_MAX_CHARS: usize = 120;
 /// [`sanitized_url`].
 pub const LINK_URL_MAX_CHARS: usize = 2000;
 
+/// How a picture fills its card. Serialised lowercase — part of the persisted
+/// config vocabulary, so a renamed variant is a broken database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "ImageFit.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum ImageFit {
+    /// The whole picture, letterboxed. The default: a class photo with heads
+    /// cropped off is worse than one with a margin.
+    #[default]
+    Contain,
+    /// Fills the card, cropping what does not fit.
+    Cover,
+}
+
+/// Biggest picked image FILE, in bytes — checked in Rust from the file's
+/// metadata before a single byte is read.
+///
+/// A byte ceiling and a format whitelist, and deliberately NO pixel
+/// rescaling: rescaling needs a decoder dependency, it is slow on a
+/// classroom laptop, and — the reason that actually decides it — silently
+/// re-encoding a teacher's picture is the quiet kind of wrong this house
+/// refuses. Over the cap the pick REJECTS and names the limit (promise 4);
+/// the projector's own downscale in `<img>` handles everything under it.
+pub const IMAGE_FILE_MAX_BYTES: u64 = 10_485_760; // 10 MiB
+
+/// Longest caption under a picture, in characters. TEXT, so it is cut to fit
+/// — the checklist's cap, and the same verb.
+pub const IMAGE_CAPTION_MAX_CHARS: usize = 200;
+
+/// Longest `image_id` this build will keep. A UUID is 36 characters; the four
+/// spare are slack for a future id shape, not permission to store a path.
+const IMAGE_ID_MAX_CHARS: usize = 40;
+
 /// Per-kind widget configuration. The serde tag IS the `kind` column value —
 /// a renamed variant is a broken database.
 ///
@@ -550,6 +583,44 @@ pub enum WidgetConfig {
         #[ts(skip)]
         extra: serde_json::Map<String, serde_json::Value>,
     },
+    /// «Bilde» — a local picture on the board.
+    ///
+    /// The bytes live as a FILE under the app-data directory and NEVER in
+    /// this config. A data-URI here would ride every `layout_save` (which is
+    /// replace-all, on every drag of any widget), every `duplicate`'s
+    /// `structuredClone`, and ×4 disk through `backup_rotating` — and it
+    /// would burst `transfer::WIDGET_CONFIG_MAX_CHARS` on the first photo.
+    /// The config carries the id and nothing else.
+    ///
+    /// `image_id = ""` is the honest "no picture yet" state, and it is also
+    /// where every id this build refuses to vouch for ends up: the clamp
+    /// CLEARS rather than repairs (see [`sanitized_image_id`]). «Remove the
+    /// picture» in the UI is this same empty string — there is no delete
+    /// command, and the orphaned file is collected on the next app start.
+    ///
+    /// ## The convention, and it is load-bearing beyond this variant
+    ///
+    /// A field that names a stored picture file SHALL be spelled `imageId`
+    /// (`image_id` in Rust). The boot sweep in `db/images.rs` decides what is
+    /// orphaned by scanning EVERY widget config for that key — including
+    /// kinds this build has never heard of, so a newer version's picture
+    /// widget is not swept out from under it by a downgrade. A future kind
+    /// that invents a different field name would lose its files, and the only
+    /// thing standing between it and that is this sentence.
+    Image {
+        /// The stored file's id — `""` means "not set". Shape-clamped to the
+        /// UUID alphabet so a path separator is not merely rejected later but
+        /// unrepresentable here.
+        #[serde(default)]
+        image_id: String,
+        #[serde(default, deserialize_with = "lenient")]
+        fit: ImageFit,
+        #[serde(default)]
+        caption: String,
+        #[serde(flatten)]
+        #[ts(skip)]
+        extra: serde_json::Map<String, serde_json::Value>,
+    },
 }
 
 fn default_true_flag() -> bool {
@@ -626,6 +697,40 @@ pub fn sanitized_url(raw: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
+/// The ONE rule for a stored picture's id — judged WHOLE, kept byte-for-byte
+/// or thrown away. `Some` carries an id this app is willing to turn into a
+/// file name; `None` means "this is not one of our ids".
+///
+/// Deliberately the same SHAPE of rule as [`sanitized_url`], for the same
+/// reason: nothing is stripped out of the middle. A scrubber that removed the
+/// "illegal" characters and kept the rest would turn `../../etc/passwd` into
+/// `etcpasswd` — a value that passes every later check while meaning
+/// something the teacher never chose (see `reference-scrub-by-form-not-filter`
+/// in the house notes). The whole value passes or the whole value goes.
+///
+/// The alphabet is the UUID one — lowercase hex and the hyphen — which has
+/// no `.`, no `/`, no `\` and no NUL in it. That is the point: the value is
+/// joined onto a directory path in `commands/images.rs`, and a rule that
+/// merely *rejects* separators is one refactor away from a rule that
+/// forgets one. There is no separator in the alphabet to forget.
+///
+/// Two call sites, and the second is not redundant — the same pairing the URL
+/// has: [`WidgetConfig::clamp`] (every load, every save) and the image
+/// commands (which are handed ids by a webview, and by transfer files whose
+/// configs were written RAW and never saw the clamp).
+pub fn sanitized_image_id(raw: &str) -> Option<String> {
+    if raw.is_empty() || raw.chars().count() > IMAGE_ID_MAX_CHARS {
+        return None;
+    }
+    if !raw
+        .chars()
+        .all(|c| matches!(c, '0'..='9' | 'a'..='f' | '-'))
+    {
+        return None;
+    }
+    Some(raw.to_string())
+}
+
 impl WidgetConfig {
     /// The `kind` column value for this config — the serde tag, spelled once.
     pub fn kind(&self) -> &'static str {
@@ -643,6 +748,7 @@ impl WidgetConfig {
             WidgetConfig::Checklist { .. } => "checklist",
             WidgetConfig::Today { .. } => "today",
             WidgetConfig::Link { .. } => "link",
+            WidgetConfig::Image { .. } => "image",
         }
     }
 
@@ -727,6 +833,12 @@ impl WidgetConfig {
                 show_qr: true,
                 extra: Default::default(),
             }),
+            "image" => Some(WidgetConfig::Image {
+                image_id: String::new(),
+                fit: ImageFit::default(),
+                caption: String::new(),
+                extra: Default::default(),
+            }),
             _ => None,
         }
     }
@@ -746,7 +858,8 @@ impl WidgetConfig {
             | WidgetConfig::Deadline { extra, .. }
             | WidgetConfig::Checklist { extra, .. }
             | WidgetConfig::Today { extra, .. }
-            | WidgetConfig::Link { extra, .. } => extra,
+            | WidgetConfig::Link { extra, .. }
+            | WidgetConfig::Image { extra, .. } => extra,
         }
     }
 
@@ -902,6 +1015,24 @@ impl WidgetConfig {
                 // is the point. The title is TEXT and is cut to fit; the URL
                 // is a VALUE and is dropped whole. See `sanitized_url`.
                 *url = sanitized_url(url).unwrap_or_default();
+            }
+            WidgetConfig::Image {
+                image_id, caption, ..
+            } => {
+                // The same two verbs, three lines apart, for the same reason
+                // as the link's: the caption is TEXT and is cut to fit; the
+                // id is a VALUE — it either names a file we can build a path
+                // from or it names nothing at all, and half an id names a
+                // file that does not exist while LOOKING like a picture that
+                // failed to load.
+                if caption.chars().count() > IMAGE_CAPTION_MAX_CHARS {
+                    *caption = caption.chars().take(IMAGE_CAPTION_MAX_CHARS).collect();
+                }
+                *image_id = sanitized_image_id(image_id).unwrap_or_default();
+                // `fit` adds no line here, and the die's comment above says
+                // why at length: an enum has no out-of-range value to arrive
+                // with — `lenient` answered an unreadable spelling one layer
+                // below, at the deserialiser.
             }
         }
     }
@@ -1196,7 +1327,7 @@ mod tests {
 
     #[test]
     fn clock_and_timer_kinds_round_trip_defaults() {
-        for kind in ["clock", "timer", "link"] {
+        for kind in ["clock", "timer", "link", "image"] {
             let cfg = WidgetConfig::default_for(kind).expect(kind);
             assert_eq!(cfg.kind(), kind);
             let json = serde_json::to_string(&cfg).unwrap();
@@ -2200,5 +2331,200 @@ mod tests {
             "and the newer version's field is still on the row"
         );
         assert_eq!(json.matches("\"kind\"").count(), 1);
+    }
+
+    // ── The image widget's id: the field that becomes a FILE PATH ───────────
+
+    fn image(image_id: &str) -> WidgetConfig {
+        WidgetConfig::Image {
+            image_id: image_id.to_string(),
+            fit: ImageFit::Contain,
+            caption: String::new(),
+            extra: Default::default(),
+        }
+    }
+
+    fn clamped_image_id(image_id: &str) -> String {
+        let mut cfg = image(image_id);
+        cfg.clamp();
+        let WidgetConfig::Image { image_id, .. } = cfg else {
+            panic!("still an image");
+        };
+        image_id
+    }
+
+    /// The table this widget's file access rests on. `None` means "must end
+    /// up EMPTY" — the clamp never repairs an id, it drops it.
+    ///
+    /// Every row is a shape that can actually reach the clamp: a hostile
+    /// «flytt oppsettet»-file, a hand-edited database, a config written by a
+    /// build that spelled ids differently.
+    #[test]
+    fn only_a_uuid_shaped_id_survives_the_clamp() {
+        let uuid = "0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f";
+        let cases: &[(&str, Option<&str>)] = &[
+            // The whole reason the rule exists. Note what does NOT happen to
+            // the first two: the separators are not REMOVED and the rest
+            // kept — that is how a scrubber smuggles a path past its own
+            // check — the whole value goes.
+            ("../../../etc/passwd", None),
+            ("..%2F..%2Fsecret", None),
+            ("a/b", None),
+            ("a\\b", None),
+            ("../a", None),
+            (".", None),
+            ("..", None),
+            ("a.png", None),
+            ("a\u{0}b", None),
+            // Absolute paths, both platforms.
+            ("/etc/passwd", None),
+            ("C:\\Windows\\win.ini", None),
+            // Right alphabet, wrong case: our ids are lowercase UUIDs, and a
+            // case-insensitive file system would make an upper-case twin a
+            // second name for the same file.
+            ("0192F0A4-7B1E-7C3D-9F52-6A1B2C3D4E5F", None),
+            // Not hex at all.
+            ("0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4z5f", None),
+            ("", None),
+            ("   ", None),
+            // …and the ordinary id this app mints, byte for byte.
+            (uuid, Some(uuid)),
+            ("abcdef0123456789", Some("abcdef0123456789")),
+        ];
+        for (raw, want) in cases {
+            assert_eq!(clamped_image_id(raw), want.unwrap_or_default(), "{raw:?}");
+            assert_eq!(
+                sanitized_image_id(raw).as_deref(),
+                *want,
+                "…and the shared rule agrees ({raw:?})"
+            );
+        }
+    }
+
+    /// The length ceiling, pinned from BOTH sides so it is a boundary rather
+    /// than "somewhere around 40".
+    #[test]
+    fn an_over_long_id_is_cleared_never_shortened() {
+        let at_cap = "a".repeat(IMAGE_ID_MAX_CHARS);
+        assert_eq!(clamped_image_id(&at_cap), at_cap);
+        let over = "a".repeat(IMAGE_ID_MAX_CHARS + 1);
+        assert_eq!(
+            clamped_image_id(&over),
+            "",
+            "a truncated id names a file that does not exist"
+        );
+    }
+
+    #[test]
+    fn the_caption_is_cut_to_fit_and_the_id_beside_it_is_not_touched() {
+        let uuid = "0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f";
+        let mut cfg = WidgetConfig::Image {
+            image_id: uuid.to_string(),
+            fit: ImageFit::Cover,
+            caption: "æ".repeat(IMAGE_CAPTION_MAX_CHARS + 40),
+            extra: Default::default(),
+        };
+        cfg.clamp();
+        let WidgetConfig::Image {
+            image_id,
+            fit,
+            caption,
+            ..
+        } = cfg
+        else {
+            panic!("still an image");
+        };
+        assert_eq!(caption.chars().count(), IMAGE_CAPTION_MAX_CHARS);
+        assert_eq!(image_id, uuid, "a good id is never touched");
+        assert_eq!(fit, ImageFit::Cover, "and the teacher's choice stands");
+    }
+
+    #[test]
+    fn clamping_an_image_twice_changes_nothing() {
+        for raw in [
+            "0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f",
+            "../../etc/passwd",
+            "",
+        ] {
+            let mut cfg = image(raw);
+            cfg.clamp();
+            let once = cfg.clone();
+            cfg.clamp();
+            assert_eq!(cfg, once, "clamping {raw:?} is idempotent");
+        }
+    }
+
+    /// An unreadable `fit` spelling costs THAT FIELD ONLY — the picture and
+    /// its caption survive. (The `lenient` guarantee, at the new enum.)
+    #[test]
+    fn an_unreadable_fit_costs_only_the_fit() {
+        let inst = row_to_instance(
+            "w1",
+            "image",
+            0.2,
+            0.2,
+            0.4,
+            0.3,
+            0,
+            r#"{"kind":"image","imageId":"0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f",
+                "fit":"tile","caption":"7B på tur"}"#,
+        )
+        .expect("an image row renders");
+        let WidgetConfig::Image {
+            image_id,
+            fit,
+            caption,
+            ..
+        } = inst.config
+        else {
+            panic!("still an image");
+        };
+        assert_eq!(fit, ImageFit::Contain, "the field defaults");
+        assert_eq!(image_id, "0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f");
+        assert_eq!(caption, "7B på tur", "…and everything around it survives");
+    }
+
+    /// ADR-007 for the new kind, and the hostile id beside it is cleared on
+    /// the way in without taking the newer version's field along.
+    #[test]
+    fn an_images_unknown_fields_survive_the_round_trip() {
+        let inst = row_to_instance(
+            "w1",
+            "image",
+            0.2,
+            0.2,
+            0.4,
+            0.3,
+            0,
+            r#"{"kind":"image","imageId":"../../etc/passwd","fit":"cover",
+                "caption":"Kart","altText":"et kart"}"#,
+        )
+        .expect("an image row renders");
+
+        let json = serde_json::to_string(&inst.config).unwrap();
+        let out: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            out["imageId"],
+            serde_json::json!(""),
+            "the traversal was cleared on the way in"
+        );
+        assert_eq!(out["fit"], serde_json::json!("cover"));
+        assert_eq!(out["caption"], serde_json::json!("Kart"));
+        assert_eq!(
+            out["altText"],
+            serde_json::json!("et kart"),
+            "and the newer version's field is still on the row"
+        );
+        assert_eq!(json.matches("\"kind\"").count(), 1);
+    }
+
+    /// The field NAME is a contract with the boot sweep (`db/images.rs`
+    /// scans every config for it, whatever the kind). Serialisation spells
+    /// it `imageId`, and this is the test that notices if it stops.
+    #[test]
+    fn the_stored_field_is_spelled_image_id_in_camel_case() {
+        let json = serde_json::to_string(&image("0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f")).unwrap();
+        assert!(json.contains(r#""imageId":"#), "{json}");
+        assert!(!json.contains("image_id"), "{json}");
     }
 }

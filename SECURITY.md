@@ -146,7 +146,14 @@ So a future auditor doesn't have to re-derive these from scratch:
   **identifiers, not paths or URLs**: `transfer_export` /
   `transfer_import` open the dialog in Rust and the page never learns the
   chosen path; `link_open` takes a widget ID and reads the address out of
-  the database. There is still no general-purpose file, shell or "open
+  the database; `image_pick` opens the dialog in Rust, copies the chosen
+  file into the app's own `images/` directory under a fresh UUID and
+  answers with **that id**, and `image_load` takes an id and answers with
+  bytes. The picture commands never accept a path and never return one, and
+  they can reach nothing outside that one directory — `image_load`'s id is
+  run through `sanitized_image_id` **before** any path is built, and the
+  directory itself is derived from `app_data_dir()`, never from an
+  argument. There is still no general-purpose file, shell or "open
   anything" bridge — and that is now a claim about argument shapes, not
   about which plugins happen to be linked in.
 
@@ -176,6 +183,23 @@ So a future auditor doesn't have to re-derive these from scratch:
   `file:` URI planted by a hand-edited database or a hostile setup file
   therefore never renders and never opens (`layout.rs` and
   `src-tauri/src/commands/links.rs` both carry the table tests).
+- **The one picture-id rule, spelled once, and it is a rule about FORM.**
+  `sanitized_image_id` (`crates/sundayscreen-core/src/layout.rs`) accepts
+  the UUID alphabet — lowercase hex and the hyphen — judged over the WHOLE
+  value, and clears anything else. Nothing is stripped out of the middle:
+  removing the "illegal" characters and keeping the rest is how a scrubber
+  smuggles `../../etc/passwd` through as `etcpasswd`. The alphabet contains
+  no `.`, `/`, `\` or NUL, so a path separator is unrepresentable rather
+  than merely rejected. It runs inside `clamp` (every layout load and save)
+  and again in `image_load` and in transfer import, which is the road where
+  the clamp has demonstrably not run: imported widget configs are written
+  RAW, so a hostile setup file can put an id in the database that no clamp
+  ever saw. Table-tested in `layout.rs`, and pinned end to end in
+  `commands/transfer.rs` (`a_hostile_id_in_a_file_never_becomes_a_path`).
+  What a picture's bytes ARE is a second question with a second answer:
+  every road into the store sniffs the magic numbers (`db/images.rs`), so a
+  file's extension and a transfer file's `mime` field are hints, never
+  evidence.
 - **Updater signature verification.** Tauri's built-in updater verifies a
   minisign signature on every downloaded update before installing it —
   a build without a valid signature for the pinned pubkey is refused, full

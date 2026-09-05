@@ -27,6 +27,8 @@ export const LIMITS = {
   CHECKLIST_TEXT_MAX_CHARS: 200,
   LINK_TITLE_MAX_CHARS: 120,
   LINK_URL_MAX_CHARS: 2000,
+  IMAGE_FILE_MAX_BYTES: 10485760,
+  IMAGE_CAPTION_MAX_CHARS: 200,
 
   // crates/sundayscreen-core/src/schedule.rs
   LABEL_MAX_CHARS: 80,

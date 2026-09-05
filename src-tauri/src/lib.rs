@@ -291,6 +291,34 @@ pub fn run() {
                     Err(e) => tracing::warn!("startup backup failed (continuing anyway): {e}"),
                 }
 
+                // The picture sweep — the ONE place an image file is ever
+                // deleted (`db/images.rs` has the three reasons a per-widget
+                // delete would be wrong). Deliberately placed HERE:
+                //
+                // - INSIDE this branch, so it never runs on a degraded boot.
+                //   Without a pool there is no way to prove a file is an
+                //   orphan, and "we could not read the references" must never
+                //   become "so we deleted the pictures".
+                // - AFTER `backup_rotating`, so the copy of a healthy
+                //   database is taken before anything on disk is removed, and
+                //   the projector picture is not held up by a directory walk.
+                // - NEVER fatal, exactly like the backup above: a locked file
+                //   or a read-only directory must not stop a lesson.
+                match app.path().app_data_dir() {
+                    Ok(base) => {
+                        let dir = db::images::images_dir(&base);
+                        match tauri::async_runtime::block_on(db::images::sweep_orphans(&pool, &dir))
+                        {
+                            Ok(0) => { /* nothing to collect — the ordinary boot */ }
+                            Ok(n) => tracing::info!(removed = n, "swept orphaned pictures"),
+                            Err(e) => {
+                                tracing::warn!("the picture sweep failed (continuing anyway): {e}")
+                            }
+                        }
+                    }
+                    Err(e) => tracing::warn!("no app data directory for the picture sweep: {e}"),
+                }
+
                 app.manage(db::Db::new(pool));
             }
             Ok(())
@@ -323,6 +351,8 @@ pub fn run() {
             commands::classes::members_set,
             commands::layout::layout_load,
             commands::layout::layout_save,
+            commands::images::image_pick,
+            commands::images::image_load,
             commands::links::link_open,
             commands::scenes::scene_list,
             commands::scenes::scene_create,

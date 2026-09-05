@@ -105,6 +105,16 @@ export const ICON_PATHS = {
     "M12.42 6.48L13.41 5.49a3.6 3.6 0 0 1 5.1 5.1L12.99 16.1",
     "M11.58 17.52L10.59 18.51a3.6 3.6 0 0 1-5.1-5.1L11.01 7.9",
   ],
+  // A framed photograph: the frame, a sun high on the left, and two ridges
+  // running INTO the bottom-right corner. The ridges deliberately stop at the
+  // frame's inner edge rather than at its stroke — at 16 px the two lines
+  // would otherwise merge into one thick corner.
+  image: [
+    "M5 4.5h14A1.5 1.5 0 0 1 20.5 6v12a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18V6A1.5 1.5 0 0 1 5 4.5z",
+    "M8.75 10.4a1.65 1.65 0 1 1 0-3.3 1.65 1.65 0 0 1 0 3.3z",
+    "M3.6 16.4l4.15-4.15 5.25 5.25",
+    "M11.5 15.75l3-3 5.4 5.4",
+  ],
   // ------------------------------------------------ sibling-track surfaces
   scene: [
     "M8.5 3.75H19A1.25 1.25 0 0 1 20.25 5v10.5",

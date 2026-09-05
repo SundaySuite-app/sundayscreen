@@ -9,6 +9,17 @@ import type { Page } from "@playwright/test";
 
 import { LIMITS } from "../app/lib/limits.generated";
 
+/** The one picture id the fixture backend has bytes for. Shaped like a real
+ *  stored id — lowercase hex and hyphens — because `sanitized_image_id` is
+ *  the rule in Rust and a fixture that ignored it would let a journey pass
+ *  against an id the real backend refuses. */
+export const E2E_IMAGE_ID = "0192f0a4-7b1e-7c3d-9f52-6a1b2c3d4e5f";
+
+/** A 1×1 transparent PNG. Small enough to inline, real enough that `<img>`
+ *  actually decodes it rather than firing `onerror`. */
+export const E2E_IMAGE_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
 /** Install the standard fixture set. Call BEFORE page.goto("/").
  *  `memberNames` pre-seeds class 7B's name list.
  *
@@ -23,8 +34,15 @@ export async function installFixtures(
   opts: { memberNames?: string[] } = {},
 ): Promise<void> {
   await page.addInitScript(
-    (init: { seedNames: string[]; limits: typeof LIMITS }) => {
+    (init: {
+      seedNames: string[];
+      limits: typeof LIMITS;
+      imageId: string;
+      imagePng: string;
+    }) => {
       const { seedNames, limits } = init;
+      const E2E_IMAGE_ID = init.imageId;
+      const E2E_IMAGE_PNG = init.imagePng;
       const DB_KEY = "__e2e_db__";
 
       // Rust truncates text with `.chars().take(n)` — CODEPOINT counting.
@@ -363,6 +381,31 @@ export async function installFixtures(
             const w = window as unknown as { __openedLinks?: string[] };
             (w.__openedLinks ??= []).push(String(arg(args, "widgetId")));
           },
+
+          // ── The picture widget ─────────────────────────────────────────
+          //
+          // The real pair opens a NATIVE dialog and touches the disk, both
+          // invisible to Playwright BY CONSTRUCTION — the same shape as
+          // «flytt oppsettet», and for the same reason. So the fake picks a
+          // FIXED id and answers with a FIXED tiny PNG, and what these
+          // journeys check is the frontend's half: the empty state, the
+          // pick→save→reload round trip, the blob URL being re-acquired
+          // after a reload, and the honest «bildet mangler» for an id with
+          // no bytes behind it.
+          //
+          // The boot sweep is deliberately NOT modelled: it runs in Rust at
+          // startup, it is unit-tested there with a tempdir, and a fake with
+          // its own idea of when a file becomes an orphan is exactly the
+          // seam bug this house keeps finding.
+          image_pick: () => E2E_IMAGE_ID,
+          // A 1×1 transparent PNG — the smallest thing that really decodes,
+          // so `<img>` actually loads rather than firing `onerror`.
+          image_load: (args?: Record<string, unknown>) =>
+            String(arg(args, "imageId")) === E2E_IMAGE_ID
+              ? { mime: "image/png", bytesBase64: E2E_IMAGE_PNG }
+              : // Every other id: the honest "no bytes here" answer. This is
+                // the state a setup imported without its pictures lands in.
+                null,
           update_check: { phase: "upToDate" },
           app_info: { name: "SundayScreen", version: "0.0.0-e2e" },
           // The two "how did the boot go" reads. `null` is the HEALTHY answer to
@@ -960,8 +1003,15 @@ export async function installFixtures(
           // deliberately NOT re-implementing the remap: a fake with its own
           // idea of the import semantics is the seam bug this house keeps
           // finding, and the Rust tests own that half.
-          transfer_export: (args?: Record<string, unknown>) =>
-            `/Users/e2e/Documents/${String(arg(args, "suggestedName"))}`,
+          // The receipt shape, not just a path: since R6 the export answers
+          // with how many pictures rode along and how many did not fit.
+          // Zero/zero here is the ordinary board — a journey that wants the
+          // overflow sentence overwrites just this key.
+          transfer_export: (args?: Record<string, unknown>) => ({
+            path: `/Users/e2e/Documents/${String(arg(args, "suggestedName"))}`,
+            images: 0,
+            imagesLeftOut: 0,
+          }),
           transfer_import: () => {
             // A symbolic ONE class + ONE global scene — not the real remap
             // (the Rust integration tests own that half, per the module doc
@@ -1003,6 +1053,9 @@ export async function installFixtures(
               // the receipt has to say so.
               plannerSkipped: true,
               fileAppVersion: "0.0.0-e2e",
+              // No pictures were left behind by default; a journey that
+              // wants that sentence overwrites just this key.
+              imagesSkipped: 0,
             };
           },
 
@@ -1139,7 +1192,12 @@ export async function installFixtures(
           },
         };
     },
-    { seedNames: opts.memberNames ?? [], limits: LIMITS },
+    {
+      seedNames: opts.memberNames ?? [],
+      limits: LIMITS,
+      imageId: E2E_IMAGE_ID,
+      imagePng: E2E_IMAGE_PNG,
+    },
   );
 }
 

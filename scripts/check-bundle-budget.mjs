@@ -94,6 +94,8 @@ const DIST = join(root, "dist");
 // dist totalt 343 096 B — se §«Hva W4 la til» i docstringen over for den
 // isolerte målingen. Begge heves med det MÅLTE tallet pluss ~5 kB margin, og
 // W4 er eieren. CSS-taket står urørt fra forrige bølge: 69 463 B er innenfor.
+// Sluttmålt ved v0.6.0-beta.1 (2026-09-05, etter granskingens fiksebølge):
+// største JS 201 934 B · CSS 69 613 B · dist 344 579 B — takene står.
 const LARGEST_JS_MAX = 206_000;
 const LARGEST_CSS_MAX = 73_000;
 const DIST_TOTAL_MAX = 350_000;

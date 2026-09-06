@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { addWidget, installFixtures } from "./harness";
+import { addWidget, installFixtures, setFixtureKnobs } from "./harness";
 
 // «Lenke»: type a title and an address, click it open, reload and find it
 // standing. The one thing this spec cannot test is the URL scrub — the
@@ -37,6 +37,17 @@ async function storedLinkWidgetId(page: import("@playwright/test").Page) {
  *  actually about. */
 function openSurface(card: import("@playwright/test").Locator) {
   return card.locator("button[data-link-open]");
+}
+
+/** The ADDRESSES the fixture backend would have handed the OS. It reads them
+ *  out of the STORED layout, exactly like `commands/links.rs` does — which is
+ *  what makes this log an assertion about the database rather than about the
+ *  render. */
+function openedUrls(page: import("@playwright/test").Page) {
+  return page.evaluate(
+    () =>
+      (window as unknown as { __openedLinkUrls?: string[] }).__openedLinkUrls,
+  );
 }
 
 /** The R6/F6 sentence, `link.invalidUrl`. */
@@ -105,6 +116,12 @@ test("a link is typed, opens on click, and survives a reload", async ({
       ),
     )
     .toEqual([widgetId]);
+  // …and the id resolved, in the store, to the address she typed. The fixture
+  // looks it up the way `commands/links.rs` does, so this is the assertion
+  // that the OS would have been handed the right thing.
+  await expect
+    .poll(() => openedUrls(page))
+    .toEqual(["https://www.udir.no/oppgaver"]);
 
   // Promise 2: a restart mid-lesson restores the screen exactly.
   await page.reload();
@@ -115,6 +132,44 @@ test("a link is typed, opens on click, and survives a reload", async ({
   await expect(openSurface(after)).toHaveAccessibleName(
     "Åpne lenken — udir.no",
   );
+});
+
+test("«Åpne» right after typing opens the NEW address, never the stored one", async ({
+  page,
+}) => {
+  // R7-funn H2. `link_open` reads the address from the DATABASE (that is the
+  // rule — the webview never names a URL), so the click is a read-after-write
+  // across two pool connections: paste, click, and the SELECT can beat the
+  // `layout_save` transaction. On a real machine that opens the PREVIOUS
+  // address on the projector; on a card that has never been saved it refuses
+  // an address that looks perfectly good on screen.
+  //
+  // The fixture backend is synchronous, so it wins that race every time and
+  // the tier could never see the bug. `saveDelayMs` is what makes the race
+  // VISIBLE — the persister is held open long enough that a click which does
+  // not wait for it reads the old row, which is exactly what happens on a
+  // school laptop with a busy disk.
+  await installFixtures(page);
+  await page.goto("/");
+
+  await addWidget(page, "Lenke");
+  const card = page.locator('[data-widget-kind="link"]');
+  await setFixtureKnobs(page, { saveDelayMs: 400 });
+
+  await card.hover();
+  await card.getByLabel("https://…").fill("https://www.udir.no/oppgaver");
+
+  // No settling, no poll for the stored row: the gesture under test is paste
+  // and click in the same second, and the debounce is 500 ms.
+  const open = openSurface(card);
+  await open.click();
+
+  await expect
+    .poll(() => openedUrls(page))
+    .toEqual(["https://www.udir.no/oppgaver"]);
+  // …and she was not told the open failed for an address the card is happily
+  // showing the host of.
+  await expect(page.getByText("Fikk ikke åpnet lenken")).toHaveCount(0);
 });
 
 test("an address the app will not vouch for never lights the click surface", async ({

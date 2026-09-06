@@ -7,7 +7,7 @@
 // `src-tauri/src/db/images.rs`. Nothing in this component ever sees a path:
 // `imagePick` answers with an id, `imageLoad` takes one.
 //
-// ## The three states this card can honestly be in
+// ## The four states this card can honestly be in
 //
 //   1. NO PICTURE — `imageId === ""`. A «Velg bilde …» button, and that is
 //      the whole card.
@@ -18,10 +18,15 @@
 //      SAYS SO rather than drawing an empty frame, because an empty frame on
 //      a projector reads as "the picture is loading" for the rest of the
 //      lesson.
+//   4. UNREADABLE — the read itself failed (R7-funn L9). This used to render
+//      as state 3, which is the wrong sentence AND the wrong remedy: her
+//      picture is not gone, one read did not come back. So this state says so
+//      and offers the one thing that helps — ask again.
 //
-// The three are distinguished by (`imageId`, `loading`, `url`) and never
-// collapsed: «no picture yet» and «the picture is gone» have different
-// remedies, and telling a teacher the wrong one costs her the lesson.
+// They are distinguished by (`imageId`, `loading`, `outcome`) and never
+// collapsed: «no picture yet», «the picture is gone» and «we did not get it
+// this time» have three different remedies, and telling a teacher the wrong
+// one costs her the lesson.
 
 import { useEffect, useState } from "preact/hooks";
 
@@ -29,28 +34,44 @@ import { LIMITS } from "@lib/limits.generated";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tf } from "../../i18n";
 import { saveNow, updateWidgetConfig } from "../../state/layout";
+import { commitField } from "../../ui/commit";
 import { Icon } from "../../ui/Icon";
 import { toast } from "../../ui/toast";
-import { acquire, browserUrls, decodeStoredImage, release } from "./blob-cache";
+import {
+  acquire,
+  browserUrls,
+  decodeStoredImage,
+  release,
+  type ImageOutcome,
+} from "./blob-cache";
 import styles from "./image.module.css";
 
 export function ImageWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
   const imageId = cfg.kind === "image" ? cfg.imageId : "";
-  const [url, setUrl] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<ImageOutcome | null>(null);
   const [loading, setLoading] = useState(false);
+  /** Bumped by «Prøv å lese på nytt». It is an effect DEPENDENCY rather than
+   *  a bare re-call of `acquire`, and that is the whole trick: the cleanup
+   *  runs first, so the retry is a release-then-acquire and the refcount
+   *  stays balanced. A second `acquire` without the release would pin the
+   *  entry for the life of the document. */
+  const [attempt, setAttempt] = useState(0);
 
   // One acquire per (mounted card × imageId), one release to match — the
   // cache does the refcounting and owns every `revokeObjectURL`. `imageId` is
-  // the ONLY dependency: a caption edit must not drop and re-fetch 13 MiB of
-  // photograph.
+  // the only dependency that comes from the CONFIG: a caption edit must not
+  // drop and re-fetch 13 MiB of photograph.
   useEffect(() => {
     if (!imageId) {
-      setUrl(null);
+      setOutcome(null);
       setLoading(false);
       return;
     }
     let alive = true;
+    // The previous outcome is deliberately NOT cleared: while a swapped
+    // picture is in flight the card keeps showing the one it has, rather than
+    // blinking through «Henter bildet …» on the projector.
     setLoading(true);
     void acquire(
       imageId,
@@ -65,14 +86,14 @@ export function ImageWidget({ widget }: { widget: WidgetInstance }) {
       // itself; this guard is only about not writing state into a component
       // that is gone.
       if (!alive) return;
-      setUrl(got);
+      setOutcome(got);
       setLoading(false);
     });
     return () => {
       alive = false;
       release(imageId, browserUrls);
     };
-  }, [imageId]);
+  }, [imageId, attempt]);
 
   if (cfg.kind !== "image") return null;
 
@@ -108,7 +129,12 @@ export function ImageWidget({ widget }: { widget: WidgetInstance }) {
     }
   };
 
-  const missing = !!imageId && !loading && url === null;
+  // `loading` gates the two sentences and not the picture: mid-swap the card
+  // keeps the old URL on screen (see the effect), but it must not keep an old
+  // «bildet mangler» there while the new read is still out.
+  const url = outcome?.state === "ok" ? outcome.url : null;
+  const missing = !!imageId && !loading && outcome?.state === "missing";
+  const unreadable = !!imageId && !loading && outcome?.state === "unreadable";
 
   return (
     <div class={styles.image}>
@@ -124,6 +150,24 @@ export function ImageWidget({ widget }: { widget: WidgetInstance }) {
         />
       ) : missing ? (
         <p class={styles.missing}>{t("image.missing")}</p>
+      ) : unreadable ? (
+        /* NOT «bildet mangler», and the difference is the whole point: the
+           bytes are still on this machine, one read did not come back. The
+           button is the remedy, right where she is looking — and it is a
+           real re-ask (the cache does not keep a failure as the answer to
+           the next question), not a re-render of the same failure. */
+        <div class={styles.failed}>
+          <p class={styles.missing} aria-live="polite">
+            {t("image.readFailed")}
+          </p>
+          <button
+            class={styles.pick}
+            data-no-drag
+            onClick={() => setAttempt((n) => n + 1)}
+          >
+            {t("image.retry")}
+          </button>
+        </div>
       ) : imageId ? (
         // Loading. Deliberately no placeholder frame — see the file header.
         <p class={styles.missing} aria-live="polite">
@@ -136,7 +180,7 @@ export function ImageWidget({ widget }: { widget: WidgetInstance }) {
         </button>
       )}
 
-      {(url || missing) && (
+      {(url || missing || unreadable) && (
         <input
           class={styles.caption}
           data-no-drag
@@ -144,17 +188,11 @@ export function ImageWidget({ widget }: { widget: WidgetInstance }) {
           placeholder={t("image.caption")}
           value={cfg.caption}
           maxLength={LIMITS.IMAGE_CAPTION_MAX_CHARS}
-          onInput={(e) =>
-            updateWidgetConfig(
-              widget.id,
-              { ...cfg, caption: (e.target as HTMLInputElement).value },
-              { debounce: true },
-            )
-          }
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === "Escape") saveNow();
-          }}
-          onBlur={() => saveNow()}
+          // The shared edit-in-place contract (app/ui/commit.ts).
+          {...commitField({
+            write: (caption, opts) =>
+              updateWidgetConfig(widget.id, { ...cfg, caption }, opts),
+          })}
         />
       )}
 

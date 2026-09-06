@@ -74,6 +74,22 @@
   overflow-wrap: anywhere;
 }
 
+/* «Fikk ikke lest bildet nå» + «Prøv å lese på nytt». The sentence keeps the
+   `.missing` shape (a sentence where the picture would be, never a frame) and
+   the button is the `.pick` pill, because it is the same kind of thing: the
+   one action the card is offering. `min-height: 0` for the same reason
+   `.picture` needs it — the sentence is a flex item that must be allowed to
+   shrink rather than push the button off the bottom edge. */
+.failed {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5cqmin;
+}
+
 /* The caption is UNDER the picture and part of the board — it is typed in
    place rather than behind a settings row, because it is content the class
    reads, not a setting. It looks like text until it is hovered. */

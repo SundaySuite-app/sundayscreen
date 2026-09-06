@@ -21,7 +21,8 @@ import { useState } from "preact/hooks";
 import { LIMITS } from "@lib/limits.generated";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
-import { saveNow, updateWidgetConfig } from "../../state/layout";
+import { flushPending, updateWidgetConfig } from "../../state/layout";
+import { commitField } from "../../ui/commit";
 import { Icon } from "../../ui/Icon";
 import { toast } from "../../ui/toast";
 // `LazyQr` is a plain import; the ENCODER behind it is not. The dynamic
@@ -58,6 +59,37 @@ export function LinkWidget({ widget }: { widget: WidgetInstance }) {
     ? `${t("link.open")} — ${host}`
     : t("link.notSet");
 
+  /**
+   * The click surface's whole job — and the `await` at the top of it is the
+   * point (R7-funn H2).
+   *
+   * `link_open` reads the address from the DATABASE, which is the rule that
+   * keeps a URL out of the webview (see the file header). The consequence is
+   * that this click is a READ-AFTER-WRITE across two different pool
+   * connections: paste an address, click «Åpne» in the same second, and the
+   * SELECT can win the race against a `layout_save` that has not committed
+   * yet. The OS then opens the PREVIOUS address on the projector while the
+   * card shows the new host — or, on a card that has never been saved, refuses
+   * an address that looks perfectly good on screen.
+   *
+   * So the persister goes first. Same discipline as the design session's
+   * borrow and hand-back: whoever asks the backend to read what the board is
+   * holding must flush the board first.
+   */
+  const openLink = async () => {
+    await flushPending();
+    // The shim's `linkOpen` is the write form, so the rejection also
+    // lands in the error ring («Siste IPC-feil») — this catch is the
+    // teacher's half: a locked base or an OS that refuses to open a
+    // browser must say so where she is looking, not only in a log.
+    try {
+      await window.api.linkOpen(widget.id);
+    } catch (e) {
+      console.warn("[link] open failed", e);
+      toast("error", t("link.openFailed"));
+    }
+  };
+
   return (
     <div class={styles.link}>
       {editingTitle ? (
@@ -69,25 +101,12 @@ export function LinkWidget({ widget }: { widget: WidgetInstance }) {
           maxLength={LIMITS.LINK_TITLE_MAX_CHARS}
           autofocus
           data-no-drag
-          onInput={(e) =>
-            updateWidgetConfig(
-              widget.id,
-              { ...cfg, title: (e.target as HTMLInputElement).value },
-              { debounce: true },
-            )
-          }
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === "Escape") {
-              setEditingTitle(false);
-              // The deadline's contract: a blur or a commit key flushes the
-              // pending debounce, so a quit cannot eat the last keystroke.
-              saveNow();
-            }
-          }}
-          onBlur={() => {
-            setEditingTitle(false);
-            saveNow();
-          }}
+          // The shared edit-in-place contract (app/ui/commit.ts).
+          {...commitField({
+            write: (title, opts) =>
+              updateWidgetConfig(widget.id, { ...cfg, title }, opts),
+            close: () => setEditingTitle(false),
+          })}
         />
       ) : (
         <button
@@ -112,14 +131,7 @@ export function LinkWidget({ widget }: { widget: WidgetInstance }) {
         title={openLabel}
         onClick={() => {
           if (!presentable) return;
-          // The shim's `linkOpen` is the write form, so the rejection also
-          // lands in the error ring («Siste IPC-feil») — this catch is the
-          // teacher's half: a locked base or an OS that refuses to open a
-          // browser must say so where she is looking, not only in a log.
-          window.api.linkOpen(widget.id).catch((e: unknown) => {
-            console.warn("[link] open failed", e);
-            toast("error", t("link.openFailed"));
-          });
+          void openLink();
         }}
       >
         <Icon name="link" size="md" />
@@ -157,17 +169,11 @@ export function LinkWidget({ widget }: { widget: WidgetInstance }) {
           placeholder={t("link.urlPlaceholder")}
           value={cfg.url}
           maxLength={LIMITS.LINK_URL_MAX_CHARS}
-          onInput={(e) =>
-            updateWidgetConfig(
-              widget.id,
-              { ...cfg, url: (e.target as HTMLInputElement).value },
-              { debounce: true },
-            )
-          }
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === "Escape") saveNow();
-          }}
-          onBlur={() => saveNow()}
+          // The shared edit-in-place contract (app/ui/commit.ts).
+          {...commitField({
+            write: (url, opts) =>
+              updateWidgetConfig(widget.id, { ...cfg, url }, opts),
+          })}
         />
         <button
           data-settings-btn

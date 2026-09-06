@@ -163,6 +163,22 @@ export async function installFixtures(
 
       const defaultSceneId = (classId: string) => `default-${classId}`;
 
+      /**
+       * DELIBERATE misbehaviour, switched on per journey ([`setFixtureKnobs`]).
+       *
+       * Both knobs exist because the bug they expose is a RACE the fake wins
+       * by a microsecond: the fixture backend is synchronous, so the persister
+       * always lands before the next click, and a tier that never loses the
+       * race cannot see the app losing it. The rig's job is to make the race
+       * VISIBLE, not to make it unlikely.
+       */
+      const knobs = () =>
+        (
+          window as unknown as {
+            __e2eKnobs?: { saveDelayMs?: number; imageLoadFailures?: number };
+          }
+        ).__e2eKnobs;
+
       /** The two STABLE refusals from `commands/picker.rs`, verbatim — the
        *  widgets tell "add some names" from "everybody is away" on them. */
       const ERR_NO_MEMBERS = "validation: class has no members";
@@ -374,12 +390,48 @@ export async function installFixtures(
             save(db);
             return clamped;
           },
-          // The link widget's open action. Records the ids it was asked to
-          // open on the window, so a spec can assert the click WOULD have
-          // opened the stored URL without any browser leaving the page.
+          /**
+           * The link widget's open action, mirroring
+           * `commands/links.rs::open_url_target_for`: the webview sends a
+           * WIDGET ID and this looks the ADDRESS up in the STORED layout —
+           * never in whatever the card happens to be rendering.
+           *
+           * That lookup is the whole point of the fixture (R7-funn H2). It
+           * used to record the id and nothing else, so a click that raced the
+           * persister and opened the PREVIOUS address looked identical to one
+           * that opened the right one, and the tier could not see the bug.
+           * Both logs are kept: the id log is what pins «an id, never a URL»,
+           * the url log is what pins WHICH address the OS would have been
+           * handed.
+           *
+           * Two faithful differences from Rust, both noted rather than faked:
+           * the real command reads the `kind` COLUMN as the authority (this
+           * store has no such column, so `config.kind` stands in), and
+           * `sanitized_url`'s full rule is Rust's own unit-tested job — only
+           * its shape is mirrored here, enough that an unsaved or cleared
+           * address refuses exactly like the real one.
+           */
           link_open: (args?: Record<string, unknown>) => {
-            const w = window as unknown as { __openedLinks?: string[] };
-            (w.__openedLinks ??= []).push(String(arg(args, "widgetId")));
+            const db = load();
+            const widgetId = String(arg(args, "widgetId"));
+            const row = Object.values(db.layouts)
+              .flat()
+              .find((w) => (w as { id?: string }).id === widgetId) as
+              { config?: { kind?: string; url?: string } } | undefined;
+            if (!row) throw new Error("not_found");
+            if (row.config?.kind !== "link")
+              throw new Error("validation: only a link widget can be opened");
+            const url = String(row.config.url ?? "");
+            if (!/^https?:\/\/\S/i.test(url))
+              throw new Error(
+                "validation: the link widget has no http(s) address",
+              );
+            const w = window as unknown as {
+              __openedLinks?: string[];
+              __openedLinkUrls?: string[];
+            };
+            (w.__openedLinks ??= []).push(widgetId);
+            (w.__openedLinkUrls ??= []).push(url);
           },
 
           // ── The picture widget ─────────────────────────────────────────
@@ -400,12 +452,30 @@ export async function installFixtures(
           image_pick: () => E2E_IMAGE_ID,
           // A 1×1 transparent PNG — the smallest thing that really decodes,
           // so `<img>` actually loads rather than firing `onerror`.
-          image_load: (args?: Record<string, unknown>) =>
-            String(arg(args, "imageId")) === E2E_IMAGE_ID
+          //
+          // Every load is COUNTED on the window: the blob-cache's promise is
+          // that a picture crosses the IPC boundary once, however many times
+          // the board leaves the screen and comes back, and a count is the
+          // only way a journey can see that.
+          image_load: (args?: Record<string, unknown>) => {
+            const w = window as unknown as { __imageLoads?: string[] };
+            const imageId = String(arg(args, "imageId"));
+            (w.__imageLoads ??= []).push(imageId);
+            // The transient READ failure, `imageLoadFailures` times. It is a
+            // REJECTION and not a `null`, because that is the distinction the
+            // card exists to make: `null` means the picture is not on this
+            // machine, a rejection means we did not get it this time.
+            const k = knobs();
+            if (k && (k.imageLoadFailures ?? 0) > 0) {
+              k.imageLoadFailures = (k.imageLoadFailures ?? 0) - 1;
+              throw new Error("internal: could not read the picture");
+            }
+            return imageId === E2E_IMAGE_ID
               ? { mime: "image/png", bytesBase64: E2E_IMAGE_PNG }
               : // Every other id: the honest "no bytes here" answer. This is
                 // the state a setup imported without its pictures lands in.
-                null,
+                null;
+          },
           update_check: { phase: "upToDate" },
           app_info: { name: "SundayScreen", version: "0.0.0-e2e" },
           // The two "how did the boot go" reads. `null` is the HEALTHY answer to
@@ -1096,8 +1166,29 @@ export async function installFixtures(
             const target = String(arg(args, "sceneId"));
             if (!db.scenes.some((s) => s.id === target))
               throw new Error("not_found");
-            db.layouts[target] = (arg(args, "widgets") as unknown[]) ?? [];
-            save(db);
+            const widgets = (arg(args, "widgets") as unknown[]) ?? [];
+            // Re-read at COMMIT time, never from the snapshot above: with the
+            // delay knob on, other commands may have written in between.
+            const commit = () => {
+              const fresh = load();
+              fresh.layouts[target] = widgets;
+              save(fresh);
+            };
+            const wait = Number(knobs()?.saveDelayMs ?? 0);
+            if (wait <= 0) {
+              commit();
+              return;
+            }
+            // A SLOW transaction. Every fixture here is synchronous, which
+            // means the persister always wins races it loses on a real
+            // machine — where `layout_save` is a WAL transaction and the next
+            // command's SELECT runs on a different pool connection.
+            return new Promise<void>((resolve) =>
+              setTimeout(() => {
+                commit();
+                resolve();
+              }, wait),
+            );
           },
 
           // The draw is DETERMINISTIC here (first undrawn wins) — randomness is
@@ -1231,6 +1322,34 @@ export async function installFixtures(
       imagePng: E2E_IMAGE_PNG,
     },
   );
+}
+
+/**
+ * The fixture backend's deliberate-misbehaviour knobs — see `knobs()` inside
+ * `installFixtures` for what each one does and why it has to exist.
+ */
+export interface FixtureKnobs {
+  /** Hold every `layout_save` open this long before it commits. */
+  saveDelayMs?: number;
+  /** Reject the next N `image_load` calls (a transient READ failure — not a
+   *  `null`, which is the honest "no such picture here"). */
+  imageLoadFailures?: number;
+}
+
+/**
+ * Switch knobs on for the CURRENT document. Not `addInitScript`: every journey
+ * that uses these sets them up between `goto` and the gesture under test, and
+ * a knob that survived a reload would keep misbehaving through the half of the
+ * journey that is checking the recovery.
+ */
+export async function setFixtureKnobs(
+  page: Page,
+  values: FixtureKnobs,
+): Promise<void> {
+  await page.evaluate((v: FixtureKnobs) => {
+    const w = window as unknown as { __e2eKnobs?: FixtureKnobs };
+    w.__e2eKnobs = { ...w.__e2eKnobs, ...v };
+  }, values);
 }
 
 /**

@@ -1,6 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { E2E_IMAGE_ID, addWidget, installFixtures } from "./harness";
+import {
+  E2E_IMAGE_ID,
+  addWidget,
+  installFixtures,
+  setFixtureKnobs,
+} from "./harness";
 
 // «Bilde»: choose a picture, see it on the board, reload and find it standing.
 //
@@ -40,6 +45,20 @@ async function storedImageConfig(page: Page) {
         .find((w) => w.config?.kind === "image")?.config ?? null
     );
   });
+}
+
+/** How many times the bytes crossed the IPC boundary this document. */
+function imageLoads(page: Page) {
+  return page.evaluate(
+    () =>
+      (window as unknown as { __imageLoads?: string[] }).__imageLoads?.length ??
+      0,
+  );
+}
+
+async function switchToScene(page: Page, name: string) {
+  await page.getByRole("button", { name: "Bytt skjerm" }).click();
+  await page.getByRole("menuitem", { name }).click();
 }
 
 test("a picture is chosen, shown, and survives a reload", async ({ page }) => {
@@ -144,11 +163,92 @@ test("a picture this machine does not have SAYS so", async ({ page }) => {
   // loading" for the rest of the lesson, and this state never resolves.
   await expect(card(page)).toContainText("Bildet mangler på denne maskinen");
   await expect(card(page).locator("img")).toHaveCount(0);
+  // …and it is not the OTHER sentence either. An honest `null` from the
+  // backend is «the picture is gone»; only a failed READ is «we did not get
+  // it this time», and offering a retry here would promise a repair that
+  // cannot happen (R7-funn L9).
+  await expect(card(page)).not.toContainText("Fikk ikke lest bildet nå");
+  await expect(
+    card(page).getByRole("button", { name: "Prøv å lese på nytt" }),
+  ).toHaveCount(0);
   // …and it is NOT the empty state either — the two have different remedies,
   // and offering «Velg bilde …» here would hide that a picture was lost.
   await expect(
     card(page).getByRole("button", { name: "Velg bilde …", exact: true }),
   ).toHaveCount(0);
+});
+
+test("switching screens back and forth fetches the picture ONCE", async ({
+  page,
+}) => {
+  // R7-ytelse funn 1. The blob-cache used to revoke the object URL the moment
+  // the last card let go, so every return to the screen was a fresh
+  // `image_load`: ~13 MiB of JSON over IPC and a main-thread decode measured
+  // at 166 ms on a throttled classroom PC. And the switch is not a rare
+  // gesture — the planner's auto-switch performs it for her at the start of
+  // every lesson.
+  await installFixtures(page);
+  await page.goto("/");
+
+  // A second, EMPTY screen to flip to, so the picture card genuinely unmounts
+  // rather than being re-rendered in place.
+  await page.getByRole("button", { name: "Bytt skjerm" }).click();
+  await page.getByRole("menuitem", { name: "Lagre som ny skjerm …" }).click();
+  await page.getByPlaceholder("Navn på skjermen …").fill("Tom");
+  await page.getByPlaceholder("Navn på skjermen …").press("Enter");
+  await switchToScene(page, "Standard — 7B");
+
+  await addWidget(page, "Bilde");
+  await card(page).getByRole("button", { name: "Velg bilde …" }).click();
+  await expect(card(page).locator("img")).toBeVisible();
+  expect(await imageLoads(page)).toBe(1);
+
+  for (let i = 0; i < 3; i++) {
+    await switchToScene(page, "Tom");
+    await expect(card(page)).toHaveCount(0);
+    await switchToScene(page, "Standard — 7B");
+    await expect(card(page).locator("img")).toBeVisible();
+  }
+
+  // Three round trips, still one crossing — and the picture is on the board
+  // each time, which is the half that says the retained URL is a LIVE one and
+  // not a revoked string.
+  expect(await imageLoads(page)).toBe(1);
+  await expect(card(page).locator("img")).toHaveAttribute("src", /^blob:/);
+});
+
+test("a read that fails says so — and «prøv på nytt» actually asks again", async ({
+  page,
+}) => {
+  // R7-funn L9. A transient IPC hiccup used to render as «bildet mangler»:
+  // the sentence for a picture that is GONE, with a remedy (go and find the
+  // file again) that does not apply — and the cache kept that answer for the
+  // rest of the card's life.
+  await installFixtures(page);
+  await page.goto("/");
+
+  await addWidget(page, "Bilde");
+  await setFixtureKnobs(page, { imageLoadFailures: 1 });
+  await card(page).getByRole("button", { name: "Velg bilde …" }).click();
+
+  await expect(card(page)).toContainText(
+    "Fikk ikke lest bildet nå — det er ikke borte",
+  );
+  // The wrong sentence is NOT on the card: her picture is not lost, and the
+  // stored id is still perfectly good.
+  await expect(card(page)).not.toContainText(
+    "Bildet mangler på denne maskinen",
+  );
+  await expect(card(page).locator("img")).toHaveCount(0);
+  expect((await storedImageConfig(page))?.imageId).toBe(E2E_IMAGE_ID);
+
+  // The remedy, and it is a real one: a second crossing, not a re-render of
+  // the cached failure.
+  await card(page).getByRole("button", { name: "Prøv å lese på nytt" }).click();
+  await expect(card(page).locator("img")).toBeVisible();
+  await expect(card(page).locator("img")).toHaveAttribute("src", /^blob:/);
+  expect(await imageLoads(page)).toBe(2);
+  await expect(card(page)).not.toContainText("Fikk ikke lest bildet nå");
 });
 
 test("the fit toggle is the teacher's, and it persists", async ({ page }) => {

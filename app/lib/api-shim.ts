@@ -397,15 +397,22 @@ const api = {
     write<string | null>("image_pick", { dialogTitle }),
 
   /**
-   * Read a stored picture back. A READ with a `null` fallback, and `null` is
-   * also the backend's own honest answer for "there is no such picture here"
-   * — a setup imported without its pictures lands exactly there, and the card
-   * says «bildet mangler» rather than lighting the error ring for something
-   * the teacher can simply fix. In a plain browser every call takes the
-   * fallback, so the shell boots with empty picture cards and no noise.
+   * Read a stored picture back. `null` is the backend's own honest answer for
+   * "there is no such picture here" — a setup imported without its pictures
+   * lands exactly there, and the card says «bildet mangler».
+   *
+   * A READ through `write()`, which is the one shape that both REMEMBERS the
+   * failure and lets it travel. It was `call()`, whose `null` fallback made a
+   * failed read indistinguishable from that honest `null` (R7-funn L9): one
+   * IPC hiccup told the teacher her picture was gone — the wrong sentence with
+   * the wrong remedy — and the blob-cache then kept that answer. The card can
+   * only tell «vi fikk den ikke nå» from «den finnes ikke» if the rejection
+   * reaches it, so it does; `ImageWidget` renders the difference and offers
+   * the retry, which is why no toast belongs here either. In a plain browser
+   * every read rejects, and the card says so rather than claiming a loss.
    */
   imageLoad: async (imageId: string): Promise<StoredImage | null> =>
-    call<StoredImage | null>("image_load", { imageId }, null),
+    write<StoredImage | null>("image_load", { imageId }),
 
   /** THE switch: class + scene in one atomic pointer move + snapshot.
    *  `sceneId = null` lands on the class's default scene. A WRITE (it moves

@@ -247,6 +247,24 @@ pub struct DayEntry {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub override_merged_with_next: Option<bool>,
+    /// The override ROW's own `kind`, RAW — the sister field to
+    /// [`Self::override_merged_with_next`], and missing for exactly as long
+    /// (R7-funn skjøt #1).
+    ///
+    /// A cancelled period resolves to `lesson: None`, which is the SAME
+    /// answer as a free period: nothing downstream could tell «Utgår» from
+    /// «ingen time», so the day tab drew a cancelled lesson exactly like an
+    /// empty one and the override editor opened with its «Utgår» box
+    /// unticked. Since `planner_override_set` is a replace, pressing Lagre on
+    /// that form rewrote `kind = Lesson` and the cancellation was gone — a
+    /// no-op save undoing the teacher's decision, the F-R6-1 shape one field
+    /// to the left.
+    ///
+    /// ANY row counts, carriers included (their kind is `Lesson`, which is
+    /// the truth about the row); `None` means «no row at all».
+    #[serde(default)]
+    #[ts(optional = nullable)]
+    pub override_kind: Option<OverrideKind>,
 }
 
 /// Everything the widgets and the banner need about one date.
@@ -308,6 +326,12 @@ pub fn resolve_day(
                     .iter()
                     .find(|o| o.period_id == period.id)
                     .and_then(|o| o.merged_with_next),
+                // Same row, same reason: the editor rewrites the whole row,
+                // so it has to be able to SEE the kind it is rewriting.
+                override_kind: overrides
+                    .iter()
+                    .find(|o| o.period_id == period.id)
+                    .map(|o| o.kind),
             }
         })
         .collect();
@@ -1113,5 +1137,57 @@ mod tests {
         // rewrite of p1 must still produce is Some(true). Two fields, two
         // questions; conflating them is exactly how F-R6-1 happened.
         assert!(!plan.entries[0].merged_with_next);
+    }
+
+    /// The row's own KIND reaches the frontend raw too (R7 skjøt #1).
+    ///
+    /// `lesson: None` is the answer for a break, a free period AND a
+    /// cancelled one — three different facts, one shape. Without this field
+    /// the override editor cannot tell that the period it is about to rewrite
+    /// is cancelled, and `planner_override_set` being a replace, a Lagre that
+    /// changed nothing wrote `kind = Lesson` over «Utgår».
+    #[test]
+    fn the_override_rows_own_kind_is_exposed_raw() {
+        let periods = day_periods();
+        // p1: cancelled; p2: a carrier (kind IS Lesson — that is the truth
+        // about the row); p3: no row at all.
+        let slots = vec![
+            slot("p1", Some("c1"), "Norsk"),
+            slot("p2", Some("c1"), "Norsk"),
+            slot("p3", Some("c1"), "Matte"),
+        ];
+        let overrides = vec![
+            ovr("p1", OverrideKind::Cancelled, "", ""),
+            carrier("p2", true),
+        ];
+        let plan = resolve_day(DATE, 1, &periods, &slots, &overrides, &[], &[], &names());
+        assert_eq!(
+            plan.entries[0].override_kind,
+            Some(OverrideKind::Cancelled),
+            "the cancelled row says so"
+        );
+        assert!(
+            plan.entries[0].lesson.is_none(),
+            "…and still resolves to no lesson — the two answers are separate"
+        );
+        assert_eq!(
+            plan.entries[1].override_kind,
+            Some(OverrideKind::Lesson),
+            "a carrier's kind is Lesson, and that is what the row holds"
+        );
+        assert_eq!(
+            plan.entries[2].override_kind, None,
+            "no row at all, not «a lesson row»"
+        );
+    }
+
+    /// A day with no override rows at all must not claim any kind — the
+    /// difference between «free» and «cancelled» is the whole point.
+    #[test]
+    fn a_free_period_is_not_a_cancelled_one() {
+        let periods = [period("p1", 510, 555, PeriodKind::Lesson)];
+        let day = resolve_day(DATE, 1, &periods, &[], &[], &[], &[], &names());
+        assert!(day.entries[0].lesson.is_none());
+        assert_eq!(day.entries[0].override_kind, None);
     }
 }

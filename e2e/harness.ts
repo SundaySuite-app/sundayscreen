@@ -718,9 +718,13 @@ export async function installFixtures(
               db.overrides[key] = {
                 kind: ovr.kind,
                 classId: ovr.classId,
-                subject: ovr.subject,
+                // `override_set_for` clamps both free-text fields to
+                // LABEL_MAX_CHARS by CODEPOINT (R7 skjøt #5) — mirrored from
+                // the generated limits, so the fixture cannot hide a real
+                // truncation the way it could before the cap existed.
+                subject: charSlice(ovr.subject, limits.LABEL_MAX_CHARS),
                 sceneId: ovr.sceneId,
-                title: ovr.title,
+                title: charSlice(ovr.title, limits.LABEL_MAX_CHARS),
                 // `undefined` and `null` are the same answer («arv uka»);
                 // store the one JSON can hold.
                 mergedWithNext: ovr.mergedWithNext ?? null,
@@ -845,6 +849,10 @@ export async function installFixtures(
               // også bærere) — speiler resolve_day etter F-R6-1: editoren
               // rundtripper den, og en rundtur som ikke ser Some(x) ville
               // skrevet «arv» over dagens dobbelttime-valg.
+              // `overrideKind` er søsterfeltet (R7 skjøt #1): avlyst og fri
+              // gir SAMME `lesson: null`, så uten radens rå kind kunne
+              // hverken kortet eller editoren se at perioden alt er avlyst.
+              // Enhver rad teller — en bærers kind ER "lesson".
               const rawRow = overrideRow(p.id);
               return {
                 period: p,
@@ -853,6 +861,7 @@ export async function installFixtures(
                 mergedWithNext: false,
                 continuation: false,
                 overrideMergedWithNext: rawRow?.mergedWithNext ?? null,
+                overrideKind: rawRow?.kind ?? null,
               };
             });
 
@@ -1080,8 +1089,14 @@ export async function installFixtures(
             load().layouts[String(arg(args, "sceneId"))] ?? [],
           layout_save: (args?: Record<string, unknown>) => {
             const db = load();
-            db.layouts[String(arg(args, "sceneId"))] =
-              (arg(args, "widgets") as unknown[]) ?? [];
+            // The real command REJECTS a save to a scene that is gone
+            // (commands/layout.rs: NotFound) — a fixture that quietly
+            // recreated the layout key let a flush racing a deletion go
+            // green on the wrong semantics (R7 robusthet M7).
+            const target = String(arg(args, "sceneId"));
+            if (!db.scenes.some((s) => s.id === target))
+              throw new Error("not_found");
+            db.layouts[target] = (arg(args, "widgets") as unknown[]) ?? [];
             save(db);
           },
 

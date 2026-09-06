@@ -58,7 +58,7 @@
     "focusExit": "Avslutt stor visning"
   },
   "undo": {
-    "removed": "Widget fjernet",
+    "removed": "Verktøyet er fjernet",
     "action": "Angre"
   },
   "manage": {
@@ -139,8 +139,8 @@
     }
   },
   "groups": {
-    "modeCount": "X grupper",
-    "modeSize": "Grupper på X",
+    "modeCount": "Antall grupper",
+    "modeSize": "Gruppestørrelse",
     "split": "Del inn",
     "header": "Gruppe {n}",
     "increase": "Øk tallet",
@@ -208,9 +208,12 @@
     "disabled": "Oppdatering er slått av i denne builden",
     "pending": "v{v} klar",
     "pendingTitle": "Versjon {v} er klar — hent den under «Administrer klasser».",
+    "notesTitle": "Hva er nytt",
+    "notesEmpty": "Ingen beskrivelse fulgte med denne versjonen",
     "auto": "Installer oppdateringer automatisk",
     "autoHint": "Lastes ned i bakgrunnen og installeres når du lukker appen — aldri midt i en time.",
-    "pendingAuto": "v{v} installeres når du lukker appen"
+    "pendingAuto": "v{v} installeres når du lukker appen",
+    "downloadingNow": "v{v} lastes ned nå — den installeres når du lukker appen"
   },
   "layout": {
     "loadFailed": "Fikk ikke lest tavla fra lagringen — endringer lagres ikke før appen har startet på nytt.",
@@ -253,23 +256,25 @@
     },
     "blocked": "Fikk ikke lest planen fra lagringen — redigering er sperret.",
     "retry": "Prøv igjen",
-    "periodsHint": "Definer skolens økter én gang (time 1, friminutt …) — ukeplanen fylles per økt.",
+    "periodsHint": "Definer skolens timer én gang (Time 1, friminutt …) — ukeplanen fylles per time.",
     "label": "Navn",
     "start": "Start",
     "end": "Slutt",
     "lesson": "Time",
-    "break": "Pause",
+    "break": "Friminutt",
     "addPeriod": "Legg til time",
     "lessonMinutes": "Timelengde",
     "minutePill": "{n} min",
-    "addBreak": "Legg til pause",
+    "addBreak": "Legg til friminutt",
     "savePeriods": "Lagre timeoppsett",
     "defaultPeriodLabel": "Time {n}",
     "defaultBreakLabel": "Friminutt",
     "badTime": "Ugyldig klokkeslett — bruk TT:MM, og slutt må være etter start.",
-    "overlap": "Øktene overlapper hverandre.",
-    "noPeriodsYet": "Ingen økter definert ennå — start i Timeoppsett-fanen.",
+    "overlap": "Timene overlapper hverandre.",
+    "noPeriodsYet": "Ingen timer definert ennå — start i Timeoppsett-fanen.",
     "goToPeriods": "Start i Timeoppsett",
+    "cellLabel": "{day} · {period} {time}: {content}",
+    "removePeriodNamed": "Fjern «{name}»",
     "weekday": {
       "1": "Mandag",
       "2": "Tirsdag",
@@ -292,6 +297,7 @@
     "editOverride": "Rediger avvik",
     "clearOverride": "Fjern avvik",
     "overriddenBadge": "Avvik",
+    "cancelledBadge": "Utgår",
     "cancelLesson": "Utgår (ingen time denne datoen)",
     "overrideTitle": "Tittel",
     "overrideTitlePlaceholder": "Prøve, tur …",
@@ -299,13 +305,15 @@
     "addActivity": "Legg til aktivitet",
     "activityPlaceholder": "Hva skal skje …",
     "minutes": "min",
+    "removeActivityNamed": "Fjern aktiviteten «{name}»",
     "saveAgenda": "Lagre agenda",
     "notes": "Beskjeder",
     "addNote": "Legg til beskjed",
     "notePlaceholder": "Beskjed til klassen …",
+    "removeNoteNamed": "Fjern beskjeden «{name}»",
     "saveNotes": "Lagre beskjeder",
     "autoSwitch": "Bytt skjerm automatisk når timen starter",
-    "emptyLabel": "Alle økter må ha et navn.",
+    "emptyLabel": "Alle timer må ha et navn.",
     "readFailed": "Fikk ikke lest planen",
     "noTimetable": "Ingen timeplan satt opp ennå",
     "design": "Design skjermen",
@@ -333,8 +341,10 @@
     "showTimes": "Tider",
     "addPlaceholder": "Ny aktivitet …",
     "check": "Merk gjort",
+    "checkNamed": "Merk «{name}» som gjort",
     "pin": "Merk som nå",
-    "remove": "Fjern aktivitet"
+    "remove": "Fjern aktivitet",
+    "removeNamed": "Fjern aktiviteten «{name}»"
   },
   "today": {
     "noLessons": "Ingen timer i dag",
@@ -345,7 +355,7 @@
     "pickDate": "Velg dato",
     "titlePlaceholder": "Hva er fristen?",
     "overdue": "Fristen er passert",
-    "showHours": "Timer",
+    "showHours": "Vis timer",
     "days": {
       "one": "dag igjen",
       "other": "dager igjen"
@@ -363,7 +373,9 @@
   "checklist": {
     "addPlaceholder": "Nytt punkt …",
     "check": "Merk gjort",
+    "checkNamed": "Merk «{name}» som gjort",
     "remove": "Fjern punkt",
+    "removeNamed": "Fjern punktet «{name}»",
     "empty": "Ingen punkter ennå",
     "resetAll": "Nullstill avkryssingene"
   },

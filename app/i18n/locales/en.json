@@ -58,7 +58,7 @@
     "focusExit": "Exit large view"
   },
   "undo": {
-    "removed": "Widget removed",
+    "removed": "The tool was removed",
     "action": "Undo"
   },
   "manage": {
@@ -139,8 +139,8 @@
     }
   },
   "groups": {
-    "modeCount": "X groups",
-    "modeSize": "Groups of X",
+    "modeCount": "Number of groups",
+    "modeSize": "Group size",
     "split": "Split",
     "header": "Group {n}",
     "increase": "Increase",
@@ -208,9 +208,12 @@
     "disabled": "Updates are disabled in this build",
     "pending": "v{v} ready",
     "pendingTitle": "Version {v} is ready — get it under “Manage classes”.",
+    "notesTitle": "What’s new",
+    "notesEmpty": "No description came with this version",
     "auto": "Install updates automatically",
     "autoHint": "Downloads in the background and installs when you close the app — never mid-lesson.",
-    "pendingAuto": "v{v} installs when you close the app"
+    "pendingAuto": "v{v} installs when you close the app",
+    "downloadingNow": "v{v} is downloading now — it installs when you close the app"
   },
   "layout": {
     "loadFailed": "Could not read the board from storage — changes will not be saved until the app restarts.",
@@ -270,6 +273,8 @@
     "overlap": "The periods overlap.",
     "noPeriodsYet": "No periods defined yet — start in the Day template tab.",
     "goToPeriods": "Start in the Day template",
+    "cellLabel": "{day} · {period} {time}: {content}",
+    "removePeriodNamed": "Remove “{name}”",
     "weekday": {
       "1": "Monday",
       "2": "Tuesday",
@@ -292,6 +297,7 @@
     "editOverride": "Edit the override",
     "clearOverride": "Remove the override",
     "overriddenBadge": "Override",
+    "cancelledBadge": "Cancelled",
     "cancelLesson": "Cancelled (no lesson this date)",
     "overrideTitle": "Title",
     "overrideTitlePlaceholder": "Test, trip …",
@@ -299,10 +305,12 @@
     "addActivity": "Add an activity",
     "activityPlaceholder": "What happens …",
     "minutes": "min",
+    "removeActivityNamed": "Remove the activity “{name}”",
     "saveAgenda": "Save the agenda",
     "notes": "Messages",
     "addNote": "Add a message",
     "notePlaceholder": "A message for the class …",
+    "removeNoteNamed": "Remove the message “{name}”",
     "saveNotes": "Save the messages",
     "autoSwitch": "Switch the screen automatically when the lesson starts",
     "emptyLabel": "Every period needs a name.",
@@ -333,8 +341,10 @@
     "showTimes": "Times",
     "addPlaceholder": "New activity …",
     "check": "Mark done",
+    "checkNamed": "Mark “{name}” as done",
     "pin": "Mark as now",
-    "remove": "Remove the activity"
+    "remove": "Remove the activity",
+    "removeNamed": "Remove the activity “{name}”"
   },
   "today": {
     "noLessons": "No lessons today",
@@ -345,7 +355,7 @@
     "pickDate": "Pick a date",
     "titlePlaceholder": "What is due?",
     "overdue": "The deadline has passed",
-    "showHours": "Hours",
+    "showHours": "Show hours",
     "days": {
       "one": "day left",
       "other": "days left"
@@ -363,7 +373,9 @@
   "checklist": {
     "addPlaceholder": "New item …",
     "check": "Mark done",
+    "checkNamed": "Mark “{name}” as done",
     "remove": "Remove the item",
+    "removeNamed": "Remove the item “{name}”",
     "empty": "No items yet",
     "resetAll": "Clear every check"
   },

@@ -108,9 +108,37 @@ export async function refreshPlanner(): Promise<void> {
   }
 }
 
+/**
+ * Did the last read of the SELECTED day fail? (`todayReadFailed`'s sibling,
+ * and missing for as long — R7 skjøt #3.)
+ *
+ * `selectedDayPlan = null` was the only trace a failed read left, and `null`
+ * is also what an unplanned day looks like: the day tab therefore answered a
+ * transient IPC hiccup with «Ingen økter definert ennå — start i
+ * Timeoppsett-fanen», sending the teacher to a tab where her template already
+ * stands. That is the F13 lie, panel edition — R2 fixed the shape for the
+ * widgets and never for the panel.
+ *
+ * Set inside `refreshSelectedDay` so EVERY caller is covered, including the
+ * one that swallows the rejection (`plannerChanged`, after a successful
+ * write): silence there left the panel showing pre-write state without a word.
+ */
+export const dayReadFailed = signal(false);
+
 export async function refreshSelectedDay(): Promise<void> {
   const date = selectedDate.peek();
-  selectedDayPlan.value = await window.api.plannerDayGet(date, weekdayOf(date));
+  try {
+    selectedDayPlan.value = await window.api.plannerDayGet(
+      date,
+      weekdayOf(date),
+    );
+    dayReadFailed.value = false;
+  } catch (e) {
+    // The flag, then the rejection: `refreshPlanner` still blocks editing on
+    // a failed read (S#4), and `plannerChanged`'s swallow is now visible.
+    dayReadFailed.value = true;
+    throw e;
+  }
 }
 
 export async function selectDate(date: string): Promise<void> {
@@ -178,10 +206,19 @@ export const runningLessonEndMin = computed<number | null>(() => {
 
 /** After ANY planner write — from the panel OR a widget's check-off: the
  *  panel's day and the widgets' today both reflect the store again, so
- *  neither can save a stale copy over the other (F-funn F11). */
+ *  neither can save a stale copy over the other (F-funn F11).
+ *
+ *  The panel's half only runs when the panel is OPEN. Every `planner_day_get`
+ *  resolves a whole day in Rust, and a check-off in the «Dagens time» widget
+ *  used to spend two of them where one was read (R7 ytelse #3) — ten
+ *  check-offs in a lesson, twenty full-day resolves. Nothing is lost by
+ *  skipping it: `openPlanner` reads fresh on the way in, so a panel that was
+ *  closed while the write happened never shows the stale copy. */
 export async function plannerChanged(): Promise<void> {
   await Promise.all([
-    refreshSelectedDay().catch(() => undefined),
+    plannerPanelOpen.peek()
+      ? refreshSelectedDay().catch(() => undefined)
+      : Promise.resolve(),
     refreshToday(),
   ]);
 }
@@ -195,13 +232,21 @@ export const dismissedSuggestionKey = signal<string | null>(null);
 
 /** What the banner shows. Reads the 30 s tick so the window re-evaluates. */
 export const currentSuggestion = computed(() => {
-  const nowMin = minutesOfDay(new Date(plannerNowMs.value));
+  const now = new Date(plannerNowMs.value);
+  const plan = todayPlan.value;
+  // The plan has to be TODAY'S. After a date rollover — a machine asleep over
+  // night, waking at 08:25 — `todayPlan` is yesterday's for up to one tick,
+  // and a banner offering «Bytt til 8A Norsk» off Monday's timetable in front
+  // of Tuesday's class is the automation doing exactly what it promises not
+  // to (R7 robusthet M4). Suppressed rather than refetched here: a computed
+  // must not have side effects, and the ticker below does the refetch.
+  if (plan != null && plan.date !== localDateStr(now)) return null;
   const s = settings.value;
   return suggest(
-    todayPlan.value,
+    plan,
     s.activeClassId,
     s.activeSceneId,
-    nowMin,
+    minutesOfDay(now),
     dismissedSuggestionKey.value,
   );
 });
@@ -240,7 +285,18 @@ export function maybeAutoSwitch(): void {
   // the lesson was planned for, never the wall clock.
   const plan = todayPlan.peek();
   if (plan == null) return;
-  const nowMin = minutesOfDay(new Date());
+  const now = new Date();
+  // …and the plan has to be for TODAY. `todayPlan` is refetched by the
+  // ticker, so after a date rollover — the machine slept over night and woke
+  // at 08:25 — it is YESTERDAY's plan for up to one tick, and this function
+  // runs on that same tick, synchronously, before the refetch has landed.
+  // Monday's 08:30 lesson would then switch the board to the wrong class in
+  // front of Tuesday's, which is the one thing the automation promises not to
+  // do (R7 robusthet M4). Returning without settling the key is deliberate:
+  // the automation has not had its say about today's lesson yet, so the next
+  // tick — with the right plan — still does what the rule says it should.
+  if (plan.date !== localDateStr(now)) return;
+  const nowMin = minutesOfDay(now);
   const key = lessonKeyInWindow(plan, nowMin);
   if (key == null || autoSettledKeys.has(key)) return;
 
@@ -277,7 +333,26 @@ export async function initPlanner(): Promise<void> {
     plannerNowMs.value = Date.now();
     const today = localDateStr(new Date());
     const current = todayPlan.peek();
-    if (current && current.date !== today) {
+    // Three reasons to re-read, and the last two are the repair (R7 robusthet
+    // M5 / skjøt #2). The date rolled over; OR there is no plan at all,
+    // because the very first read at boot failed; OR the last read failed and
+    // the plan we are holding is stale. Before this, a single transient
+    // rejection at 08:00 — a locked database in the second the app started —
+    // left «Dagens time», the banner and the auto-switch dead for the whole
+    // day on a machine nobody touches, healed only by a planner write.
+    //
+    // NOT the retry hammer R2-F20 forbade (docs/GRANSKING-R2.md), and the
+    // line between them is WHAT is retried, not how often. F20 was a failed
+    // AUTO-SWITCH: a `lesson_switch` WRITE, re-attempted every 30 s against a
+    // failing backend, each attempt trying to swap the board a class is
+    // looking at. This is the day READ every widget already lives off — it
+    // changes nothing on the projector, a failure costs one rejected promise,
+    // and it re-arms only while the last read is still the failed one.
+    if (
+      (current && current.date !== today) ||
+      current == null ||
+      todayReadFailed.peek()
+    ) {
       void refreshToday();
     }
     // Its OWN statement, deliberately not nested in the branch above: that

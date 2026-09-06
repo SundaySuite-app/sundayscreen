@@ -340,14 +340,37 @@
 /* The second half of a weekly double lesson. Dimmed, not disabled: this cell
    is where «Del opp» lives, so it has to stay clickable — the same reasoning
    the delete confirmation uses for not flipping `disabled` in front of a
-   class. */
+   class.
+   ⚠️ The dimming is on the SURFACE, never on the text. `opacity: 0.6` on the
+   whole cell took --ink-3 down to an effective #a9acb2 on white — 2,27:1,
+   half the AA floor, on 13 px type (R7 a11y #3) — and the tokens gate could
+   not see it, because the token itself passes and the opacity is applied
+   afterwards. The cell now recedes by sitting on the panel's own ground
+   inside a dashed border, and the sentence that explains where the lesson
+   went is read at full strength. */
 .cell[data-continuation] {
-  opacity: 0.6;
   border-style: dashed;
+  background: var(--bg);
+}
+
+/* Selection still wins: a continuation cell is where «Del opp» is reached
+   from, so it must be able to look chosen. `.cell[data-current]` above and
+   `.cell[data-continuation]` have the SAME specificity, so the continuation
+   rule (written later) would otherwise paint over the gold — this combined
+   selector is one step more specific and settles it whatever the order. */
+.cell[data-continuation][data-current] {
+  background: var(--gold-soft);
 }
 
 .cellEmpty {
   color: var(--ink-3);
+}
+
+/* The «Fortsettelse av Time 1» line is the one thing the cell says — the
+   quiet-hint ink is for text standing NEXT to a louder answer, and here there
+   is none. --ink-2 on --bg measures 5,46:1. */
+.cell[data-continuation] .cellEmpty {
+  color: var(--ink-2);
 }
 
 /* ── Editors ──────────────────────────────────────────────────────────── */

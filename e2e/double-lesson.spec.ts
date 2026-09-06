@@ -20,7 +20,7 @@ import { addWidget, installFixtures } from "./harness";
 // forty-five minutes ago. Every assertion below is a sentence a class reads.
 //
 // The day used everywhere here is Monday 2026-08-31, with the template
-// «Legg til time» / «Legg til pause» / «Legg til time» produces from the
+// «Legg til time» / «Legg til friminutt» / «Legg til time» produces from the
 // 45-minute default: Time 1 08:30–09:15, Friminutt 09:15–09:30, Time 2
 // 09:30–10:15. The break BETWEEN the halves is the interesting part — the
 // resolver steps over it, and it survives as its own entry.
@@ -45,7 +45,7 @@ async function buildSchoolDay(page: Page): Promise<Locator> {
   await page.waitForLoadState("networkidle");
 
   await panel.getByRole("button", { name: "Legg til time" }).click();
-  await panel.getByRole("button", { name: "Legg til pause" }).click();
+  await panel.getByRole("button", { name: "Legg til friminutt" }).click();
   await panel.getByRole("button", { name: "Legg til time" }).click();
   await panel.getByRole("button", { name: "Lagre timeoppsett" }).click();
   await expect(panel.getByText("Lagret")).toBeVisible();

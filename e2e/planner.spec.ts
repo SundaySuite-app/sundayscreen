@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { installFixtures } from "./harness";
 
@@ -87,19 +87,19 @@ test("overlapping periods are refused with an honest error", async ({
   await page.locator("input[aria-label='Start']").nth(1).fill("09:10");
   await page.locator("input[aria-label='Slutt']").nth(1).fill("10:00");
   await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
-  await expect(page.getByText("Øktene overlapper hverandre.")).toBeVisible();
+  await expect(page.getByText("Timene overlapper hverandre.")).toBeVisible();
 });
 
 // ── The planner is findable, and the template has a break button ───────────
 
-test("«Legg til pause» chains on, without taking a lesson number", async ({
+test("«Legg til friminutt» chains on, without taking a lesson number", async ({
   page,
 }) => {
   await installFixtures(page);
   await page.goto("/?goto=planner:periods");
 
   await page.getByRole("button", { name: "Legg til time" }).click();
-  await page.getByRole("button", { name: "Legg til pause" }).click();
+  await page.getByRole("button", { name: "Legg til friminutt" }).click();
   await page.getByRole("button", { name: "Legg til time" }).click();
 
   const names = page.locator("input[aria-label='Navn']");
@@ -121,7 +121,7 @@ test("«Legg til pause» chains on, without taking a lesson number", async ({
 
   // Exactly one row is marked as a break.
   await expect(
-    page.getByRole("button", { name: "Pause", exact: true }),
+    page.getByRole("button", { name: "Friminutt", exact: true }),
   ).toHaveCount(1);
 
   await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
@@ -144,7 +144,7 @@ test("the school's lesson length drives «Legg til time», and survives a reload
   // 09:00–09:15, 09:15–09:45 — the length applies to LESSONS alone.
   await pill("30 min").click();
   await page.getByRole("button", { name: "Legg til time" }).click();
-  await page.getByRole("button", { name: "Legg til pause" }).click();
+  await page.getByRole("button", { name: "Legg til friminutt" }).click();
   await page.getByRole("button", { name: "Legg til time" }).click();
   const starts = page.locator("input[aria-label='Start']");
   const ends = page.locator("input[aria-label='Slutt']");
@@ -180,7 +180,7 @@ test("the empty week plan points at the one tab that fixes it", async ({
   await installFixtures(page);
   await page.goto("/?goto=planner:week");
 
-  await expect(page.getByText("Ingen økter definert ennå")).toBeVisible();
+  await expect(page.getByText("Ingen timer definert ennå")).toBeVisible();
   await page.getByRole("button", { name: "Start i Timeoppsett" }).click();
   await expect(
     page.getByRole("button", { name: "Legg til time" }),
@@ -196,7 +196,7 @@ test("the day tab shares the hint but NOT the week plan's button", async ({
   await page.clock.install({ time: new Date("2026-09-05T18:00:00") });
   await page.goto("/?goto=planner:day");
 
-  await expect(page.getByText("Ingen økter definert ennå")).toBeVisible();
+  await expect(page.getByText("Ingen timer definert ennå")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Start i Timeoppsett" }),
   ).toHaveCount(0);
@@ -282,7 +282,172 @@ test("an empty period name is refused, not silently deleted (F-funn F3)", async 
 
   await page.locator("input[aria-label='Navn']").first().fill("");
   await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
-  await expect(page.getByText("Alle økter må ha et navn.")).toBeVisible();
+  await expect(page.getByText("Alle timer må ha et navn.")).toBeVisible();
   // The period is still there.
   await expect(page.locator("input[aria-label='Navn']")).toHaveCount(1);
+});
+
+// ── Granskingsfunn, R7 ─────────────────────────────────────────────────────
+
+/** The template + Monday × Time 1 = 7B Norsk, saved, with the day tab open.
+ *  The starting point for everything below. */
+async function planMondayAndOpenDay(page: Page): Promise<void> {
+  await page.goto("/?goto=planner:periods");
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Legg til time" }).click();
+  await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await expect(page.getByText("Lagret")).toBeVisible();
+
+  await page.getByRole("button", { name: "Ukeplan" }).click();
+  await page.locator("button:has-text('—')").first().click();
+  await page
+    .getByLabel("Klasse", { exact: true })
+    .selectOption({ label: "7B" });
+  await page.getByLabel("Fag").fill("Norsk");
+  await page.getByRole("button", { name: "Lagre", exact: true }).click();
+  await page.getByRole("button", { name: "I dag", exact: true }).click();
+}
+
+test("a cancelled lesson SAYS it is cancelled — and Lagre does not resurrect it", async ({
+  page,
+}) => {
+  // R7 skjøt #1, the F-R6-1 shape one field to the left. `resolve_day` answers
+  // `lesson: null` for a cancelled period AND for a free one, so the day card
+  // drew «Ingen time» either way and the override editor opened with its
+  // «Utgår» box unticked. `planner_override_set` being a replace, pressing
+  // Lagre on that form wrote `kind = lesson` back — a save that changed
+  // nothing silently undid the cancellation, and the class turned up to a
+  // lesson the teacher had cancelled for a school trip.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T09:00:00") });
+  await planMondayAndOpenDay(page);
+
+  // Cancel the lesson: the one control the card offers.
+  await page.getByRole("button", { name: "Overstyr" }).click();
+  await page.getByLabel("Utgår (ingen time denne datoen)").check();
+  await page.getByRole("button", { name: "Lagre", exact: true }).click();
+
+  // THE FINDING, half one: a cancelled period is DISTINGUISHABLE from a free
+  // one, and the way in says there is already something to edit.
+  await expect(page.getByText("Ingen time")).toBeVisible();
+  await expect(page.getByText("Utgår", { exact: true })).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Rediger avvik" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Overstyr" })).toHaveCount(0);
+
+  // Half two: the form opens on the STORED state, so it can round-trip it.
+  await page.getByRole("button", { name: "Rediger avvik" }).click();
+  await expect(
+    page.getByLabel("Utgår (ingen time denne datoen)"),
+  ).toBeChecked();
+
+  // …and a Lagre that changes nothing changes nothing.
+  await page.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(page.getByText("Utgår", { exact: true })).toHaveCount(1);
+  await expect(page.getByText("Ingen time")).toBeVisible();
+  await expect(page.getByText("Avvik", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Norsk")).toHaveCount(0);
+
+  // It survives a reload too — this is a stored decision, not panel state.
+  await page.goto("/?goto=planner:day");
+  await expect(page.getByText("Utgår", { exact: true })).toHaveCount(1);
+});
+
+/** Let a journey kill `planner_day_get` on demand — the spec-local init
+ *  script layered over the harness's own, the same shape
+ *  `binder-widgets.spec`'s `breakableDayGet` uses. */
+async function breakableDayGet(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    const fixtures = w.__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    const real = fixtures.planner_day_get as (
+      args?: Record<string, unknown>,
+    ) => unknown;
+    w.__failDayGet = false;
+    fixtures.planner_day_get = (args?: Record<string, unknown>) => {
+      if (w.__failDayGet)
+        throw new Error("planner_day_get: database is locked");
+      return real(args);
+    };
+  });
+}
+
+const setDayGetFailing = (page: Page, failing: boolean) =>
+  page.evaluate((v) => {
+    (window as unknown as Record<string, unknown>).__failDayGet = v;
+  }, failing);
+
+test("a failed day read says so instead of claiming the timetable is missing", async ({
+  page,
+}) => {
+  // R7 skjøt #3 — the F13 lie, panel edition. `selectedDayPlan` goes null both
+  // when the day is unplanned and when the read REJECTED, so a single IPC
+  // hiccup on «Neste dag» made the tab answer «Ingen timer definert ennå —
+  // start i Timeoppsett-fanen» and send the teacher to a tab where her
+  // template already stands. R2 fixed exactly this shape for the widgets.
+  await installFixtures(page);
+  await breakableDayGet(page);
+  await page.clock.install({ time: new Date("2026-08-31T09:00:00") });
+  await planMondayAndOpenDay(page);
+  await expect(page.getByText("Norsk")).toBeVisible();
+
+  // The store goes away between the day she is on and the day she asks for.
+  await setDayGetFailing(page, true);
+  await page.getByRole("button", { name: "Neste dag" }).click();
+
+  await expect(page.getByText("Fikk ikke lest planen")).toHaveCount(1);
+  await expect(page.getByText("Ingen timer definert ennå")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Start i Timeoppsett" }),
+  ).toHaveCount(0);
+
+  // And the way out of a hiccup is to read again — offered right there.
+  await setDayGetFailing(page, false);
+  await page.getByRole("button", { name: "Prøv igjen" }).click();
+  await expect(page.getByText("Fikk ikke lest planen")).toHaveCount(0);
+  await expect(page.locator('[data-date="2026-09-01"]')).toBeVisible();
+});
+
+test("a week cell says WHICH cell it is, and the keyboard follows the choice", async ({
+  page,
+}) => {
+  // R7 a11y #6. Measured before: one cell announced «7B Norsk Standard» and
+  // the other thirty-nine announced «—», which is not a word — no weekday, no
+  // period, no clock, in a 5 × 8 grid. And the editor mounts AFTER all forty
+  // cells, so Tab from Monday's cell walked the whole week to reach the form
+  // the click had just opened.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T09:00:00") });
+  await page.goto("/?goto=planner:periods");
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Legg til time" }).click();
+  await page.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await expect(page.getByText("Lagret")).toBeVisible();
+  await page.getByRole("button", { name: "Ukeplan" }).click();
+
+  // An empty cell answers with the day tab's own word for the state, not with
+  // a dash nobody can pronounce.
+  await expect(
+    page.getByRole("button", { name: "Tirsdag · Time 1 08:30: Ingen time" }),
+  ).toHaveCount(1);
+
+  // Choosing a cell hands the keyboard to the editor's first field.
+  await page
+    .getByRole("button", { name: "Mandag · Time 1 08:30: Ingen time" })
+    .click();
+  await expect(page.getByLabel("Klasse", { exact: true })).toBeFocused();
+
+  await page
+    .getByLabel("Klasse", { exact: true })
+    .selectOption({ label: "7B" });
+  await page.getByLabel("Fag").fill("Norsk");
+  await page.getByRole("button", { name: "Lagre", exact: true }).click();
+
+  // A filled cell names itself the same way, with what it holds.
+  await expect(
+    page.getByRole("button", {
+      name: "Mandag · Time 1 08:30: 7B Norsk · Standard",
+    }),
+  ).toHaveCount(1);
 });

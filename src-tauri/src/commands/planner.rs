@@ -162,6 +162,14 @@ pub async fn slot_set_for(
     .await
 }
 
+/// `LABEL_MAX_CHARS`, counted in CHARACTERS — `chars().take`, never bytes, or
+/// a pasted «æ» would be half a character short of the cap and a multi-byte
+/// one could be cut in half. The same rule `normalize_periods` applies to a
+/// period label and `planner_notes_set` to a note body.
+fn clamp_label(s: &str) -> String {
+    s.chars().take(schedule::LABEL_MAX_CHARS).collect()
+}
+
 pub async fn override_set_for(
     pool: &SqlitePool,
     date: &str,
@@ -172,18 +180,28 @@ pub async fn override_set_for(
     if let Some(o) = ovr {
         valid_plan_scene(pool, &o.scene_id).await?;
     }
+    // Title and subject are the LAST free-text fields on this surface with no
+    // ceiling anywhere (R7 skjøt #5): periods, agenda lines and notes are all
+    // clamped in the core or in their command, and the week grid's subject is
+    // capped at the keyboard because the EXPORT refuses a longer one. A
+    // deviation title reaches the day card, the banner and «Dagens time», so a
+    // pasted lesson plan in that field is persisted and comes back at every
+    // restart. Clamped here rather than only in the input, because the input
+    // is a courtesy and the store is the rule.
+    let clamped = ovr.map(|o| (clamp_label(&o.subject), clamp_label(&o.title)));
     pstore::set_override(
         pool,
         date,
         period_id,
-        ovr.map(|o| pstore::OverrideWrite {
-            kind: o.kind,
-            class_id: &o.class_id,
-            subject: &o.subject,
-            scene_id: &o.scene_id,
-            title: &o.title,
-            merged_with_next: o.merged_with_next,
-        }),
+        ovr.zip(clamped.as_ref())
+            .map(|(o, (subject, title))| pstore::OverrideWrite {
+                kind: o.kind,
+                class_id: &o.class_id,
+                subject,
+                scene_id: &o.scene_id,
+                title,
+                merged_with_next: o.merged_with_next,
+            }),
     )
     .await
 }
@@ -885,5 +903,124 @@ mod tests {
         let other = day_get_for(&pool, "2026-09-07", 1).await.unwrap();
         assert!(!other.entries[0].merged_with_next);
         assert_eq!(other.entries[1].lesson.as_ref().unwrap().subject, "KRLE");
+    }
+
+    /// R7 skjøt #5: an override's title and subject are CLAMPED on the way in.
+    ///
+    /// The title becomes the day card's heading, the banner's text and the
+    /// «Dagens time» label — a pasted lesson plan there is persisted and
+    /// restored forever. Every other free-text field on this surface has a
+    /// ceiling in the store; these two had one nowhere.
+    #[tokio::test]
+    async fn an_overrides_title_and_subject_are_clamped_by_characters() {
+        let (pool, _d) = temp_pool().await;
+        let saved = periods_set_for(&pool, vec![spec("Time 1", 510, 555)])
+            .await
+            .unwrap();
+        let p1 = saved[0].id.clone();
+
+        // Multi-byte on purpose: `chars().take` is the rule, and a byte slice
+        // would either cut «ø» in half (a panic) or keep the wrong count.
+        override_set_for(
+            &pool,
+            "2026-08-31",
+            &p1,
+            Some(&OverrideSpec {
+                kind: OverrideKind::Lesson,
+                class_id: None,
+                subject: "ø".repeat(300),
+                scene_id: None,
+                title: "æ".repeat(300),
+                merged_with_next: None,
+            }),
+        )
+        .await
+        .unwrap();
+
+        let rows = pstore::overrides_for_date(&pool, "2026-08-31")
+            .await
+            .unwrap();
+        assert_eq!(rows[0].subject.chars().count(), schedule::LABEL_MAX_CHARS);
+        assert_eq!(rows[0].title.chars().count(), schedule::LABEL_MAX_CHARS);
+        assert!(rows[0].title.starts_with('æ'), "kept from the FRONT");
+
+        // A short one is untouched — the clamp is a ceiling, not a rewrite.
+        override_set_for(
+            &pool,
+            "2026-08-31",
+            &p1,
+            Some(&OverrideSpec {
+                kind: OverrideKind::Lesson,
+                class_id: None,
+                subject: "Matte".into(),
+                scene_id: None,
+                title: "Prøve".into(),
+                merged_with_next: None,
+            }),
+        )
+        .await
+        .unwrap();
+        let rows = pstore::overrides_for_date(&pool, "2026-08-31")
+            .await
+            .unwrap();
+        assert_eq!(rows[0].subject, "Matte");
+        assert_eq!(rows[0].title, "Prøve");
+    }
+
+    /// R7 skjøt #1, through the database: a cancelled row is DISTINGUISHABLE
+    /// from a free period, and it survives a rewrite that carries the kind.
+    #[tokio::test]
+    async fn a_cancelled_period_is_visible_as_cancelled_and_survives_a_rewrite() {
+        let (pool, _d) = temp_pool().await;
+        let class = store::insert_class(&pool, "7B").await.unwrap();
+        let saved = periods_set_for(
+            &pool,
+            vec![spec("Time 1", 510, 555), spec("Time 2", 565, 610)],
+        )
+        .await
+        .unwrap();
+        let (p1, p2) = (saved[0].id.clone(), saved[1].id.clone());
+        slot_set_for(
+            &pool,
+            1,
+            &p1,
+            Some(&slot_spec(Some(&class.id), "Norsk", None)),
+        )
+        .await
+        .unwrap();
+
+        let cancel = OverrideSpec {
+            kind: OverrideKind::Cancelled,
+            class_id: None,
+            subject: String::new(),
+            scene_id: None,
+            title: String::new(),
+            merged_with_next: None,
+        };
+        override_set_for(&pool, "2026-08-31", &p1, Some(&cancel))
+            .await
+            .unwrap();
+
+        let day = day_get_for(&pool, "2026-08-31", 1).await.unwrap();
+        // Both periods resolve to «no lesson» — p1 because it is cancelled,
+        // p2 because nothing is planned. The RAW kind is what tells them
+        // apart, and the editor needs exactly that.
+        assert!(day.entries[0].lesson.is_none());
+        assert!(day.entries[1].lesson.is_none());
+        assert_eq!(day.entries[0].override_kind, Some(OverrideKind::Cancelled));
+        assert_eq!(day.entries[1].override_kind, None);
+        assert_eq!(day.entries[1].period.id, p2);
+
+        // The rewrite a Lagre-without-changes performs, now that the editor
+        // can see the kind: the cancellation stands.
+        override_set_for(&pool, "2026-08-31", &p1, Some(&cancel))
+            .await
+            .unwrap();
+        let again = day_get_for(&pool, "2026-08-31", 1).await.unwrap();
+        assert_eq!(
+            again.entries[0].override_kind,
+            Some(OverrideKind::Cancelled)
+        );
+        assert!(again.entries[0].lesson.is_none());
     }
 }

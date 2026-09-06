@@ -17,6 +17,7 @@ import { LIMITS } from "@lib/limits.generated";
 import {
   appVersion,
   readUpdatePending,
+  releaseNotesOf,
   updateNotes,
   updateReady,
   updateStaged,
@@ -696,7 +697,7 @@ export function ManagePanel() {
               </button>
               {/* From the ANSWER, not the mailbox: a manual check is the
                   fresher of the two, and it is the one that just spoke. */}
-              <UpdateNotes notes={updStatus.notes} />
+              <UpdateNotes notes={releaseNotesOf(updStatus)} />
             </>
           )}
           {/* «Oppdater og start på nytt» pressed while the automatic half was

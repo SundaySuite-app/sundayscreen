@@ -8,6 +8,8 @@
 
 import { signal } from "@preact/signals";
 
+import type { UpdateStatus } from "../bindings/UpdateStatus";
+
 export const appVersion = signal<string>("");
 
 /** The version the boot check found waiting, or `null` — which is the normal
@@ -33,6 +35,29 @@ export const updateStaged = signal(false);
  * panel every time it opens), and the note has to survive both.
  */
 export const updateNotes = signal<string | null>(null);
+
+/**
+ * The release note a status is offering, or `null` when there is none.
+ *
+ * ONE rule, asked from two places — the mailbox read below and the manual
+ * check in `ManagePanel.tsx` — because "when is there a note on screen" must
+ * not be answerable two different ways (ADR-021).
+ *
+ * Only the two phases that OFFER a version carry one. `upToDate`, `disabled`
+ * and `error` deliberately answer `null`: a note under «Fikk ikke sjekket nå»
+ * would be describing a version that never arrived.
+ *
+ * The trim is the fallback in one line. `null` (the backend's own
+ * normalisation, `clamp_notes`), `undefined` (a status object older than the
+ * field — every fixture and every cached answer written before this) and
+ * `"  "` all land in the same place.
+ */
+export function releaseNotesOf(status: UpdateStatus | null): string | null {
+  if (status?.phase !== "available" && status?.phase !== "downloaded")
+    return null;
+  const text = status.notes?.trim();
+  return text ? text : null;
+}
 
 /**
  * How long after boot the mailbox is opened. The backend's check sleeps 5 s
@@ -73,11 +98,11 @@ export async function readUpdatePending(): Promise<void> {
   if (status?.phase === "available") {
     updateReady.value = status.version;
     updateStaged.value = false;
-    updateNotes.value = status.notes ?? null;
+    updateNotes.value = releaseNotesOf(status);
   } else if (status?.phase === "downloaded") {
     updateReady.value = status.version;
     updateStaged.value = true;
-    updateNotes.value = status.notes ?? null;
+    updateNotes.value = releaseNotesOf(status);
   }
 }
 

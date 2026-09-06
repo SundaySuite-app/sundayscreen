@@ -211,11 +211,6 @@ export function facePool(
   );
 }
 
-// Re-exported so the appearance panel keeps ONE import from the widget it is
-// a panel for (`DieLookMenu.tsx` draws its swatches with `facePool` above and
-// this same renderer). The routine itself lives in `die-paint-core.ts`.
-export { paintDie };
-
 // ── The widget ──────────────────────────────────────────────────────────────
 
 export function DiceWidget({ widget }: { widget: WidgetInstance }) {

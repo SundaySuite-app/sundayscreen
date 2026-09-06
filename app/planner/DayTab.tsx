@@ -592,9 +592,12 @@ function AgendaEditor(props: {
         <button class={styles.primary} onClick={() => void save()}>
           {t("planner.saveAgenda")}
         </button>
-        {receipt && (
-          <span class={styles.receipt}>{t("manage.savedReceipt")}</span>
-        )}
+        {/* Mounted empty: a live region announces only what changes INSIDE
+            it, so one that appears with its text already in place says
+            nothing (ManagePanel keeps its receipt the same way). */}
+        <span class={styles.receipt} role="status">
+          {receipt ? t("manage.savedReceipt") : ""}
+        </span>
         {error && <span class={styles.error}>{t("manage.actionFailed")}</span>}
       </div>
     </div>
@@ -682,9 +685,12 @@ function NotesEditor(props: {
         <button class={styles.primary} onClick={() => void save()}>
           {t("planner.saveNotes")}
         </button>
-        {receipt && (
-          <span class={styles.receipt}>{t("manage.savedReceipt")}</span>
-        )}
+        {/* Mounted empty: a live region announces only what changes INSIDE
+            it, so one that appears with its text already in place says
+            nothing (ManagePanel keeps its receipt the same way). */}
+        <span class={styles.receipt} role="status">
+          {receipt ? t("manage.savedReceipt") : ""}
+        </span>
         {error && <span class={styles.error}>{t("manage.actionFailed")}</span>}
       </div>
     </div>

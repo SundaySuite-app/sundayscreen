@@ -66,7 +66,8 @@ import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tDyn, tf } from "../../i18n";
 import { updateWidgetConfigBy } from "../../state/layout";
 import { DIE_TYPE_OPTIONS, ZERO_BASED_FACES, snapFaces } from "./dice-core";
-import { facePool, paintDie } from "./DiceWidget";
+import { facePool } from "./DiceWidget";
+import { paintDie } from "./die-paint-core";
 import {
   dieDefId,
   DIE_COLORS,

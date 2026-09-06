@@ -136,6 +136,16 @@ export async function setSceneTheme(theme: SceneTheme): Promise<void> {
  *  surface never renders a dead scene. */
 export async function deleteScene(id: string): Promise<void> {
   const wasActive = activeScene.peek()?.id === id;
+  // FIRST, and for the same reason `saveCurrentAsScene` flushes before it
+  // copies: a debounced or in-flight write still belongs to the screen that
+  // is about to stop existing. Without this the order was delete → switch →
+  // `switchLesson`'s own flush, by which time `layout_save` names a scene the
+  // backend has dropped — `commands/layout.rs` answers NotFound, and the
+  // sticky «Klarte ikke å lagre tavla» chip appeared for a board the teacher
+  // had just deleted on purpose, and stayed until the next successful save
+  // (R7-funn M7). Flushing here writes those last keystrokes while the scene
+  // is still there, which is also simply the right thing to do with them.
+  await flushPending();
   await window.api.sceneDelete(id);
   // Drop the picture with the screen. A cache entry that outlives its scene
   // would be handed to the next screen that happens to reuse the id — and,

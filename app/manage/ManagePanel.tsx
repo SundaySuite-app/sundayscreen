@@ -17,6 +17,7 @@ import { LIMITS } from "@lib/limits.generated";
 import {
   appVersion,
   readUpdatePending,
+  updateNotes,
   updateReady,
   updateStaged,
 } from "../state/app-info";
@@ -45,6 +46,38 @@ import {
 import styles from "./ManagePanel.module.css";
 import { Icon } from "../ui/Icon";
 import { namesToText, parseNameList, rawNameCount } from "./name-list-core";
+
+/**
+ * «Hva er nytt» — the release note that comes with the waiting version.
+ *
+ * The feed has carried it since the release pipeline was fixed (`latest.json`
+ * → `notes`, from `docs/release-notes/<tagg>.md`), and until R7 the app threw
+ * it away: the panel could say «v0.7.0 er klar» and nothing else, so the
+ * teacher approved a restart without being told what it gave her.
+ *
+ * Three rules, and each is a decision:
+ *   - PLAIN TEXT with the line breaks kept (`white-space: pre-line` in the
+ *     stylesheet). The note is written as plain text by contract
+ *     (`scripts/release-notes.mjs` refuses markdown), so rendering it as
+ *     anything else would only put `**` on a projector.
+ *   - An ABSENT note is a sentence, not an empty box. Every release before
+ *     v0.4.0-beta.3 shipped `"notes": ""`, and those manifests are still on
+ *     the feed.
+ *   - A ceiling with a scrollbar. Rust caps the string, but the box is what
+ *     keeps a long note from pushing «Se etter oppdatering» off the panel —
+ *     which is the very thing R7-funn #9 was about.
+ */
+function UpdateNotes({ notes }: { notes: string | null | undefined }) {
+  const text = (notes ?? "").trim();
+  return (
+    <div class={styles.notes}>
+      <span class={styles.notesTitle}>{t("update.notesTitle")}</span>
+      <p class={styles.notesBody} data-empty={text ? undefined : "true"}>
+        {text || t("update.notesEmpty")}
+      </p>
+    </div>
+  );
+}
 
 export function ManagePanel() {
   const current = activeClass.value;
@@ -611,6 +644,9 @@ export function ManagePanel() {
               >
                 {t("update.install")}
               </button>
+              {/* …and WHAT it is. The sentence above says a version is
+                  waiting; this says what she gets for the restart. */}
+              <UpdateNotes notes={updateNotes.value} />
             </>
           )}
           <button
@@ -641,6 +677,26 @@ export function ManagePanel() {
               >
                 {t("update.install")}
               </button>
+              {/* From the ANSWER, not the mailbox: a manual check is the
+                  fresher of the two, and it is the one that just spoke. */}
+              <UpdateNotes notes={updStatus.notes} />
+            </>
+          )}
+          {/* «Oppdater og start på nytt» pressed while the automatic half was
+              still fetching the same version. The backend refuses to download
+              it twice (R7-funn M6) and answers with this instead — so the
+              honest thing on screen is the promise that download is already
+              keeping. Gated on the switch for exactly the reason the mailbox
+              line above is: the exit hook re-reads it, so «installeres når du
+              lukker appen» is only true while it is on. */}
+          {updStatus?.phase === "downloading" && (
+            <>
+              <span class={styles.updGood}>
+                {settings.value.autoUpdate
+                  ? tf("update.downloadingNow", { v: updStatus.version })
+                  : tf("update.pending", { v: updStatus.version })}
+              </span>
+              <UpdateNotes notes={updateNotes.value} />
             </>
           )}
         </div>

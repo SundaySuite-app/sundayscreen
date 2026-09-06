@@ -43,6 +43,30 @@ pub enum UpdateStatus {
     UpToDate,
     Available {
         version: String,
+        /// The release note from the feed (`latest.json`'s `notes`, which
+        /// `release.yml` fills from `docs/release-notes/<tag>.md`). Plain
+        /// text, already capped at 1000 B by the release script — and capped
+        /// AGAIN here, because a feed is the one input this app does not
+        /// write itself.
+        ///
+        /// `#[ts(optional = nullable)]` is not decoration and `#[serde(default)]`
+        /// alone would not have bought it: serde's default governs how a
+        /// MISSING key is read, and the generated TypeScript field would still
+        /// have been required — the exact trap ADR-016 names on `DayEntry`.
+        /// Optional in the type is what lets a frontend written before the
+        /// note existed keep compiling.
+        #[serde(default)]
+        #[ts(optional = nullable)]
+        notes: Option<String>,
+    },
+    /// A background download for this version is ALREADY in flight.
+    ///
+    /// Answered by `update_install` alone, and only to the teacher who
+    /// pressed «Oppdater og start på nytt» while the boot check's automatic
+    /// half was still fetching. It carries no note: the panel is showing the
+    /// mailbox's note beside it already.
+    Downloading {
+        version: String,
     },
     /// Downloaded AND signature-verified; it installs when the app closes.
     ///
@@ -52,12 +76,54 @@ pub enum UpdateStatus {
     /// what this machine has already fetched.
     Downloaded {
         version: String,
+        /// Same note as `Available` carries — the download does not change
+        /// what the version is, only when it lands.
+        #[serde(default)]
+        #[ts(optional = nullable)]
+        notes: Option<String>,
     },
     /// Built without the updater feature.
     Disabled,
     Error {
         message: String,
     },
+}
+
+/// The ceiling on a release note, in BYTES.
+///
+/// `scripts/release-notes.mjs` already refuses to ship a note over 1000 B, so
+/// this is deliberately twice that: it is not a second opinion about our own
+/// writing, it is the bound on a string that arrives over the network. The
+/// note is rendered in a small box a teacher reads; a feed that answered a
+/// megabyte would be a scrolling wall in the manage panel and a manifest
+/// fetched on every check.
+pub const NOTES_MAX_BYTES: usize = 2000;
+
+/// The feed's `notes` field, made safe to render.
+///
+/// Two jobs, and the first is the one that shows on screen: an EMPTY note
+/// becomes `None`. v0.3.0-beta.1 through v0.4.0-beta.2 all shipped
+/// `"notes": ""` (the bug `release.yml` fixed), and every one of those
+/// manifests is still on the feed — an empty box under «Hva er nytt» would be
+/// the panel repeating that mistake rather than saying it has nothing.
+///
+/// The second is the byte cap, cut on a CHARACTER boundary: `String` must stay
+/// valid UTF-8, and `«»` — which every note in `docs/release-notes/` uses — is
+/// two bytes per quote.
+pub fn clamp_notes(notes: Option<String>) -> Option<String> {
+    let text = notes?;
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.len() <= NOTES_MAX_BYTES {
+        return Some(trimmed.to_string());
+    }
+    let mut cut = NOTES_MAX_BYTES;
+    while cut > 0 && !trimmed.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    Some(trimmed[..cut].to_string())
 }
 
 /// How far the background download has got. Kept as a plain enum — separate
@@ -109,14 +175,20 @@ pub fn install_at_exit(phase: StagePhase, auto_update: bool) -> bool {
 /// `downloaded = false` deliberately keeps the OLD sentence: a failed
 /// download must leave the marker and the manual «Oppdater og start på nytt»
 /// exactly as they were, because that route still works.
-pub fn staged_status(version: &str, downloaded: bool) -> UpdateStatus {
+///
+/// The note travels through BOTH answers. It is the same news either way —
+/// what the version brings — and the panel renders it under whichever
+/// sentence it ends up showing.
+pub fn staged_status(version: &str, notes: Option<String>, downloaded: bool) -> UpdateStatus {
     if downloaded {
         UpdateStatus::Downloaded {
             version: version.to_string(),
+            notes,
         }
     } else {
         UpdateStatus::Available {
             version: version.to_string(),
+            notes,
         }
     }
 }
@@ -179,7 +251,12 @@ pub struct Staged(Arc<Mutex<Slot>>);
 enum Slot {
     #[default]
     Idle,
-    Downloading,
+    /// A download is in flight. It carries the VERSION so `update_install`
+    /// can answer «this one is already on its way» by name instead of
+    /// starting a second download of it (R7-funn M6).
+    Downloading {
+        version: String,
+    },
     Ready {
         version: String,
         // Boxed: `Update` is a wide struct and this enum sits behind a mutex
@@ -201,8 +278,8 @@ impl Staged {
         }
     }
 
-    fn mark_downloading(&self) {
-        self.set(Slot::Downloading);
+    fn mark_downloading(&self, version: String) {
+        self.set(Slot::Downloading { version });
     }
 
     fn mark_failed(&self) {
@@ -221,7 +298,7 @@ impl Staged {
         match self.0.lock() {
             Ok(slot) => match &*slot {
                 Slot::Idle => StagePhase::Idle,
-                Slot::Downloading => StagePhase::Downloading,
+                Slot::Downloading { .. } => StagePhase::Downloading,
                 Slot::Ready { .. } => StagePhase::Ready,
                 Slot::Failed => StagePhase::Failed,
             },
@@ -229,6 +306,29 @@ impl Staged {
             Err(e) => {
                 tracing::warn!("the staged-update slot is unreadable: {e}");
                 StagePhase::Failed
+            }
+        }
+    }
+
+    /// The version a background download is fetching right now, if any.
+    ///
+    /// A READ, never a take: the download owns the slot until it finishes or
+    /// fails. This is what `update_install` asks BEFORE it goes anywhere near
+    /// the network — see the guard there for what the second download cost.
+    ///
+    /// An unreadable lock answers `None`, which routes the caller to the
+    /// ordinary manual path. That is the same conservative direction
+    /// [`Self::phase`] takes: never claim a download is in flight on the
+    /// strength of a mutex we could not open.
+    fn downloading_version(&self) -> Option<String> {
+        match self.0.lock() {
+            Ok(slot) => match &*slot {
+                Slot::Downloading { version } => Some(version.clone()),
+                _ => None,
+            },
+            Err(e) => {
+                tracing::warn!("the staged-update slot is unreadable: {e}");
+                None
             }
         }
     }
@@ -402,6 +502,12 @@ async fn check_feed_update(
         Ok(Some(update)) => (
             UpdateStatus::Available {
                 version: update.version.clone(),
+                // `update.body` IS `latest.json`'s `notes` — the sentence the
+                // release PR reviewed. Dropping it here was the whole of
+                // R7-funn H1: the feed carried it, the app threw it on the
+                // floor, and the teacher approved a restart without being
+                // told what it gave her.
+                notes: clamp_notes(update.body.clone()),
             },
             Some(update),
         ),
@@ -522,7 +628,7 @@ pub fn spawn_boot_check(
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         let (status, update) = check_feed_update(&app, channel).await;
         match &status {
-            UpdateStatus::Available { version } => {
+            UpdateStatus::Available { version, .. } => {
                 tracing::info!(%version, "update available on the {} ring", channel.as_tag());
             }
             UpdateStatus::UpToDate => tracing::info!("up to date"),
@@ -530,7 +636,9 @@ pub fn spawn_boot_check(
                 // Offline is the normal classroom state — info, not warn.
                 tracing::info!("update check did not complete: {message}");
             }
-            UpdateStatus::Downloaded { .. } | UpdateStatus::Disabled => {}
+            UpdateStatus::Downloading { .. }
+            | UpdateStatus::Downloaded { .. }
+            | UpdateStatus::Disabled => {}
         }
         let stage = stage_after_check(&status, auto_update);
         // Every outcome, not just the interesting one: "the check ran and
@@ -545,7 +653,11 @@ pub fn spawn_boot_check(
         // `else` is belt and braces, not a path.
         let Some(update) = update else { return };
         let version = update.version.clone();
-        staged.mark_downloading();
+        // Read the note BEFORE the handle is moved into the slot: the
+        // «lastet ned» sentence carries the same note the «funnet» one did,
+        // and `set_ready` takes ownership of the `Update` one line later.
+        let notes = clamp_notes(update.body.clone());
+        staged.mark_downloading(version.clone());
         // Signature verification (minisign) happens INSIDE `download` — the
         // bytes that reach `set_ready` are already proven ours.
         match update.download(|_, _| {}, || {}).await {
@@ -555,7 +667,7 @@ pub fn spawn_boot_check(
                     "update downloaded and verified — it installs when the app closes"
                 );
                 staged.set_ready(version.clone(), update, bytes);
-                slot.post(staged_status(&version, true));
+                slot.post(staged_status(&version, notes, true));
             }
             Err(e) => {
                 // Not an error the teacher should meet: the manual route is
@@ -616,11 +728,52 @@ pub async fn update_install(app: tauri::AppHandle) -> AppResult<UpdateStatus> {
         // `databaseTooNew` chip points at; a build without the updater
         // feature manages no `Staged` at all.
         if let Some(staged) = app.try_state::<Staged>() {
+            // Is the automatic half ALREADY fetching this version? Asked
+            // before the take and long before the feed, because the old order
+            // answered a download in flight with `take_ready() == None` and
+            // fell straight through to `download_and_install` (R7-funn M6).
+            // That cost twice: the same archive twice over a school wifi, and
+            // a genuine double-INSTALL window — the background download can
+            // land while the manual install runs, and `app.restart()` fires
+            // `RunEvent::Exit`, which would then unpack the same archive over
+            // an app directory that is already being replaced. The take is
+            // what normally makes those two mutually exclusive; during
+            // `Downloading` there is nothing to take, so the guard has to be
+            // this one.
+            if let Some(version) = staged.downloading_version() {
+                tracing::info!(
+                    %version,
+                    "the background download already has this version — not fetching it twice"
+                );
+                return Ok(UpdateStatus::Downloading { version });
+            }
             if let Some((version, update, bytes)) = staged.take_ready() {
                 tracing::info!(%version, "installing the staged update on request");
-                update.install(bytes).map_err(|e| {
-                    crate::error::AppError::Internal(format!("update install: {e}"))
-                })?;
+                if let Err(e) = update.install(bytes) {
+                    // The take emptied the slot, so nothing installs at exit
+                    // any more — but the mailbox still says `Downloaded`, and
+                    // the panel re-reads it every time it opens. The teacher
+                    // who cancelled the admin prompt would be told «v9.9.9
+                    // installeres når du lukker appen» for the rest of the
+                    // session, over an empty slot (R7-funn H3). Put the
+                    // honest sentence back: the version IS still available,
+                    // and «Oppdater og start på nytt» still works.
+                    //
+                    // `try_state`, for the same reason the `Staged` lookup
+                    // uses it — a `State<'_, BootUpdate>` argument would be
+                    // checked before this command's body ever ran, and this
+                    // is the command the `databaseTooNew` chip points at.
+                    if let Some(mailbox) = app.try_state::<BootUpdate>() {
+                        mailbox.post(staged_status(
+                            &version,
+                            clamp_notes(update.body.clone()),
+                            false,
+                        ));
+                    }
+                    return Err(crate::error::AppError::Internal(format!(
+                        "update install: {e}"
+                    )));
+                }
                 app.restart();
             }
         }
@@ -663,6 +816,7 @@ mod decision_tests {
     fn available(v: &str) -> UpdateStatus {
         UpdateStatus::Available {
             version: v.to_string(),
+            notes: None,
         }
     }
 
@@ -685,6 +839,11 @@ mod decision_tests {
             // download. Re-staging it would be a second download of bytes we
             // already hold.
             UpdateStatus::Downloaded {
+                version: "9.9.9".into(),
+                notes: None,
+            },
+            // …and neither is a download that is still in flight.
+            UpdateStatus::Downloading {
                 version: "9.9.9".into(),
             },
         ] {
@@ -738,23 +897,102 @@ mod decision_tests {
     fn a_failed_download_leaves_the_old_sentence_standing() {
         // Downloaded → the panel says «installeres når du lukker appen».
         assert!(matches!(
-            staged_status("9.9.9", true),
-            UpdateStatus::Downloaded { version } if version == "9.9.9"
+            staged_status("9.9.9", None, true),
+            UpdateStatus::Downloaded { version, .. } if version == "9.9.9"
         ));
         // Not downloaded → exactly what the mailbox said before ADR-014, so
         // the marker and the manual button behave as they always did.
         assert!(matches!(
-            staged_status("9.9.9", false),
-            UpdateStatus::Available { version } if version == "9.9.9"
+            staged_status("9.9.9", None, false),
+            UpdateStatus::Available { version, .. } if version == "9.9.9"
+        ));
+    }
+
+    /// The note rides BOTH sentences. It is the same news either way, and the
+    /// panel renders it under whichever one it ends up showing — so a note
+    /// that survived «funnet» and vanished at «lastet ned» would blank the
+    /// box at exactly the moment the teacher is deciding to close the app.
+    #[test]
+    fn the_note_travels_with_the_version_through_both_answers() {
+        let note = Some("Terningen kan nå vise 0–9.".to_string());
+        assert!(matches!(
+            staged_status("9.9.9", note.clone(), false),
+            UpdateStatus::Available { notes, .. } if notes == note
+        ));
+        assert!(matches!(
+            staged_status("9.9.9", note.clone(), true),
+            UpdateStatus::Downloaded { notes, .. } if notes == note
         ));
     }
 
     /// The wire shape the frontend switches on. A renamed phase is a silently
-    /// dead branch in `app-info.ts`, not a compile error.
+    /// dead branch in `app-info.ts`, not a compile error — and so is a renamed
+    /// FIELD, which is why the note is pinned here beside the phase.
     #[test]
     fn downloaded_serialises_as_its_camel_case_phase() {
-        let json = serde_json::to_string(&staged_status("9.9.9", true)).unwrap();
-        assert_eq!(json, r#"{"phase":"downloaded","version":"9.9.9"}"#);
+        let json = serde_json::to_string(&staged_status("9.9.9", None, true)).unwrap();
+        assert_eq!(
+            json,
+            r#"{"phase":"downloaded","version":"9.9.9","notes":null}"#
+        );
+
+        let with_note =
+            serde_json::to_string(&staged_status("9.9.9", Some("Nytt".into()), true)).unwrap();
+        assert_eq!(
+            with_note,
+            r#"{"phase":"downloaded","version":"9.9.9","notes":"Nytt"}"#
+        );
+
+        // The one `update_install` answers when the automatic half is already
+        // fetching. No note: the panel has the mailbox's beside it.
+        let downloading = serde_json::to_string(&UpdateStatus::Downloading {
+            version: "9.9.9".into(),
+        })
+        .unwrap();
+        assert_eq!(downloading, r#"{"phase":"downloading","version":"9.9.9"}"#);
+    }
+
+    /// An EMPTY note is not a note. v0.3.0-beta.1 → v0.4.0-beta.2 all shipped
+    /// `"notes": ""`, and those manifests are still on the feed: rendering
+    /// them as an empty box under «Hva er nytt» would repeat the bug instead
+    /// of admitting it.
+    #[test]
+    fn an_empty_note_is_no_note_at_all() {
+        assert_eq!(clamp_notes(None), None);
+        assert_eq!(clamp_notes(Some(String::new())), None);
+        assert_eq!(clamp_notes(Some("   \n\t ".into())), None);
+        assert_eq!(
+            clamp_notes(Some("  Nytt i denne versjonen  ".into())),
+            Some("Nytt i denne versjonen".to_string())
+        );
+    }
+
+    /// The cap is on BYTES and it cuts on a character boundary — every note in
+    /// `docs/release-notes/` uses «», which is two bytes per quote, and a cut
+    /// through one of them would not be a `String` at all.
+    #[test]
+    fn a_huge_note_is_cut_without_splitting_a_character() {
+        // 3 bytes each, so the cap lands mid-character unless it is walked
+        // back: 2000 is not divisible by 3.
+        let long = "æøå".repeat(1000);
+        assert!(long.len() > NOTES_MAX_BYTES);
+        let cut = clamp_notes(Some(long)).expect("a long note is still a note");
+        assert!(cut.len() <= NOTES_MAX_BYTES);
+        assert!(
+            NOTES_MAX_BYTES - cut.len() < 4,
+            "the cut walked back further than one character: {} bytes lost",
+            NOTES_MAX_BYTES - cut.len()
+        );
+        // The whole point of walking back: this must still be valid UTF-8,
+        // which it is by construction — and every character must be whole.
+        assert!(cut.chars().all(|c| c == 'æ' || c == 'ø' || c == 'å'));
+    }
+
+    /// A note exactly at the ceiling is not touched.
+    #[test]
+    fn a_note_at_the_ceiling_survives_whole() {
+        let exact = "a".repeat(NOTES_MAX_BYTES);
+        assert_eq!(clamp_notes(Some(exact.clone())), Some(exact));
     }
 }
 
@@ -771,7 +1009,7 @@ mod slot_tests {
         assert_eq!(staged.phase(), StagePhase::Idle);
         assert!(staged.take_ready().is_none());
 
-        staged.mark_downloading();
+        staged.mark_downloading("9.9.9".into());
         assert_eq!(staged.phase(), StagePhase::Downloading);
         assert!(
             staged.take_ready().is_none(),
@@ -786,6 +1024,38 @@ mod slot_tests {
         staged.mark_failed();
         assert_eq!(staged.phase(), StagePhase::Failed);
         assert!(staged.take_ready().is_none());
+    }
+
+    /// R7-funn M6, the half a unit test can hold: a download in flight NAMES
+    /// itself, and every other slot state answers `None` so the manual button
+    /// falls through to the ordinary network path exactly as before.
+    ///
+    /// The `take_ready() == None` that used to be the only question asked here
+    /// cannot tell those two apart — which is how «Oppdater og start på nytt»
+    /// mid-download became a second download of the same archive.
+    #[test]
+    fn only_a_download_in_flight_names_a_version() {
+        let staged = Staged::default();
+        assert_eq!(
+            staged.downloading_version(),
+            None,
+            "an idle slot fetches nothing"
+        );
+
+        staged.mark_downloading("9.9.9".into());
+        assert_eq!(staged.downloading_version(), Some("9.9.9".to_string()));
+        assert_eq!(
+            staged.phase(),
+            StagePhase::Downloading,
+            "asking must not disturb the slot"
+        );
+
+        staged.mark_failed();
+        assert_eq!(
+            staged.downloading_version(),
+            None,
+            "a failed download is not in flight — the manual route takes over"
+        );
     }
 
     /// The exit hook on the ordinary boot: no update, no work, no delay —
@@ -806,7 +1076,7 @@ mod slot_tests {
     fn a_download_in_flight_survives_the_close_whatever_the_switch_says() {
         for on in [true, false] {
             let staged = Staged::default();
-            staged.mark_downloading();
+            staged.mark_downloading("9.9.9".into());
             install_staged_when(&staged, || on);
             assert_eq!(
                 staged.phase(),
@@ -823,8 +1093,43 @@ mod slot_tests {
     fn every_clone_is_the_same_slot() {
         let a = Staged::default();
         let b = a.clone();
-        b.mark_downloading();
+        b.mark_downloading("9.9.9".into());
         assert_eq!(a.phase(), StagePhase::Downloading);
+    }
+
+    /// R7-funn H3, as far as a test can reach it.
+    ///
+    /// The install itself is native and unreachable from here (no `Update` can
+    /// be constructed outside the plugin), but the thing that LIED is not the
+    /// install — it is the mailbox that kept saying `Downloaded` after the
+    /// take had emptied the slot. That transition is the whole fix, and it is
+    /// exactly what this pins: after a failed manual install the mailbox must
+    /// read `Available` again, because «installeres når du lukker appen» over
+    /// an empty slot is a promise nothing can keep.
+    #[test]
+    fn a_failed_manual_install_puts_the_honest_sentence_back_in_the_mailbox() {
+        let mailbox = BootUpdate::default();
+        let note = Some("Terningen kan nå vise 0–9.".to_string());
+
+        // Where the boot check leaves it: downloaded, verified, waiting for
+        // the close.
+        mailbox.post(staged_status("9.9.9", note.clone(), true));
+        assert!(matches!(
+            mailbox.read(),
+            Some(UpdateStatus::Downloaded { .. })
+        ));
+
+        // She pressed «Oppdater og start på nytt» and cancelled the admin
+        // prompt. This is the line `update_install` runs on that path.
+        mailbox.post(staged_status("9.9.9", note.clone(), false));
+
+        match mailbox.read() {
+            Some(UpdateStatus::Available { version, notes }) => {
+                assert_eq!(version, "9.9.9");
+                assert_eq!(notes, note, "the note must survive the downgrade");
+            }
+            other => panic!("the mailbox still promises an install: {other:?}"),
+        }
     }
 }
 

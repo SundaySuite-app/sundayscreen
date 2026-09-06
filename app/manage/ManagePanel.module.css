@@ -13,7 +13,6 @@
   max-height: calc(100% - 2 * var(--sp-7));
   display: flex;
   flex-direction: column;
-  background: var(--raised);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-dialog);
@@ -26,6 +25,32 @@
      The panel scrolls instead; the bands keep their heights (see the
      `flex-shrink: 0` on each). */
   overflow-y: auto;
+
+  /* THE SCROLL HINT (R7-funn klasserom #9).
+
+     On a 1024×768 projector the panel scrolled and said nothing about it:
+     `scrollHeight` 841 against `clientHeight` 702, with «Installer
+     oppdateringer automatisk» and «Se etter oppdatering» below the fold and
+     no indicator anywhere. The teacher who wants to turn ADR-014's switch OFF
+     could not see that it exists. The height query further down makes them
+     fit; this makes the panel ADMIT it scrolls whenever they still do not —
+     a long release note, an error band, a shorter window than we measured.
+
+     Four layers, scrolled and fixed in pairs (the classic technique): the two
+     `local` gradients ride WITH the content and mask the shadow when the
+     content edge is reached, the two `scroll` ones stay put and are what you
+     actually see. Nothing is measured and nothing is bound to a listener —
+     the browser's own scroll position drives it. */
+  background:
+    linear-gradient(var(--raised) 40%, transparent) top / 100% 24px no-repeat
+      local,
+    linear-gradient(transparent, var(--raised) 60%) bottom / 100% 24px no-repeat
+      local,
+    radial-gradient(farthest-side at 50% 0, var(--line-2), transparent) top /
+      100% 10px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, var(--line-2), transparent)
+      bottom / 100% 10px no-repeat scroll,
+    var(--raised);
 }
 
 .header {
@@ -575,4 +600,113 @@
 .installBtn:hover {
   background: var(--gold);
   color: var(--on-gold);
+}
+
+/* ── «Hva er nytt» ──────────────────────────────────────────────────────────
+   The release note the feed has carried all along. A full row of the wrapping
+   `.about` flex, like `.autoRow`: it is prose, and squeezed between a version
+   number and a button it would read as a caption for either. */
+.notes {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.notesTitle {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+/* `pre-line`, not `pre`: the note's LINE BREAKS are its structure (one change
+   per line), but its indentation is not — a wrapped line must reflow inside
+   the panel rather than push a horizontal scrollbar onto it.
+
+   The ceiling is the load-bearing half. Rust caps the string at 2000 B, but a
+   note is written by us and can legitimately be long, and this box sits
+   directly above «Se etter oppdatering» — the control R7-funn #9 found already
+   below the fold on a 1024×768 projector. A tall note here would push it
+   further down; `max-height` + `overflow-y` keeps the section's height a
+   constant no matter what the feed says. */
+.notesBody {
+  margin: 0;
+  max-height: 132px;
+  overflow-y: auto;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* «Ingen beskrivelse fulgte med denne versjonen» — a sentence about an
+   absence, so it is set as one: quieter, and in italics so it never reads as
+   the note itself. */
+.notesBody[data-empty] {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+/* ── The projector height (R7-funn klasserom #9) ─────────────────────────────
+
+   MEASURED on 1024×768, the classroom resolution: the panel's content was
+   841 px tall in a 702 px box, so «Installer oppdateringer automatisk» sat at
+   y=755 and «Se etter oppdatering» at y=814 — 19 px and 78 px below a panel
+   that ended at 736. 1280×800 was the same picture with a 107 px overflow.
+   Both are below the fold; neither had a scroll indicator. ADR-014's switch
+   is the one thing in this panel a teacher may need to turn OFF, and on a
+   projector it did not appear to exist.
+
+   The threshold is derived, not chosen: 841 px of content plus the panel's
+   own 64 px of margin and 2 px of border is 907, so a window shorter than
+   ~900 px is exactly the set of windows where the panel scrolls at all.
+
+   Nothing is hidden and nothing moves — the same bands in the same order,
+   packed tighter. The margin round the panel gives back 32 px of BOX; the
+   rest comes off gaps, band padding and the names textarea, which is the one
+   element here with height to spare (it keeps `flex: 1`, so on a tall window
+   it is unchanged and on a short one it scrolls like the list it is). */
+@media (max-height: 900px) {
+  .panel {
+    /* 32 px of window margin instead of 64: the biggest single win, and it
+       costs only air around a dialog that is already inside a scrim. */
+    max-height: calc(100% - 2 * var(--sp-4));
+    padding: var(--sp-4);
+    gap: var(--sp-3);
+  }
+
+  .namesColumn {
+    gap: var(--sp-2);
+  }
+
+  /* ~8 lines instead of ~11, still scrollable, and still a paste target. */
+  .namesArea,
+  .namesFailed {
+    min-height: 200px;
+  }
+
+  .transfer,
+  .about {
+    padding-top: var(--sp-3);
+  }
+
+  .transfer {
+    gap: var(--sp-1);
+  }
+
+  .about {
+    gap: var(--sp-2);
+  }
+
+  /* A note is the one thing here that can still push the buttons down, so on
+     a short window it gets a shorter box and scrolls sooner. */
+  .notesBody {
+    max-height: 84px;
+  }
 }

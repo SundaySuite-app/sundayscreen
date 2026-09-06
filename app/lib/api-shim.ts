@@ -202,8 +202,22 @@ async function write<T>(
 // ── The surface ─────────────────────────────────────────────────────────────
 
 const api = {
-  // "Siste IPC-feil" for the diagnose surface. Synchronous and local — it
-  // still answers when the backend is the thing that is broken.
+  /**
+   * Every IPC failure this session, newest last. Synchronous and local — it
+   * still answers when the backend is the thing that is broken.
+   *
+   * Who reads it TODAY, stated plainly because the old comment promised a
+   * surface this app does not have (R7-funn skjøt #6): `state/settings.ts`
+   * asks it at boot whether `settings_get` was among the failures, which is
+   * how «alt er standard» is told apart from «vi fikk ikke lest noe», and the
+   * Playwright tier asserts on it (`picker.spec.ts`) as the machine-readable
+   * proof that a refused write was REMEMBERED and not only spoken.
+   *
+   * SundayRec's diagnose screen is the surface this shape was built for, and
+   * the day one lands here it must not find a hole where the important
+   * failures should be — which is why every write in this file goes through
+   * `write()` rather than a bare `invoke`.
+   */
   getRecentIpcFailures: (): IpcFailure[] => recentFailures(ipcFailures),
 
   appInfo: async (): Promise<AppInfo> =>
@@ -237,11 +251,12 @@ const api = {
     }
   },
 
-  // WRITE — bare invoke, rejection travels (the house rule: a write that
-  // fails must REJECT, never answer a fabricated success — the "saved" chip
-  // stays honest).
+  // WRITE — through `write()`, so the rejection travels AND the failure is
+  // REMEMBERED (the house rule: a write that fails must REJECT, never answer a
+  // fabricated success — the "saved" chip stays honest; and the ring is what
+  // «Siste IPC-feil» reads when a whole afternoon has been going wrong).
   saveSettings: async (settings: Settings): Promise<Settings> =>
-    invoke<Settings>("settings_save", { settings }),
+    write<Settings>("settings_save", { settings }),
 
   /**
    * Persist JUST the window geometry, and answer with what was actually
@@ -300,11 +315,15 @@ const api = {
   layoutLoad: async (sceneId: string): Promise<WidgetInstance[]> =>
     invoke<WidgetInstance[]>("layout_load", { sceneId }),
 
-  // WRITE — rejection travels (see saveSettings).
+  // WRITE — rejection travels (see saveSettings). Through `write()`: this is
+  // the single most important failure in the app to have a RECORD of. It is
+  // the board itself, it is debounced (so nobody is watching when it fails),
+  // and its only surface is one sticky chip that says the same sentence for
+  // a locked database, a full disk and a deleted scene alike.
   layoutSave: async (
     sceneId: string,
     widgets: WidgetInstance[],
-  ): Promise<void> => invoke<void>("layout_save", { sceneId, widgets }),
+  ): Promise<void> => write<void>("layout_save", { sceneId, widgets }),
 
   // ── Scenes (the screen library) ─────────────────────────────────────────
   sceneList: async (): Promise<Scene[]> => call("scene_list", undefined, []),
@@ -323,23 +342,27 @@ const api = {
   sceneGet: async (sceneId: string): Promise<Scene> =>
     invoke<Scene>("scene_get", { sceneId }),
 
+  // The library's WRITES. All four through `write()` for the same reason
+  // `layoutSave` is: they are the screen the class is looking at, and a
+  // failure the ring cannot see is a failure the diagnose surface will show a
+  // hole where.
   sceneCreate: async (name: string): Promise<Scene> =>
-    invoke<Scene>("scene_create", { name }),
+    write<Scene>("scene_create", { name }),
 
   sceneRename: async (sceneId: string, name: string): Promise<Scene> =>
-    invoke<Scene>("scene_rename", { sceneId, name }),
+    write<Scene>("scene_rename", { sceneId, name }),
 
   sceneDelete: async (sceneId: string): Promise<void> =>
-    invoke<void>("scene_delete", { sceneId }),
+    write<void>("scene_delete", { sceneId }),
 
   sceneDuplicate: async (sceneId: string, name: string): Promise<Scene> =>
-    invoke<Scene>("scene_duplicate", { sceneId, name }),
+    write<Scene>("scene_duplicate", { sceneId, name }),
 
   /** Recolour a screen's backdrop. A WRITE — the rejection travels (a colour
    *  that looks applied and was never stored is a fabricated success). The
    *  answer is the row as STORED, so the caller adopts it. */
   sceneSetTheme: async (sceneId: string, theme: SceneTheme): Promise<Scene> =>
-    invoke<Scene>("scene_set_theme", { sceneId, theme }),
+    write<Scene>("scene_set_theme", { sceneId, theme }),
 
   /** How many lessons point at this scene — the delete confirmation's
    *  number. A REJECTING read on purpose: a typed fallback of zeroes would
@@ -385,11 +408,13 @@ const api = {
     call<StoredImage | null>("image_load", { imageId }, null),
 
   /** THE switch: class + scene in one atomic pointer move + snapshot.
-   *  `sceneId = null` lands on the class's default scene. */
+   *  `sceneId = null` lands on the class's default scene. A WRITE (it moves
+   *  the stored pointer), so it goes through `write()`. */
   lessonSwitch: async (
     classId: string,
     sceneId: string | null,
-  ): Promise<ClassSnapshot> => invoke("lesson_switch", { classId, sceneId }),
+  ): Promise<ClassSnapshot> =>
+    write<ClassSnapshot>("lesson_switch", { classId, sceneId }),
 
   // ── Planner ─────────────────────────────────────────────────────────────
   // The editor reads REJECT (S#4 lesson): a panel that replace-alls over a
@@ -398,8 +423,12 @@ const api = {
   plannerPeriodsGet: async (): Promise<Period[]> =>
     invoke<Period[]>("planner_periods_get"),
 
+  // The planner's WRITES go through `write()`. The teacher's week plan is the
+  // slowest thing in the app to type back in, and every one of these is a
+  // «Lagret»-shaped moment: the rejection has to travel to the panel AND be
+  // remembered, or an afternoon of refused saves leaves no trace anywhere.
   plannerPeriodsSet: async (periods: PeriodSpec[]): Promise<Period[]> =>
-    invoke<Period[]>("planner_periods_set", { periods }),
+    write<Period[]>("planner_periods_set", { periods }),
 
   plannerWeekGet: async (): Promise<WeekSlot[]> =>
     invoke<WeekSlot[]>("planner_week_get"),
@@ -409,14 +438,14 @@ const api = {
     periodId: string,
     slot: SlotSpec | null,
   ): Promise<void> =>
-    invoke<void>("planner_slot_set", { weekday, periodId, slot }),
+    write<void>("planner_slot_set", { weekday, periodId, slot }),
 
   plannerOverrideSet: async (
     date: string,
     periodId: string,
     ovr: OverrideSpec | null,
   ): Promise<void> =>
-    invoke<void>("planner_override_set", { date, periodId, ovr }),
+    write<void>("planner_override_set", { date, periodId, ovr }),
 
   plannerDayGet: async (date: string, weekday: number): Promise<DayPlan> =>
     invoke<DayPlan>("planner_day_get", { date, weekday }),
@@ -426,16 +455,16 @@ const api = {
     periodId: string,
     items: AgendaItemSpec[],
   ): Promise<AgendaItem[]> =>
-    invoke<AgendaItem[]>("planner_agenda_set", { date, periodId, items }),
+    write<AgendaItem[]>("planner_agenda_set", { date, periodId, items }),
 
   plannerAgendaCheck: async (itemId: string, done: boolean): Promise<void> =>
-    invoke<void>("planner_agenda_check", { itemId, done }),
+    write<void>("planner_agenda_check", { itemId, done }),
 
   plannerNotesSet: async (
     date: string,
     notes: NoteSpec[],
   ): Promise<DayNote[]> =>
-    invoke<DayNote[]>("planner_notes_set", { date, notes }),
+    write<DayNote[]>("planner_notes_set", { date, notes }),
 
   classList: async (): Promise<Class[]> => call("class_list", undefined, []),
 
@@ -450,21 +479,25 @@ const api = {
     invoke<Member[]>("members_get", { classId }),
 
   // The rest are WRITES — rejections travel, so the manage panel can say
-  // what actually went wrong instead of fabricating success.
+  // what actually went wrong instead of fabricating success — and they go
+  // through `write()`, which is what makes that sentence true of the RING as
+  // well. A bare `invoke` rejects honestly but INVISIBLY (see the docstring on
+  // `write()`), and «Siste IPC-feil» would have shown a hole exactly where a
+  // class disappeared or a name list refused to save.
   classCreate: async (name: string): Promise<Class> =>
-    invoke<Class>("class_create", { name }),
+    write<Class>("class_create", { name }),
 
   classRename: async (classId: string, name: string): Promise<Class> =>
-    invoke<Class>("class_rename", { classId, name }),
+    write<Class>("class_rename", { classId, name }),
 
   classDelete: async (classId: string): Promise<void> =>
-    invoke<void>("class_delete", { classId }),
+    write<void>("class_delete", { classId }),
 
   classSwitch: async (classId: string): Promise<ClassSnapshot> =>
-    invoke<ClassSnapshot>("class_switch", { classId }),
+    write<ClassSnapshot>("class_switch", { classId }),
 
   membersSet: async (classId: string, names: string[]): Promise<Member[]> =>
-    invoke<Member[]>("members_set", { classId, names }),
+    write<Member[]>("members_set", { classId, names }),
 
   // Draw/split are WRITES against the round state — rejections travel, so
   // the widgets can say "no names yet" instead of fabricating a pupil, and
@@ -502,19 +535,22 @@ const api = {
 
   // WRITE — rejection travels: a chip must never dim on a write that did not
   // land. Answers with the whole updated member list, so the panel renders
-  // from what was actually stored.
+  // from what was actually stored. Through `write()`, so the ring sees it:
+  // this comment said «WRITE — rejection travels» over a bare `invoke` for a
+  // year, which is precisely the half-kept contract R7 found (skjøt #6).
   attendanceSet: async (
     classId: string,
     memberId: string,
     absent: boolean,
     today: string,
   ): Promise<Member[]> =>
-    invoke<Member[]>("attendance_set", { classId, memberId, absent, today }),
+    write<Member[]>("attendance_set", { classId, memberId, absent, today }),
 
   // WRITE-ish (window management) — rejection travels so the chrome can
-  // revert its optimistic flag in a plain browser.
+  // revert its optimistic flag in a plain browser, and through `write()` so a
+  // fullscreen that would not take is remembered rather than only reverted.
   windowSetFullscreen: async (fullscreen: boolean): Promise<void> =>
-    invoke<void>("window_set_fullscreen", { fullscreen }),
+    write<void>("window_set_fullscreen", { fullscreen }),
 
   // A READ, so the typed fallback is legal: in a plain browser there is no
   // window to measure and `false` is simply true. Asking the BACKEND rather
@@ -532,7 +568,7 @@ const api = {
     invoke<UpdateStatus>("update_check"),
 
   updateInstall: async (): Promise<UpdateStatus> =>
-    invoke<UpdateStatus>("update_install"),
+    write<UpdateStatus>("update_install"),
 
   // ── «Flytt oppsettet» (eksport/import) ──────────────────────────────────
   //

@@ -20,6 +20,21 @@ export const updateReady = signal<string | null>(null);
 export const updateStaged = signal(false);
 
 /**
+ * WHAT the waiting version brings — the release note, plain text, straight
+ * from the feed (`latest.json`'s `notes`, written from
+ * `docs/release-notes/<tagg>.md` at build time).
+ *
+ * `null` covers both «no answer yet» and «this version came without a note»;
+ * the manage panel is where the difference is spoken, because that is the
+ * only place the note is shown at all. The toolbar mark stays a mark.
+ *
+ * It exists as a signal rather than being read off `updateStatus` because the
+ * mailbox is read from two places at two moments (the shell at ~20 s, the
+ * panel every time it opens), and the note has to survive both.
+ */
+export const updateNotes = signal<string | null>(null);
+
+/**
  * How long after boot the mailbox is opened. The backend's check sleeps 5 s
  * before touching the network and gives the request a 15 s timeout, so ~20 s
  * is the first moment an answer is guaranteed to have landed OR failed.
@@ -48,15 +63,21 @@ export async function loadAppInfo(): Promise<void> {
  * moments — a version is waiting — and they differ only in whether anything
  * is left for the teacher to do. The read never rejects (`updatePending` goes
  * through the shim's typed fallback), so there is nothing to catch.
+ *
+ * The note rides along on BOTH, and is written even when it is absent
+ * (`notes ?? null`): a second read that found no note must not leave the
+ * first read's note standing under a different version's sentence.
  */
 export async function readUpdatePending(): Promise<void> {
   const status = await window.api.updatePending();
   if (status?.phase === "available") {
     updateReady.value = status.version;
     updateStaged.value = false;
+    updateNotes.value = status.notes ?? null;
   } else if (status?.phase === "downloaded") {
     updateReady.value = status.version;
     updateStaged.value = true;
+    updateNotes.value = status.notes ?? null;
   }
 }
 

@@ -125,6 +125,120 @@ test("a renamed scene keeps its layout", async ({ page }) => {
   await expect(page.locator('[data-widget-kind="dice"]')).toHaveCount(1);
 });
 
+// ── Deleting a screen with a write still in flight (R7-funn M7) ─────────────
+//
+// `deleteScene` used to go straight to `scene_delete`. The last keystrokes on
+// the board were still on their way — the persister is debounced, and a
+// forced flush is a promise, not an instant — so `layout_save` landed naming a
+// scene the backend had just dropped. `commands/layout.rs` answers NotFound,
+// and the shell's sticky «Klarte ikke å lagre tavla» chip appeared for a board
+// the teacher had deliberately deleted, and stayed until the next successful
+// save.
+//
+// The e2e fixture could not see it either: it recreated the layout key for a
+// deleted scene, so the tier was green about the wrong semantics. It now
+// refuses, exactly like Rust (harness.ts, `layout_save`).
+
+test("deleting the screen mid-save does not blame the teacher for it", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+
+  await addWidget(page, "Tekst");
+  await openSceneMenu(page);
+  await page.getByRole("menuitem", { name: "Lagre som ny skjerm …" }).click();
+  await page.getByPlaceholder("Navn på skjermen …").fill("Midlertidig");
+  await page.getByPlaceholder("Navn på skjermen …").press("Enter");
+  await expect(page.getByRole("button", { name: "Bytt skjerm" })).toContainText(
+    "Midlertidig",
+  );
+
+  // Hold every save from here on, and TIMESTAMP it. The real store is a
+  // database on a school laptop; the fixture answers in a microtask, which is
+  // precisely why the race was invisible to this tier. `original` is called
+  // when the delay expires, so it sees the world AS IT IS THEN — a deleted
+  // scene included.
+  //
+  // The delay is long on purpose. A shorter one turns this into a test about
+  // how fast the machine is: with four seconds of margin the write is
+  // guaranteed to be in flight when «Slett skjermen» is pressed, and the log
+  // below is what PROVES it was rather than assuming it.
+  await page.evaluate(() => {
+    const w = window as unknown as Record<string, unknown>;
+    const fixtures = w.__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    const original = fixtures.layout_save as (
+      args?: Record<string, unknown>,
+    ) => unknown;
+    const log: { event: string; at: number }[] = [];
+    w.__a2SaveLog = log;
+    fixtures.layout_save = (args?: Record<string, unknown>) => {
+      log.push({ event: "start", at: Date.now() });
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          log.push({ event: "end", at: Date.now() });
+          try {
+            resolve(original(args));
+          } catch (e) {
+            reject(e);
+          }
+        }, 4000);
+      });
+    };
+  });
+
+  // Type on the board. Opening the screen menu blurs the field, which forces
+  // the write — so by the time «Slett skjermen» is pressed it is in flight,
+  // against a scene that is about to stop existing.
+  await page.getByRole("button", { name: "Skriv en beskjed …" }).click();
+  await page.locator("textarea").fill("Prøve i morgen");
+
+  await openSceneMenu(page);
+  await page.getByRole("button", { name: "Slett", exact: true }).click();
+  await page.waitForTimeout(500); // CONFIRM_ARM_MS
+  const pressedAt = await page.evaluate(() => Date.now());
+  await page.getByRole("button", { name: "Slett skjermen" }).click();
+
+  // The delete lands: the board falls back to the class default.
+  await expect(page.getByRole("button", { name: "Bytt skjerm" })).toContainText(
+    "Standard",
+  );
+
+  // THE RACE ACTUALLY HAPPENED. Without this the test would pass vacuously on
+  // a slow machine — one where the held write happened to land before the
+  // teacher got to the confirmation, and no scene was ever saved to after it
+  // was deleted. Started before the press, finished after it: the write was
+  // in flight across the delete, which is the whole scenario.
+  const log = await page.evaluate(
+    () =>
+      (window as unknown as Record<string, unknown>).__a2SaveLog as {
+        event: string;
+        at: number;
+      }[],
+  );
+  const started = log.filter((e) => e.event === "start").at(-1);
+  const ended = log.filter((e) => e.event === "end").at(-1);
+  expect(started, "no held layout_save at all").toBeDefined();
+  expect(ended, "the held layout_save never resolved").toBeDefined();
+  expect(started!.at).toBeLessThan(pressedAt);
+  expect(ended!.at).toBeGreaterThan(pressedAt);
+
+  // …and the write landed anyway, without a word of blame. This is where the
+  // chip used to appear and stay.
+  await expect(
+    page.getByText("Klarte ikke å lagre tavla — siste endringer kan gå tapt."),
+  ).toHaveCount(0);
+
+  // The machine-readable half: no refused `layout_save` in the failure ring
+  // either. The chip is one sticky sentence with several possible causes; the
+  // ring names the command (and it can only see this one at all because
+  // `layoutSave` goes through the shim's `write()` — R7-funn skjøt #6).
+  const failed = await page.evaluate(() =>
+    window.api.getRecentIpcFailures().map((f) => f.cmd),
+  );
+  expect(failed).not.toContain("layout_save");
+});
+
 // ── The library explains itself, and does not discard or delete by accident ──
 
 test("an empty library says what a saved screen is FOR", async ({ page }) => {

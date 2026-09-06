@@ -3,4 +3,24 @@
 /**
  * What a manual check answers.
  */
-export type UpdateStatus = { "phase": "upToDate" } | { "phase": "available", version: string, } | { "phase": "downloaded", version: string, } | { "phase": "disabled" } | { "phase": "error", message: string, };
+export type UpdateStatus = { "phase": "upToDate" } | { "phase": "available", version: string, 
+/**
+ * The release note from the feed (`latest.json`'s `notes`, which
+ * `release.yml` fills from `docs/release-notes/<tag>.md`). Plain
+ * text, already capped at 1000 B by the release script — and capped
+ * AGAIN here, because a feed is the one input this app does not
+ * write itself.
+ *
+ * `#[ts(optional = nullable)]` is not decoration and `#[serde(default)]`
+ * alone would not have bought it: serde's default governs how a
+ * MISSING key is read, and the generated TypeScript field would still
+ * have been required — the exact trap ADR-016 names on `DayEntry`.
+ * Optional in the type is what lets a frontend written before the
+ * note existed keep compiling.
+ */
+notes?: string | null, } | { "phase": "downloading", version: string, } | { "phase": "downloaded", version: string, 
+/**
+ * Same note as `Available` carries — the download does not change
+ * what the version is, only when it lands.
+ */
+notes?: string | null, } | { "phase": "disabled" } | { "phase": "error", message: string, };

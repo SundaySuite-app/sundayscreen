@@ -318,6 +318,73 @@ skal kurere). At det er et TAK og ikke en lesing er det som gjør «manuelt
 installert» og «installert ved lukking» gjensidig utelukkende: `app.restart()`
 utløser `RunEvent::Exit` den også.
 
+### Tillegg (R7, 2026-09-06) — oppdateringen sier HVA den er
+
+ADR-014 ga læreren en oppdatering hun ikke måtte gjøre noe for. Den ga henne
+aldri et ord om hva den inneholdt: `UpdateStatus` bar bare `version`, så
+panelet kunne si «v0.7.0 er klar» og ingenting mer. Notatet fantes hele tiden
+— `latest.json` har hatt `notes` siden releasepipelinen ble fikset, skrevet fra
+`docs/release-notes/<tagg>.md` ved BYGGETID — og `check_feed_update` kastet
+`update.body` på gulvet. Læreren godkjente altså en omstart uten å få vite hva
+hun fikk igjen for den.
+
+**Notatet bor på statusen, ikke ved siden av den.** `Available` og `Downloaded`
+bærer begge `notes: Option<String>`. Det er samme nyhet fortalt på to
+tidspunkter, og en tekst som overlevde «funnet» og forsvant ved «lastet ned»
+ville blitt blank nøyaktig i det øyeblikket hun bestemmer seg for å lukke
+appen. `#[ts(optional = nullable)]` står på begge — ADR-016-fella: `#[serde(default)]`
+styrer hvordan en MANGLENDE nøkkel LESES, og gjør ikke TS-feltet valgfritt av
+seg selv.
+
+**Tom tekst er ingen tekst.** v0.3.0-beta.1 til v0.4.0-beta.2 sendte alle
+`"notes": ""`, og de manifestene ligger fortsatt på feeden. `clamp_notes`
+gjør tom/blank til `None`, og panelet svarer med en setning
+(«Ingen beskrivelse fulgte med denne versjonen») i stedet for en tom boks —
+å vise tomrommet ville vært å gjenta feilen i stedet for å innrømme den.
+Samme funksjon har et byte-tak på 2000 (dobbelt av det `release-notes.mjs`
+tillater), kuttet på tegngrense: feeden er den ene inputen appen ikke skriver
+selv.
+
+**Visningen er ren tekst med linjeskiftene i behold.** `white-space: pre-line`,
+og et tak på boksen med scroll. Taket er ikke pynt: boksen står rett over
+«Se etter oppdatering», og seksjonens høyde skal være en konstant uansett hva
+feeden sier — se klasseromsfunnet under.
+
+**To feilstier lukket i samme runde.**
+
+- _Feilet manuell installasjon (R7-funn H3)._ `update_install` TAR de staged
+  byte-ene før installasjonen (det er selve dobbeltinstall-vernet). Feiler
+  `install` — avbrutt admin-prompt på macOS er normalveien — er slissen tom,
+  men postkassa sa fortsatt `Downloaded`, og panelet leser postkassa hver gang
+  det åpnes: «v9.9.9 installeres når du lukker appen» over en tom slisse,
+  resten av økta. Feilstien re-poster nå `staged_status(&version, notes, false)`
+  via `try_state`, så setningen faller tilbake til den ærlige «tilgjengelig»-
+  varianten — versjonen ER fortsatt der, og knappen virker fortsatt.
+- _Manuell installasjon MIDT i bakgrunnsnedlastingen (R7-funn M6)._ Den gamle
+  rekkefølgen spurte `take_ready()` først, fikk `None` for en nedlasting i
+  luften, og falt rett ned i `download_and_install`: samme arkiv to ganger over
+  skole-wifi, og et ekte dobbeltinstall-vindu (bakgrunnsnedlastingen kan lande
+  under den manuelle installasjonen, og `app.restart()` fyrer `RunEvent::Exit`,
+  som da pakker ut samme arkiv over en app-katalog som allerede byttes ut).
+  Slissen bærer nå versjonen mens den laster ned, og kommandoen spør om DEN
+  først: svaret er en ny fase, `Downloading { version }`, og ingen ny
+  nettverkstur. Fasen har ingen egen setning ennå — panelet gjenbruker
+  «installeres når du lukker appen» / «v{v} klar» gatet på bryteren, som er
+  sant i begge stillinger. En egen ordlyd («lastes ned nå») er ønsket og
+  venter på en i18n-nøkkel.
+
+**Klasserommet (R7-funn #9).** Panelet MÅLTE 841 px innhold i en 702 px boks på
+1024×768: «Installer oppdateringer automatisk» lå på y=755 og «Se etter
+oppdatering» på y=814, mot et panel som sluttet på 736 — begge under folden,
+uten noe hint om at det fantes mer. Bryteren i ADR-014 er den ene tingen i
+panelet en lærer kan trenge å skru AV, og på projektoroppløsning så den ut til
+ikke å finnes. To grep, begge i CSS: en høyde-spørring under ~900 px som
+strammer marg, gap, båndpadding og navnefeltet (ingenting skjules, ingenting
+flyttes) — etterpå 705 px innhold i 705 px boks, overflow 0 på både 1024×768 og
+1280×800 — og en scroll-skygge på selve panelet, slik at de tilstandene
+spørringen ikke får plass til (et langt notat, et feilbånd) i det minste SIER
+at det finnes mer.
+
 ## ADR-015 — Terningen er en ekte 3D-modell, håndrullet (2026-08-31)
 
 Terningkortet tegner fem konvekse legemer — tetraeder, kube, oktaeder,

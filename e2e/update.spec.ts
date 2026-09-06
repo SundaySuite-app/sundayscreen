@@ -188,6 +188,221 @@ test("without the automatic install the old sentence stands", async ({
   );
 });
 
+// ── «Hva er nytt»: the note the feed has carried all along ──────────────────
+//
+// `latest.json` has had a `notes` field since the release pipeline was fixed
+// (it is written from `docs/release-notes/<tagg>.md` at BUILD time, so the
+// text exists before anyone can edit a release page). The app threw it away:
+// `UpdateStatus` carried a version and nothing else, so the panel could say
+// «v9.9.9 er klar» and the teacher approved a restart without being told what
+// it gave her (R7-funn H1).
+
+const NOTE = "Terningen kan nå vise 0–9.\nTimeren kan telle resten av timen.";
+
+test("the release note reaches the panel, with its line breaks", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.addInitScript((note: string) => {
+    const fixtures = (window as unknown as Record<string, unknown>)
+      .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    fixtures.update_pending = {
+      phase: "downloaded",
+      version: "9.9.9",
+      notes: note,
+    };
+  }, NOTE);
+  await page.goto("/");
+  await openPanel(page);
+
+  const panel = page.getByRole("region", { name: "Klasser og navn" });
+  await expect(panel.getByText("Hva er nytt")).toBeVisible();
+  // Both lines, as two lines: the note is plain text by contract
+  // (`scripts/release-notes.mjs` refuses markdown), and its line breaks are
+  // its structure — one change per line.
+  const body = panel.getByText("Terningen kan nå vise 0–9.");
+  await expect(body).toBeVisible();
+  await expect(body).toContainText("Timeren kan telle resten av timen.");
+  await expect(body).toHaveCSS("white-space", "pre-line");
+  // Rendered as TEXT, never as markup — a `**fet**` in a note must show up as
+  // asterisks on a projector rather than as a bold tag.
+  await expect(body).toHaveText(NOTE);
+});
+
+test("a version that came without a note says so", async ({ page }) => {
+  // Every release before v0.4.0-beta.3 shipped `"notes": ""`, and those
+  // manifests are still on the feed. An empty box would repeat that bug; a
+  // sentence admits it.
+  await installFixtures(page);
+  await page.addInitScript(() => {
+    const fixtures = (window as unknown as Record<string, unknown>)
+      .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    fixtures.update_pending = { phase: "available", version: "9.9.9" };
+  });
+  await page.goto("/");
+  await openPanel(page);
+
+  const panel = page.getByRole("region", { name: "Klasser og navn" });
+  await expect(panel.getByText("Hva er nytt")).toBeVisible();
+  await expect(
+    panel.getByText("Ingen beskrivelse fulgte med denne versjonen"),
+  ).toBeVisible();
+});
+
+test("a manual check shows the note it just fetched", async ({ page }) => {
+  // The manual answer is the FRESHER of the two, so this note comes from the
+  // status itself rather than from the mailbox.
+  await installFixtures(page);
+  await page.addInitScript(() => {
+    const fixtures = (window as unknown as Record<string, unknown>)
+      .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    fixtures.update_check = {
+      phase: "available",
+      version: "9.9.9",
+      notes: "Klassepanelet får plass på projektoren.",
+    };
+  });
+  await page.goto("/");
+  await openPanel(page);
+
+  await page.getByRole("button", { name: "Se etter oppdatering" }).click();
+  await expect(page.getByText("Versjon 9.9.9 er klar")).toBeVisible();
+  await expect(
+    page.getByText("Klassepanelet får plass på projektoren."),
+  ).toBeVisible();
+});
+
+// ── «Oppdater og start på nytt» while the automatic half is fetching ─────────
+//
+// The old order asked `take_ready()` first, got `None` for a download in
+// flight, and fell straight through to the network: the same archive fetched
+// twice over a school wifi, and a window where the background download could
+// land mid-install and be unpacked a second time by the exit hook
+// (R7-funn M6). The backend now answers `downloading` instead.
+
+test("pressing install mid-download does not start a second one", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.addInitScript(() => {
+    const fixtures = (window as unknown as Record<string, unknown>)
+      .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    // Found, not yet downloaded — which is exactly the mailbox state while
+    // the background download runs.
+    fixtures.update_pending = {
+      phase: "available",
+      version: "9.9.9",
+      notes: "Terningen kan nå vise 0–9.",
+    };
+    fixtures.update_install = { phase: "downloading", version: "9.9.9" };
+  });
+  await page.goto("/");
+  await openPanel(page);
+
+  const panel = page.getByRole("region", { name: "Klasser og navn" });
+  await expect(panel.getByText("v9.9.9 klar")).toBeVisible();
+
+  await panel
+    .getByRole("button", { name: "Oppdater og start på nytt" })
+    .click();
+
+  // The honest answer: it IS on its way, and it installs at closing time —
+  // the promise the download is already keeping. No restart, no second fetch.
+  await expect(
+    panel.getByText("v9.9.9 installeres når du lukker appen"),
+  ).toBeVisible();
+  // …and the note stays on screen. She pressed a button, she did not ask to
+  // stop reading what the version brings.
+  await expect(panel.getByText("Terningen kan nå vise 0–9.")).toBeVisible();
+  // Nothing went wrong, so nothing says it did.
+  await expect(panel.getByText("Noe gikk galt")).toHaveCount(0);
+});
+
+// ── The projector resolution (R7-funn klasserom #9) ─────────────────────────
+//
+// MEASURED before the fix on 1024×768: the panel's content was 841 px in a
+// 702 px box, «Installer oppdateringer automatisk» sat at y=755 and «Se etter
+// oppdatering» at y=814, against a panel that ended at 736 — both below the
+// fold, with no scroll indicator anywhere. ADR-014's switch is the one control
+// here a teacher may need to turn OFF, and on a projector it did not appear to
+// exist.
+
+test.describe("on a 1024×768 projector", () => {
+  test.use({ viewport: { width: 1024, height: 768 } });
+
+  test("the update controls are on screen without scrolling", async ({
+    page,
+  }) => {
+    await installFixtures(page);
+    await page.goto("/");
+    await openPanel(page);
+
+    const panel = page.getByRole("region", { name: "Klasser og navn" });
+    await expect(panel).toBeVisible();
+
+    // Visible is not enough — a control 80 px below the fold is «visible» to
+    // Playwright too. The assertion is GEOMETRIC: inside the panel's own box.
+    const box = (await panel.boundingBox())!;
+    for (const control of [
+      page.getByRole("checkbox", { name: AUTO_LABEL }),
+      page.getByRole("button", { name: "Se etter oppdatering" }),
+    ]) {
+      const rect = (await control.boundingBox())!;
+      expect(rect.y + rect.height).toBeLessThanOrEqual(box.y + box.height);
+    }
+
+    // …and the panel does not scroll at all in this state.
+    const overflow = await panel.evaluate(
+      (el) => el.scrollHeight - el.clientHeight,
+    );
+    expect(overflow).toBe(0);
+  });
+
+  test("a panel that DOES scroll says so at its bottom edge", async ({
+    page,
+  }) => {
+    // The backstop for every state the height query cannot fit — a long
+    // release note, an error band, a window shorter than we measured. The
+    // shadow is four background layers on the scroll container; two ride with
+    // the content and mask it at the edges, two stay put and are what shows.
+    await installFixtures(page);
+    await page.addInitScript(() => {
+      const fixtures = (window as unknown as Record<string, unknown>)
+        .__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+      fixtures.update_pending = {
+        phase: "downloaded",
+        version: "9.9.9",
+        notes: Array.from(
+          { length: 18 },
+          (_, i) => `Linje ${i + 1} i notatet`,
+        ).join("\n"),
+      };
+    });
+    await page.goto("/");
+    await openPanel(page);
+
+    const panel = page.getByRole("region", { name: "Klasser og navn" });
+    const overflow = await panel.evaluate(
+      (el) => el.scrollHeight - el.clientHeight,
+    );
+    expect(overflow).toBeGreaterThan(0);
+
+    const layers = await panel.evaluate(
+      (el) => getComputedStyle(el).backgroundAttachment,
+    );
+    // local, local, scroll, scroll (+ the flat colour underneath): the pairing
+    // IS the mechanism, so it is what gets pinned.
+    expect(layers).toBe("local, local, scroll, scroll, scroll");
+
+    // The note itself scrolls rather than growing without bound — that ceiling
+    // is what keeps the section's height a constant whatever the feed says.
+    const noteScrolls = await panel
+      .getByText("Linje 1 i notatet")
+      .evaluate((el) => el.scrollHeight > el.clientHeight);
+    expect(noteScrolls).toBe(true);
+  });
+});
+
 test("the channel toggle flips and saves", async ({ page }) => {
   await installFixtures(page);
   await page.goto("/");

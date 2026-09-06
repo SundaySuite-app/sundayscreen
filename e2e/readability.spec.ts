@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { sizeFor } from "../app/widgets/groups/groups-fit-core";
 import { installFixtures } from "./harness";
 
 /**
@@ -274,9 +275,8 @@ test("25 pupils in two groups are readable — on the card and enlarged", async 
 
   const groups = page.locator('[data-widget-kind="groups"]');
   await groups.hover();
-  // The default is four groups; two is the crowded case (13 to a panel).
-  await groups.getByRole("button", { name: "Senk tallet" }).click();
-  await groups.getByRole("button", { name: "Senk tallet" }).click();
+  // Two groups is the default (groups/index.ts) — and the crowded case, 13
+  // to a panel.
   await groups.getByRole("button", { name: "Del inn" }).click();
   await expect(groups.locator("li")).toHaveCount(25);
 
@@ -320,6 +320,288 @@ test("25 pupils in two groups are readable — on the card and enlarged", async 
   // a «Vis stort» that never happened.
   expect(bigPanel.height).toBeGreaterThan(panel.height * 2);
 });
+
+// REAL names. «Elev N» is narrow (no M, no A, no m) and short, and the group
+// journey above was green while «Andreas» wrapped and «Daniel» went under the
+// panel's clipping edge (R7-funn S2-1). These are the two lists a teacher
+// actually types: the class as first names, and the class as the school
+// system exports it.
+const FIRST_NAMES_20 = [
+  "Mathias",
+  "Kristin",
+  "Andreas",
+  "Camilla",
+  "Henrik",
+  "Jørgen",
+  "Marius",
+  "Silje",
+  "Martin",
+  "Nikolai",
+  "Amanda",
+  "Sander",
+  "Oskar",
+  "Victoria",
+  "Fredrik",
+  "Emilie",
+  "Tobias",
+  "Malin",
+  "Daniel",
+  "Hedda",
+];
+
+const FULL_NAMES_25 = [
+  "Anne-Sofie Kristiansen",
+  "Kristoffer Andreassen",
+  "Aleksander Pettersen",
+  "Mathias Berg",
+  "Amanda Moen",
+  "Henrik Moen",
+  "Amalie Dahl",
+  "Isak Halvorsen",
+  "Theodor Lund",
+  "Elias Strand",
+  "Emma Nilsen",
+  "Nora Hansen",
+  "Oliver Olsen",
+  "Sofie Larsen",
+  "Jakob Johansen",
+  "Ella Andersen",
+  "Lucas Pedersen",
+  "Maja Karlsen",
+  "William Eriksen",
+  "Leah Svendsen",
+  "Noah Jensen",
+  "Mia Haugen",
+  "Filip Bakke",
+  "Ingrid Solberg",
+  "Magnus Lie",
+];
+
+/** One group panel, measured against the real cascade. */
+interface PanelMeasure {
+  /** The panel's content box — what `cqw`/`cqh` resolve against. */
+  box: { w: number; h: number };
+  /** The stylesheet's inputs, as the panel's children see them. */
+  inputs: { lines: number; cols: 1 | 2; nameEm: number };
+  fontPx: number;
+  /** Names drawn on more than one line. */
+  wrapped: string[];
+  /** Names whose box reaches past the panel's content box — `.group` is
+   *  `overflow: hidden`, so these are the pupils the class cannot see. */
+  clipped: string[];
+  /** Names the chip had to cut («…»). */
+  ellipsed: string[];
+  /** Unused height under the list, and unused width beside the widest name,
+   *  as fractions of the panel. */
+  emptyH: number;
+  emptyW: number;
+}
+
+async function measurePanels(
+  groups: import("@playwright/test").Locator,
+): Promise<PanelMeasure[]> {
+  return groups.evaluate((root) => {
+    const out: PanelMeasure[] = [];
+    for (const panel of root.querySelectorAll("section")) {
+      const cs = getComputedStyle(panel);
+      const r = panel.getBoundingClientRect();
+      const left = r.left + parseFloat(cs.paddingLeft);
+      const right = r.right - parseFloat(cs.paddingRight);
+      const top = r.top + parseFloat(cs.paddingTop);
+      const bottom = r.bottom - parseFloat(cs.paddingBottom);
+      const list = panel.querySelector("ul")!;
+      const lcs = getComputedStyle(list);
+      const chips = [...panel.querySelectorAll("li")];
+      const wrapped: string[] = [];
+      const clipped: string[] = [];
+      const ellipsed: string[] = [];
+      let widestText = 0;
+      let column = 0;
+      for (const chip of chips) {
+        const range = document.createRange();
+        range.selectNodeContents(chip);
+        const rects = [...range.getClientRects()];
+        // On more than one LINE — distinct tops, not a rect count: a cut
+        // («…») name can report two fragments on the same line, and a grid
+        // row stretches every chip in it to the tallest, so neither the
+        // rect count nor the chip's own height says what a line break is.
+        const tops = new Set(rects.map((rect) => Math.round(rect.top)));
+        if (tops.size > 1) wrapped.push(chip.textContent ?? "");
+        const cr = chip.getBoundingClientRect();
+        const slack = 0.5;
+        if (
+          cr.left < left - slack ||
+          cr.right > right + slack ||
+          cr.top < top - slack ||
+          cr.bottom > bottom + slack
+        ) {
+          clipped.push(chip.textContent ?? "");
+        }
+        if (chip.scrollWidth > chip.clientWidth + slack) {
+          ellipsed.push(chip.textContent ?? "");
+        }
+        widestText = Math.max(widestText, rects[0]?.width ?? 0);
+        column = cr.width;
+      }
+      const w = right - left;
+      const h = bottom - top;
+      out.push({
+        box: { w, h },
+        inputs: {
+          lines: Number(lcs.getPropertyValue("--lines")),
+          cols: Number(lcs.getPropertyValue("--chip-cols")) as 1 | 2,
+          nameEm: Number(lcs.getPropertyValue("--name-em")),
+        },
+        fontPx: parseFloat(getComputedStyle(chips[0]).fontSize),
+        wrapped,
+        clipped,
+        ellipsed,
+        emptyH: (bottom - list.getBoundingClientRect().bottom) / h,
+        emptyW: column > 0 ? 1 - widestText / column : 1,
+      });
+    }
+    return out;
+  });
+}
+
+/** What every panel on the board has to satisfy, whatever the names: one
+ *  line per name, nothing cut, nothing under the edge — and the stylesheet's
+ *  size agreeing with groups-fit-core's pixel twin of the same formula, on
+ *  the box the stylesheet actually had. That last one is the seam: the
+ *  widget CHOOSES columns with the core's numbers and the stylesheet SIZES
+ *  with its own, and a retune of one that misses the other would put a
+ *  two-column decision under a one-column size. */
+function expectWholePanels(panels: PanelMeasure[], what: string): void {
+  expect(panels.length, `${what}: no panels`).toBeGreaterThan(0);
+  for (const [i, p] of panels.entries()) {
+    const where = `${what}, panel ${i + 1}`;
+    expect(p.ellipsed, `${where}: names cut with «…»`).toEqual([]);
+    expect(p.clipped, `${where}: names under the clipping edge`).toEqual([]);
+    expect(p.wrapped, `${where}: names on two lines`).toEqual([]);
+    const predicted = sizeFor(p.box, p.inputs);
+    expect(
+      Math.abs(p.fontPx - predicted) / predicted,
+      `${where}: stylesheet says ${p.fontPx}px, the core says ${predicted}px`,
+    ).toBeLessThan(0.02);
+  }
+}
+
+/** The formula's promise is «whichever runs out first decides» — so on
+ *  every panel at least one axis IS run out. A panel with room to spare on
+ *  both is type that could have been bigger (S2-2 measured 36–51 % of the
+ *  height empty with the width halved by a split that did not pay). */
+function expectOneAxisUsedUp(panels: PanelMeasure[], what: string): void {
+  for (const [i, p] of panels.entries()) {
+    expect(
+      Math.min(p.emptyH, p.emptyW),
+      `${what}, panel ${i + 1}: ${Math.round(p.emptyH * 100)} % of the height and ${Math.round(p.emptyW * 100)} % of the width unused`,
+    ).toBeLessThanOrEqual(0.2);
+  }
+}
+
+/** Deal a seeded class into `n` groups and return the widget. */
+async function dealGroups(
+  page: import("@playwright/test").Page,
+  names: string[],
+  viewport: { width: number; height: number },
+  n: number,
+): Promise<import("@playwright/test").Locator> {
+  await installFixtures(page, { memberNames: names });
+  await page.setViewportSize(viewport);
+  await page.goto("/");
+  await addWidget(page, "Grupper");
+  const groups = page.locator('[data-widget-kind="groups"]');
+  await groups.hover();
+  for (let i = 2; i < n; i++) {
+    await groups.getByRole("button", { name: "Øk tallet" }).click();
+  }
+  await groups.getByRole("button", { name: "Del inn" }).click();
+  await expect(groups.locator("li")).toHaveCount(names.length);
+  return groups;
+}
+
+async function enlarge(
+  groups: import("@playwright/test").Locator,
+): Promise<void> {
+  await groups.hover();
+  await groups.getByRole("button", { name: "Vis stort" }).click();
+}
+
+const PROJECTORS = [
+  { width: 1024, height: 768 },
+  { width: 1280, height: 800 },
+];
+
+for (const viewport of PROJECTORS) {
+  const vp = `${viewport.width}×${viewport.height}`;
+
+  test(`twenty first names in two groups are whole and readable @${vp}`, async ({
+    page,
+  }) => {
+    // THE finding (S2-1). Ten names to a panel, «Andreas» and «Amanda» among
+    // them: the per-character budget put «Andreas» on two lines, the extra
+    // line pushed «Tobias» and «Daniel» under the panel edge, and nothing
+    // was red — group 2 looked perfect, so the teacher saw a random fault.
+    // Measured before the fix: 2 of 10 gone on the 1024 card, 4 of 10 gone
+    // enlarged on 1280. Now the widest name is measured, not counted, and a
+    // chip never wraps.
+    //
+    // FLOORS, not pins: the formula lands at 20,0 / 25,4 px on the card and
+    // 45,7 / 59,0 px enlarged today (1024 / 1280).
+    const groups = await dealGroups(page, FIRST_NAMES_20, viewport, 2);
+    const name = groups.locator("li").first();
+    await expect.poll(() => fontSizePx(name)).toBeGreaterThanOrEqual(15);
+    expectWholePanels(await measurePanels(groups), `first names @${vp}, card`);
+
+    await enlarge(groups);
+    await expect.poll(() => fontSizePx(name)).toBeGreaterThanOrEqual(40);
+    expectWholePanels(
+      await measurePanels(groups),
+      `first names @${vp}, enlarged`,
+    );
+  });
+
+  for (const n of [2, 3]) {
+    test(`twenty-five full names in ${n} groups lose nobody @${vp}`, async ({
+      page,
+    }) => {
+      // S2-2. «Anne-Sofie Kristiansen» is 22 characters and 11,2 em; the
+      // 18-character cap made the width term budget for a name that did not
+      // exist, the rest wrapped, and in three groups the ninth pupil of the
+      // panel was under the edge on the standard card. And two columns were
+      // chosen from the COUNT (eight names up), halving a width that was
+      // already the binding term: 21,8 px enlarged where one column gives
+      // 26,2.
+      //
+      // The floors are what a 13-line (or 9-line) column of 11 em names can
+      // physically be in these boxes — the fix removes the loss, it cannot
+      // add height. Measured today (card / enlarged): two groups 8,7 / 26,2
+      // at 1024 and 12,5 / 27,8 at 1280; three groups 10,2 / 23,3 and
+      // 13,0 / 30,4. Floors sit ~5 % under.
+      const floors = {
+        1024: { 2: [8, 24], 3: [9.5, 22] },
+        1280: { 2: [11.5, 26], 3: [12, 28] },
+      }[viewport.width as 1024 | 1280]![n as 2 | 3]!;
+
+      const groups = await dealGroups(page, FULL_NAMES_25, viewport, n);
+      const name = groups.locator("li").first();
+      await expect
+        .poll(() => fontSizePx(name))
+        .toBeGreaterThanOrEqual(floors[0]);
+      let panels = await measurePanels(groups);
+      expectWholePanels(panels, `full names/${n} @${vp}, card`);
+      expectOneAxisUsedUp(panels, `full names/${n} @${vp}, card`);
+
+      await enlarge(groups);
+      await expect
+        .poll(() => fontSizePx(name))
+        .toBeGreaterThanOrEqual(floors[1]);
+      panels = await measurePanels(groups);
+      expectWholePanels(panels, `full names/${n} @${vp}, enlarged`);
+      expectOneAxisUsedUp(panels, `full names/${n} @${vp}, enlarged`);
+    });
+  }
+}
 
 test("a five-name draw is readable, and grows with the card", async ({
   page,

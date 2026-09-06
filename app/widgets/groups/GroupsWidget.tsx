@@ -3,7 +3,7 @@
 // its config — the class walks in to the same groups the projector showed
 // yesterday.
 
-import { useState } from "preact/hooks";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tf, tn } from "../../i18n";
@@ -18,6 +18,14 @@ import {
 import { activeClass, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import { toast } from "../../ui/toast";
+import {
+  type Box,
+  chooseLayout,
+  gridStyle,
+  longestGroup,
+  longestNameEm,
+} from "./groups-fit-core";
+import { adoptChipFont, measureEpoch, nameEm } from "./groups-measure";
 import styles from "./groups.module.css";
 
 export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
@@ -45,6 +53,44 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
   const names = new Set(pool.map((m) => m.name));
   const stale = cfg.lastResult.some((g) => g.some((n) => !names.has(n)));
   const result = stale ? [] : cfg.lastResult;
+
+  // The size formula's inputs (groups-fit-core). The board's widest name is
+  // MEASURED — `measureEpoch` is the subscription that re-measures when the
+  // font settles — and one-column-or-two is decided from the panel's own
+  // content box, which is the one number the formula in the stylesheet
+  // cannot compare against itself.
+  void measureEpoch.value;
+  const resultRef = useRef<HTMLDivElement | null>(null);
+  const [panelBox, setPanelBox] = useState<Box | null>(null);
+  useLayoutEffect(() => {
+    const panel = resultRef.current?.querySelector("section");
+    if (!panel) return;
+    // Font first: the chip is in the DOM now, and the stylesheet has given
+    // it the weight the canvas has to measure with.
+    const chip = panel.querySelector("li");
+    if (chip) adoptChipFont(chip);
+    if (typeof ResizeObserver === "undefined") return;
+    // Every panel is the same box (`1fr` rows and columns), so one observer
+    // on the first is the measurement for all. The content box is what the
+    // stylesheet's `cqw`/`cqh` resolve against; `contentRect` is the same
+    // box without the array-of-sizes ceremony. No feedback: the panel's
+    // size comes from the card and the group count, never from the font it
+    // ends up with — `.group` is a size container precisely so that it does
+    // not grow to its names.
+    const ro = new ResizeObserver(([entry]) => {
+      const { width: w, height: h } = entry.contentRect;
+      setPanelBox((prev) =>
+        prev && prev.w === w && prev.h === h ? prev : { w, h },
+      );
+    });
+    ro.observe(panel);
+    return () => ro.disconnect();
+  }, [result.length]);
+  const fit = chooseLayout(
+    panelBox,
+    longestGroup(result),
+    longestNameEm(result, nameEm),
+  );
 
   const doSplit = async () => {
     const cls = activeClass.peek();
@@ -109,7 +155,11 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
 
   return (
     <div class={styles.groups}>
-      <div class={styles.result} style={gridStyle(result)}>
+      <div
+        ref={resultRef}
+        class={styles.result}
+        style={gridStyle(result.length, fit)}
+      >
         {result.length === 0 ? (
           <div class={styles.empty}>
             {noNames ? (
@@ -137,7 +187,7 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
             <section
               key={i}
               class={styles.group}
-              data-split={splittable(result) || undefined}
+              data-split={fit.cols === 2 || undefined}
             >
               <h3 class={styles.groupTitle}>
                 {tf("groups.header", { n: i + 1 })}
@@ -216,71 +266,4 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
       </div>
     </div>
   );
-}
-
-/**
- * From how many names to split a panel into two columns.
- *
- * The container query in the stylesheet owns the other half of the decision
- * (is the panel wide enough), and this is the half it cannot see: below eight
- * names the second column halves the width each name gets before it has
- * halved enough lines to pay for it, so the split makes the type SMALLER.
- */
-const SPLIT_MIN_NAMES = 8;
-
-/** How long a name the width term budgets for. The floor keeps a class of
- *  «Bo» and «Li» from turning two names into a poster; the ceiling keeps one
- *  outlier from shrinking the whole board. */
-const NAME_CHARS_MIN = 6;
-const NAME_CHARS_MAX = 18;
-
-/**
- * Groups are laid out on a grid whose column count comes from HOW MANY
- * groups there are — flex-wrap gave 3-per-row always, so four groups broke
- * into 3 + 1 and the last one was clipped. Near-square reads best on a
- * board: 2→2, 3→3, 4→2×2, 5–6→3, 7–9→3, more→4.
- *
- * Rows are spelled out as `1fr` for the same reason the panels are size
- * containers (see groups.module.css): a panel with `contain: size` no longer
- * grows to its names, so the row heights have to be the grid's decision, and
- * equal rows are what makes one shared name size honest.
- *
- * The three custom properties are the INPUTS to the size formula — the counts
- * CSS cannot work out for itself. Nothing here is a font size: what a name
- * measures is decided in the stylesheet, against the panel it stands in.
- */
-function gridStyle(groups: string[][]): string {
-  const count = groups.length;
-  if (count === 0) return "";
-  const cols = count <= 3 ? count : count <= 4 ? 2 : count <= 9 ? 3 : 4;
-  const rows = Math.ceil(count / cols);
-  const lines = longestGroup(groups);
-  const chars = Math.min(
-    Math.max(longestName(groups), NAME_CHARS_MIN),
-    NAME_CHARS_MAX,
-  );
-  return [
-    `grid-template-columns: repeat(${cols}, minmax(0, 1fr))`,
-    `grid-template-rows: repeat(${rows}, minmax(0, 1fr))`,
-    `--lines: ${lines}`,
-    `--lines-split: ${Math.ceil(lines / 2)}`,
-    `--name-chars: ${chars}`,
-  ].join("; ");
-}
-
-function longestGroup(groups: string[][]): number {
-  return groups.reduce((max, g) => Math.max(max, g.length), 0);
-}
-
-function longestName(groups: string[][]): number {
-  return groups.reduce(
-    (max, g) => g.reduce((m, n) => Math.max(m, n.length), max),
-    0,
-  );
-}
-
-/** Are the panels crowded enough for the two-column layout to be worth
- *  asking the container about? */
-function splittable(groups: string[][]): boolean {
-  return longestGroup(groups) >= SPLIT_MIN_NAMES;
 }

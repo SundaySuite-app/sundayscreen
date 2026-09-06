@@ -30,17 +30,18 @@
  * unreadable past the front row) and the columns stretch to use the
  * height instead of huddling at the top.
  *
- * The counts the size formula runs on arrive here inline, from the widget;
- * the formula itself lives on `.group`'s children (below). */
+ * The three inputs the size formula runs on arrive here inline, from the
+ * widget (groups-fit-core's `gridStyle`); the formula itself lives on
+ * `.group`'s children (below). These are the values for a board with no
+ * result — a split always overwrites all three. */
 .result {
   flex: 1;
   display: grid;
   gap: 2cqmin;
   min-height: 0;
   --lines: 1;
-  --lines-split: 1;
   --chip-cols: 1;
-  --name-chars: 8;
+  --name-em: 4.8;
 }
 
 .empty {
@@ -60,10 +61,10 @@
    `container-type: size` also means the panel no longer sizes to its names,
    which is why `.result` hands out explicit `1fr` rows: every panel is the
    same box, so every name is the same size. `overflow: hidden` stays as the
-   last resort — the formula is set to clear the budget, not to fill it. */
+   last resort — the formula is set to clear the budget, not to fill it, and
+   since a name can no longer wrap (`.chip` below) the budget is exact. */
 .group {
   container-type: size;
-  container-name: group;
   min-width: 0;
   min-height: 0;
   background: var(--bg);
@@ -72,7 +73,7 @@
   overflow: hidden;
 }
 
-/* ── The size formula (R7-funn K1) ─────────────────────────────────────────
+/* ── The size formula (R7-funn K1, retuned for S2-1/S2-2) ─────────────────
  *
  * The ladder this replaces counted NAMES (`max(rows, ceil(longest/5))` → one
  * of four fixed scales) and so answered the same 0.56 whether the panel was
@@ -85,20 +86,32 @@
  *     0.14 of row gap; the heading and its margin cost about 1.1 lines more.
  *     Hence `1.42 × lines + 1.1`, a hair conservative on both counts because
  *     `.group` CLIPS and a cut-off pupil is worse than a small one.
- *   width — a name is about 0.55 em per character, `--name-chars` is the
- *     longest one on the board, and a split panel pays it per COLUMN.
+ *   width — `--name-em` is the widest name on the board MEASURED at 1em (a
+ *     per-character guess wrapped «Andreas» and clipped the pupil under it,
+ *     R7-funn S2-1), with 4 % of headroom for hinting, and a split panel
+ *     pays it per COLUMN plus the `1em` column gap between them. The gap is
+ *     one name size, so it is the `+ (cols − 1)` in the divisor — NOT a
+ *     `- 1em` in the numerator: `em` in a font-size declaration is the
+ *     parent's size, and here that is the card's, not the name's.
  *
  * `min()` of the two, so whichever runs out first decides.
+ *
+ * The same formula runs in pixels in groups-fit-core.ts (`sizeFor`), where
+ * one-column-or-two is decided by comparing the two results — a comparison
+ * CSS cannot make. The four literals here (1.42, 1.1, 1.04, the gap's 1)
+ * are the constants exported there; retune them TOGETHER, and the
+ * readability journeys pin that a rendered panel agrees with the numbers.
  *
  * ⚠️ TWO placement rules, and the formula is silently wrong if either is
  * broken (both were, and both were caught only by measuring):
  *
  *   - it must be declared on the panel's CHILDREN, not on `.result`. A custom
  *     property's `var()`s are substituted where the property is DECLARED, so
- *     a `--name-size` written on `.result` bakes in `.result`'s counts — and
- *     the split's `--lines`/`--chip-cols` below, which land on these
- *     children, would never reach it. (Measured: two columns of names sized
- *     for thirteen lines.) Only the LENGTHS stay unresolved.
+ *     a `--name-size` written on `.result` would bake in whatever `--lines`
+ *     and `--chip-cols` resolve to THERE, and any rule that later hands a
+ *     child different counts would never reach it. (Measured, back when the
+ *     split was a container query on the children: two columns of names
+ *     sized for thirteen lines.) Only the LENGTHS stay unresolved.
  *   - it must not be a `font-size` on `.group` itself. Container-query units
  *     in a declaration on the container resolve against that container's own
  *     ancestor container — i.e. against the card, which is the bug. Here they
@@ -106,26 +119,11 @@
 .group > * {
   --name-size: min(
     calc(100cqh / (var(--lines) * 1.42 + 1.1)),
-    calc(100cqw / (var(--chip-cols) * var(--name-chars) * 0.55))
+    calc(
+      100cqw /
+        (var(--chip-cols) * var(--name-em) * 1.04 + (var(--chip-cols) - 1))
+    )
   );
-}
-
-/* TWO COLUMNS in a panel that has the width for them. Thirteen names down one
-   column of a 452×527 panel is 28 px of type; the same thirteen in two
-   columns is 48 px, because the height budget is what binds and splitting
-   halves it. It is a CONTAINER question, not a count question — a narrow tall
-   panel (200×500) is better off with one column, and the query says so: split
-   only when the panel is at least 0.7 as wide as it is tall.
-   `data-split` is the count half of the same decision (the widget sets it
-   from eight names up; below that the width cap eats the gain), and it sits
-   on the panel so ONE rule can hand the new line count to the heading and the
-   names together — they have to agree, or the heading is sized for a column
-   that is no longer there. */
-@container group (min-aspect-ratio: 7 / 10) {
-  .group[data-split] > * {
-    --chip-cols: 2;
-    --lines: var(--lines-split);
-  }
 }
 
 .groupTitle {
@@ -150,13 +148,26 @@
 }
 
 /* Plain lines, not pills: at reading size the pill borders became visual
- * noise, and a column of names is what a pupil scans for their own. */
+ * noise, and a column of names is what a pupil scans for their own.
+ *
+ * ONE line per name, always. `overflow-wrap: anywhere` let a name the width
+ * term had not budgeted for break onto a second line — a line the height
+ * term knew nothing about, so the last pupil in the panel went under the
+ * clipping edge with nothing on the board to say so (R7-funn S2-1). Now a
+ * name that does not fit costs itself its tail («…») and never its
+ * neighbour. With the width measured this is the exception's exit, not a
+ * path a real class list takes — the readability journeys assert that no
+ * name up to 22 characters is ever cut. `min-width: 0` is what lets the grid
+ * cell shrink to the column instead of to the name. */
 .chip {
   font-size: inherit;
   line-height: 1.25;
   font-weight: 600;
   color: var(--ink);
-  overflow-wrap: anywhere;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Only «Del inn» lives here now, and it is CENTRED: the mode buttons and the

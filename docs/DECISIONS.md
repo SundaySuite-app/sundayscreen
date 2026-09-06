@@ -724,6 +724,25 @@ så mellom en import og første lagring finnes det bytes i databasen klemma
 aldri har sett. Porten som snakker med operativsystemet kan ikke anta noe
 annet.
 
+**…og siden R7 (funn H2): klikkflaten FLUSHER persisteren før den ber om å få
+åpne.** At `link_open` leser adressen fra DATABASEN er regelen som holder
+URL-en ute av webviewet — og prisen for regelen er at klikket er en
+les-etter-skriv over to ulike pool-tilkoblinger. Lim inn en adresse og trykk
+«Åpne» i samme sekund: `layout_save`-transaksjonen og `link_open`-SELECTen går
+hver sin vei (WAL, default pool-størrelse), og lesingen kan vinne. Da åpner
+OS-et den FORRIGE adressen på projektoren mens kortet viser den nye verten —
+eller, på et kort som aldri er lagret, nekter en adresse som ser helt gyldig
+ut. `LinkWidget` venter derfor på `flushPending()` FØR `linkOpen`, samme
+disiplin som designøktas lån og tilbakelevering: den som ber baksiden lese det
+tavla holder, må flushe tavla først. Riggen måtte gjøres uærlig for å fange det
+— fixture-backenden svarer i en mikrotask og vinner kappløpet hver gang, så
+`layout_save` fikk en forsinkelsesknott (`setFixtureKnobs`) og `link_open` slår
+nå adressen opp i den LAGREDE layouten slik `commands/links.rs` gjør. En rigg
+som aldri taper kappløpet kan ikke se at appen taper det. Kjent rest: feiler
+`layout_save` (chippen står), åpner `link_open` fortsatt den gamle raden —
+vurdert og lagt bort, for å nekte åpning ville gjort lenka død i stedet for
+gammel, og chippen sier det allerede.
+
 **Opener-pluginen registreres med `open_js_links_on_click(false)` — rundens
 funn, og det måtte LESES, ikke antas.** `tauri_plugin_opener::init()` er
 `Builder::default().build()`, og den defaulten er `true`: den injiserer et
@@ -778,6 +797,37 @@ stedet er base64 over IPC — ~13 MiB JSON for et 10 MiB fotografi — ÉN gang 
 bilde per oppstart, fordi den refcountede blob-cachen holder object-URL-en så
 lenge et kort viser bildet.
 
+**…og siden R7: blob-cachen SLIPPER ikke object-URL-en i samme øyeblikk som
+kortet gjør det.** «Én gang per bilde per oppstart» stemte ikke på tvers av
+skjermbytter: `release` slettet oppføringen ved refs = 0, så hver retur til
+skjermen var en ny `image_load` — fem s1↔s2-rundturer målt til fem fulle
+lastinger, ~13 MiB JSON hver og en dekoding på hovedtråden (22 ms på en M-Mac,
+154 ms med 6× struping). Og byttet er ikke en sjelden gest: planleggerens
+auto-bytte gjør det FOR henne ved hver timestart. Siste `release` legger derfor
+bildet i en retensjonskø i stedet for å revoke det, med et tak på
+`IMAGE_FILE_MAX_BYTES × 3` — tre bilder på filtaket, skrevet som taket ganger
+tre og ikke som «32 MiB», så tallet ikke kan drifte fra taket det er utledet
+av. Dybden er en ekte rotasjon (timens skjerm, den hun blar til, og den før
+den); det som faller ut av køen blir revoket, og en oppføring uten noe å vise
+slippes med det samme. Object-URL-en pinner bloben sin så lenge dokumentet
+lever, så «behold alt» er lekkasjen modulen finnes for å hindre — taket er
+grensa mellom de to. Dekodingen bruker `Uint8Array.fromBase64` når webviewet
+har den (7× raskere, målt) og løkka når det ikke har den; feature-detekteres,
+aldri antas, og konstruktøren er injisert så BEGGE grenene er node-testet.
+
+**«Fikk ikke lest bildet» er IKKE «bildet mangler» (R7-funn L9).** De var
+samme setning: `image_load` gikk gjennom `call()`, hvis null-fallback gjorde en
+feilet lesing umulig å skille fra baksidens ærlige «det finnes ikke noe slikt
+bilde her» — og cachen husket svaret. Én IPC-hikke fortalte altså læreren at
+bildet hennes var borte, med en remedie (finn fila igjen) som ikke gjelder.
+Cachen har nå tre utfall (`ok` / `missing` / `unreadable`), `image_load` går
+gjennom `write()` — den ene formen som både HUSKER feilen i ringen og lar
+avvisningen reise — og kortet sier «Fikk ikke lest bildet nå — det er ikke
+borte» med en «Prøv å lese på nytt»-knapp. Knappen er en effekt-avhengighet og
+ikke et nytt `acquire`: opprydningen kjører først, så forsøket er en
+release-så-acquire og refcountet holder. En feilet lesing er aldri det bufrede
+svaret på et NYTT spørsmål.
+
 **Det finnes ingen `image_delete`.** «Fjern bilde» skriver `imageId: ""` og
 ingenting mer. Tre veier gjør «slett når widgeten går» galt, og alle tre er
 ekte her: `scene_duplicate` kopierer configs rått, så samme id kan leve på
@@ -810,3 +860,133 @@ lærernotatet sier at bildene er med, og overløpet er kvitteringsveien — take
 er 32 bilder / 20 MiB base64, og det som ikke fikk plass eller ikke ble funnet
 TELLES og VISES («… bilder fikk ikke plass i fila»), aldri svelges. Importen
 sniffer bytene på nytt, og en fiendtlig id i fila blir aldri en sti.
+
+## ADR-019 — Panelene lastes ved første åpning (2026-09-06)
+
+**Grensen.** `ManagePanel` og `PlannerPanel` nås kun gjennom `import()` i
+`app/Shell.tsx`; `app/ui/lazy-panel.tsx` er hjelperen, én for begge. Presedensen
+er ADR-017s QR-avsnitt — «encoderen nås KUN gjennom `import("./qr-core")`» —
+og mekanismen er den samme, bare større: 34 177 B JS og 22 257 B CSS forlater
+index-chunken, som hver lærer laster ved hver oppstart enten hun åpner et panel
+den dagen eller ikke. Isolert måling og de nye takene står i
+`scripts/check-bundle-budget.mjs`. Grensen er skjør på ÉN måte og bare én: en
+statisk import av en panelfil hvor som helst smelter klynga tilbake uten at noe
+blir rødt av seg selv — derfor pinner `e2e/lazy-panels.spec.ts` at oppstart
+ikke henter panel-chunken i det hele tatt, og derfor er JS- og CSS-takene satt
+til målt + ~5 kB i stedet for å bli stående der de sto.
+
+**STATE-modulene er med vilje IKKE med.** `state/planner.ts`,
+`state/classes.ts`, `state/attendance.ts`, `state/design-session.ts` og
+`state/scene-thumbs.ts` blir i index-chunken. De er ikke panelets private ting:
+verktøylinja, «Dagens time»-widgeten, forslagsbanneret, Escape-stigen og
+`inert`-en leser dem på en tavle der ingen paneler er åpne. Å flytte dem bak
+grensen ville lastet chunken ved oppstart likevel — og i verste fall gitt
+signalene to modulinstanser den dagen noe importerte dem fra feil side. Grensen
+er UI, og det er også det som gjør den trygg: et panel som ikke er lastet, kan
+ikke sitte på tilstand tavla trenger. `state/transfer.ts` fulgte derimot MED
+ManagePanel-chunken, og det er riktig av samme regel lest andre veien: panelet
+er dens eneste konsument, og modulen har ingen sideeffekter ved evaluering.
+
+**Lastevinduet har ingen tilstand å bli sittende fast i.** Åpne-signalet
+snus først, panelet monteres et tikk senere. I mellomtiden er tavla allerede
+`inert` og Escape peler allerede panelets trinn — begge leser SIGNALET
+(`modalPanelOpen`), ikke et montert panel, og det var slik allerede før denne
+runden. Escape i vinduet lukker altså det som var på vei, og ingenting dukker
+opp etterpå. Fokus overlevde forsinkelsen fordi R7-B1 sporer åpneren med en
+`focusin`-lytter i stedet for å lese `document.activeElement` ved montering:
+åpneren var registrert før signalet snudde. Ingen spinner i vinduet — 2–3 ms
+mot lokal disk, og en plate som blinker ett bilde er verre på en projektor enn
+ingenting.
+
+**Designøkta (ADR-016) kan ikke få to `<Surface/>`.** Skallet avmonterer sin
+når `designSession` settes, og panelet monterer sin egen inne i den lånte
+tavla. Kunne skallets forsvinne FØR panel-chunken har landet? Nei, og grunnen
+er retningen på kallet: `enterDesign` kalles fra `DayTab`/`WeekTab`, altså fra
+kode som ligger I chunken. Ingen session kan starte før chunken er lastet, og
+et lastevindu er derfor alltid et vindu uten session. Det er også hvorfor
+`onFailed` for planleggeren går gjennom `closePlanner` og ikke setter signalet
+selv: her finnes det ingen session å levere tavla tilbake fra, men en regel med
+ett unntak stavet i skallet er en regel som slutter å gjelde.
+
+**En chunk som ikke lastes sier ifra, og appen husker ikke feilen.** Toast med
+`error.panelLoadFailed`, tilstanden tilbake til lukket (ellers står tavla
+`inert` bak et panel som aldri kom — læreren låst ute av sin egen skjerm av en
+fil som ikke ble lest), og cachen slipper løftet så neste åpning spør på nytt.
+⚠️ Men **motoren husker**: målt i Chromium henter ikke et andre `import()` av
+samme spesifikator nettverket i det hele tatt — modulkartet beholder feilen så
+lenge dokumentet lever. Derfor er teksten ny og ikke `manage.actionFailed`
+(«Noe gikk galt — prøv igjen»): den setningen lover et forsøk denne feilklassen
+ikke kan innfri. `error.panelLoadFailed` navngir panelet og sier omstart som
+den utveien som alltid virker, og er sann både i en motor som henter på nytt og
+i en som ikke gjør det. Cachen glemmer likevel, fordi appen ikke skal legge en
+ANDRE hukommelse oppå plattformens.
+
+**En panelfil eksporterer UI, aldri en åpner.** `AttendancePanel` sto først
+utenfor grensen: `screen/ClassSwitcher.tsx` importerte `openAttendanceFromMenu`
+statisk fra panelfila, og den ene importen pinnet modulen i index-chunken
+uansett hva skallet gjorde (rolldown sier det høyt:
+`INEFFECTIVE_DYNAMIC_IMPORT`) — en `import()` der hadde vært ren seremoni, en
+byggadvarsel ved hvert bygg og null flyttede bytes. Åpneren bor nå ved siden av
+`openAttendance` i `state/attendance.ts`, og panelet ligger bak grensen som de
+to andre. Regelen som holder grensen er altså ikke «bruk `import()`», men at
+tilstand og åpnere bor i `state/*` og panelfilene bare eksporterer komponenten;
+en hjelper som «passer så fint» ved siden av panelet sitt er nøyaktig
+regresjonen vakta i `check-bundle-budget.mjs` finnes for.
+
+## ADR-020 — Veggen: panelene er modale ved én attributt, og kortene flyttes med taster (2026-09-06)
+
+**Bakgrunn (R7-funn tilgjengelighet 1 og 2).** Med planleggeren åpen sto
+fokus igjen på knappen bak scrimmen, Tab gikk «Bytt skjerm → Bytt klasse →
+Fullskjerm» bak panelet, inn i det, og ut igjen til et korts «Fjern» — en
+usynlig sletting av en tidtaker midt i nedtelling. Lukking droppet fokus til
+`<body>`. Og «Endre størrelse»-knappen var fokuserbar, annonsert, og gjorde
+ingenting uten mus; rotårsaken granskingen ikke så var at kortkromet er
+`visibility: hidden` til hover/valg/`:focus-within`, og skjult er ikke
+fokuserbart — ingen tastesekvens nådde klokke, trafikklys eller arbeidssymbol i
+det hele tatt.
+
+**Veggen.** `Shell.tsx` legger en `<div data-wall inert={modalPanelOpen}>` med
+`display: contents` rundt brettet og kromet. Ikke `#app` — `index.html`
+forutsetter dialoger i `#overlays`, og de tre panelene bor faktisk i skallet.
+Og IKKE rundt `<WidgetOverlay/>` eller panelene selv: ADR-016 lar designøkta
+montere den ekte `<Surface/>` inne i panelet, og et kort der åpner popoveren sin
+gjennom skallets host — ett nivå for høyt hadde frosset editoren økta finnes
+for. `modalPanelOpen` er ÉN computed i `state/chrome.ts`; `anyOverlayOpen` og
+Escape-stigens overlay-trinn leser den. Tre håndholdte kopier av «hvilke
+paneler er modale» ble til én, og en fjerde ville vært skjøten som drifter.
+
+**Fokus inn og tilbake — to feller.** (1) Utløseren SPORES (`focusin`,
+`ui/dialog-focus.ts`), den leses ikke ved mount: skallet setter `inert` i samme
+commit som panelet monteres, nettleseren blurrer synkront, og effektene kjører
+etterpå — `document.activeElement` er da `<body>`. (2) Tilbakeleveringen ligger
+i en `queueMicrotask`, fordi Preact fjerner et barn FØR den differ søsknenes
+props: i cleanup-øyeblikket er veggen fortsatt inert, og fokus satt da lander
+på `<body>` — nøyaktig feilen fiksen finnes for. Begge er målt, ikke antatt.
+Lastegrensen i ADR-019 forlenger vinduet mellom signal og montering; sporingen
+gjør at forsinkelsen ikke spiller noen rolle.
+
+**Tastaturnudgen.** Piler flytter det fokuserte kortet `NUDGE_FRACTION` (1 %)
+av flatens egen akse; Shift ganger med `NUDGE_COARSE_FACTOR` (10); piler MENS
+«Endre størrelse» har fokus skalerer fra sørøst-hjørnet. Fokus på håndtaket ER
+modusen — en egen resize-modus hadde krevd et nytt trinn på Escape-stigen (det
+ene stedet der et glemt lag gjør Escape stille virkningsløst) og et sted å
+annonsere seg på en projektor. Ingen snapping på tastatur: en nudge er et
+eksakt beløp, og en snap som spiser den får tasten til å se ødelagt ut. Ingen
+`bringToFront`: å heve er en z-skriving, og å steppe et kort 1 % til venstre
+er ikke en bønn om ny stabling. Skrivedøra er `commitWidgetRect(id, rect,
+{ debounce })`: ti piltrykk er én `layout_save` (elleve uten). Kortet er
+`role="group"` (ikke `section`s implisitte `region` — et brett med et dusin
+landemerker gjør landemerkenavigasjon ubrukelig) med `tabIndex` som forsvinner
+mens et kort vises stort, for da er brettet frosset og et håndtak for en gest
+som ikke kan skje er en stopp som ikke gjør noe. Tekstfelt i kort eier sine
+egne piltaster (`isTextEntry`, én definisjon delt med Escape-stigen).
+
+**Backdroppene og ringen.** De fem dismiss-backdroppene har `tabIndex={-1}` —
+de forblir ekte `<button>` for peker og skjermleser, bare TASTEN er tatt bort
+(Escape er veien ut); før var de første tabstopp med en outline tegnet helt
+utenfor skjermen, og Enter lukket menyen læreren nettopp åpnet. Fokusringen er
+tofarget: `--focus` (1,01:1 mot tavle-bakgrunnen — usynlig) med en
+`--focus-halo`-glød (14,87:1) i SAMME regel, så en komponent som melder seg av
+ringen melder seg av begge halvdeler. `tokens.test.ts` pinner at én av tonene
+klarer 3:1 på hver grunnflate, og at `--focus` ALENE ikke gjør det på tavle —
+tallet som er grunnen til at halo-tokenet finnes.

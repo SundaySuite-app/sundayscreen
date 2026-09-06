@@ -15,7 +15,7 @@ import { signal } from "@preact/signals";
 
 import type { Member } from "../bindings/Member";
 import { localDateStr } from "../planner/date-core";
-import { members } from "./classes";
+import { classMenuOpen, members } from "./classes";
 import { activeClass } from "./layout";
 
 /**
@@ -42,6 +42,18 @@ export function presentOn(all: Member[], today: string): Member[] {
 
 /** Open the panel. */
 export function openAttendance(): void {
+  attendancePanelOpen.value = true;
+}
+
+/**
+ * Open the panel from the class menu: the list closes behind it. Lives HERE
+ * and not in the panel file on purpose — the toolbar imports this opener, and
+ * a static import of the panel module from the toolbar would pin the whole
+ * panel in the index chunk, undoing the load boundary in `Shell.tsx`
+ * (ADR-019). State is eager; UI is loaded.
+ */
+export function openAttendanceFromMenu(): void {
+  classMenuOpen.value = false;
   attendancePanelOpen.value = true;
 }
 

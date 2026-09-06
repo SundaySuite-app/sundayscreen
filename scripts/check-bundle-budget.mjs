@@ -13,11 +13,70 @@
 // enten en falsk regresjon ingen kan reprodusere lokalt, eller en falsk grønn
 // som skjuler en ekte økning. Rå filstørrelse er den samme overalt.
 //
-// Budsjetter (målt 2026-09-02, R6-bølge W4 «bilde-widgeten»: 200 833 /
-// 69 463 / 343 096 B):
-//   - største enkelt-JS-fil   ≤ 206 000 B
-//   - største enkelt-CSS-fil  ≤  73 000 B
-//   - HELE dist/, alle filer  ≤ 350 000 B
+// Budsjetter (målt 2026-09-06, R7-bølge C «panelene lastes ved første
+// åpning» + fraværspanelet bak samme grense: 173 817 / 48 229 / 357 688 B):
+//   - største enkelt-JS-fil   ≤ 180 000 B
+//   - største enkelt-CSS-fil  ≤  55 000 B
+//   - HELE dist/, alle filer  ≤ 362 000 B
+//
+// ## Hva R7-bølge C flyttet, ISOLERT målt
+//
+// Samme arbeidstre, to bygg rett etter hverandre: ett med lazy-grensen i
+// `app/Shell.tsx` (`import()` ved første åpning, ADR-019) og ett med de gamle
+// statiske importene, ellers likt.
+//
+//   - største JS      209 098 → 174 921 B  (−34 177 B)
+//   - største CSS      72 254 →  49 997 B  (−22 257 B)
+//   - PlannerPanel-chunken     0 →  24 418 B JS + 12 339 B CSS
+//   - ManagePanel-chunken      0 →  11 740 B JS +  9 920 B CSS
+//   - dist totalt     355 339 → 357 322 B  (+1 983 B, 8 → 12 filer)
+//
+// Og rett etter, samme dag, fraværspanelet bak den samme grensen (åpneren
+// flyttet fra panelfila til `state/attendance.ts` — se ADR-019):
+//
+//   - største JS      174 921 → 173 817 B  (−1 104 B)
+//   - største CSS      49 997 →  48 229 B  (−1 768 B)
+//   - AttendancePanel-chunken  0 →   1 468 B JS +  1 769 B CSS
+//   - dist totalt     357 322 → 357 688 B  (+  366 B, 12 → 14 filer)
+//
+// Les de fem linjene sammen, for de sier to forskjellige ting. JS-en som
+// FORLOT index er 34 177 B og kommer tilbake som 36 158 B i to chunks: 1 981 B
+// dyrere, som er hva to ekstra modul-preambler og lastehjelperen koster. CSS-en
+// deler seg gratis (22 257 ut, 22 259 inn). Derfor VOKSER totalen med 1 983 B
+// selv om ingen oppstart lenger laster noe av det — nøyaktig slik totalen er
+// ment å oppføre seg: en chunk teller fortsatt, og gevinsten er at den ikke
+// LASTES. Førsteåpning betaler 1,3–2,4 ms for JS-chunken og 1,0–2,0 ms for
+// CSS-en (Resource Timing, prod-bygg, 8 målinger) — hentet i parallell, altså
+// ~2–3 ms, langt under terskelen der en prefetch etter boot hadde vært verdt
+// kompleksiteten. Andre åpning laster ingenting (`e2e/lazy-panels.spec.ts`).
+//
+// C eier alle tre takene, satt fra de målte tallene + ~5 kB margin:
+//
+//   - JS-taket NED fra 206 000. Et tak 31 kB over målt hadde vært blindt for
+//     nettopp den feilen vakta finnes for: én statisk `import` av en panelfil
+//     smelter hele klynga tilbake i index-chunken, og med det gamle taket
+//     hadde den regresjonen vært grønn.
+//   - CSS-taket NED fra 73 000, av samme grunn og med enda tydeligere tall:
+//     en gjeninnsmeltet panel-CSS gir 72,3 kB index-CSS, som lå 746 B UNDER
+//     det gamle taket. Den regresjonen hadde vært usynlig.
+//   - dist-totalen OPP fra 350 000. Kun 1 983 + 366 B av den hevingen er
+//     lastegrensens egne (tallene over). Baselinjen i C sin måling — 355 339 B
+//     UTEN grensen i det hele tatt — lå allerede 5 339 B over det gamle taket,
+//     og 10 760 B over sluttmålingen ved v0.6.0-beta.1 (344 579 B). Den
+//     veksten er R7-fiksrundens, bølge for bølge, målt av hver bølge på sitt
+//     eget tre (isolerte bygg med og uten bølgens filer):
+//       - bølge A (planlegger-, oppdaterings- og widgetfiksene, tre
+//         agenter): dist 344 579 → 351 653 B, +7 074 B — det er
+//         gruppeskaleringen, «Vis stort»-fikset, oppdateringsnotatet og de
+//         splittede planleggerfanene (splitten selv koster preambler)
+//       - bølge B1 (tastaturnudge, veggen, fokusring, live-regioner):
+//         +1 940 B JS, +131 B CSS, +2 071 B totalt
+//       - bølge B2 (bilde-LRU, fromBase64-grenen, tre bildeutfall,
+//         flush-før-åpne): +637 B JS, +131 B CSS, +768 B totalt
+//       - bølge B3 (terningens malelag til egen fil): +4 B
+//       - orkestratorens småredigeringer og byggstøy: ~843 B
+//     Ingen ny avhengighet i noen av dem; alt er appens egen kode. Summen
+//     (~10 760 B) er hva rundt 45 granskingsfunn kostet i bytes.
 //
 // ## Hva W4 la til, ISOLERT målt
 //
@@ -35,9 +94,10 @@
 // fikk elleve nye nøkler i begge språk — den lastes fortsatt som egen chunk,
 // så norsk drift betaler ingenting for den.
 //
-// W4 eier hevingen av JS-taket og dist-totalen (målte tall over, + ~5 kB
-// margin). CSS-taket står urørt: 69 463 B er innenfor 73 000 uten heving, og
-// et tak som holder skal ikke flyttes «for sikkerhets skyld».
+// W4 eide hevingen av JS-taket og dist-totalen (målte tall over, + ~5 kB
+// margin). CSS-taket sto urørt: 69 463 B var innenfor 73 000 uten heving, og
+// et tak som holder skal ikke flyttes «for sikkerhets skyld». (Alle tre er
+// siden satt på nytt av R7-bølge C — se avsnittet over.)
 //
 // Forrige måling: 2026-09-02, W2 «lenke-widgeten» — 187 237 / 62 133 /
 // 315 889 B under taket 192 000 / 65 000 / 320 000. Og før den: 2026-08-31,
@@ -90,15 +150,14 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(root, "dist");
 
-// Målt 2026-09-02 etter R6-bølge W4 (bilde-widgeten): største JS 200 833 B,
-// dist totalt 343 096 B — se §«Hva W4 la til» i docstringen over for den
-// isolerte målingen. Begge heves med det MÅLTE tallet pluss ~5 kB margin, og
-// W4 er eieren. CSS-taket står urørt fra forrige bølge: 69 463 B er innenfor.
-// Sluttmålt ved v0.6.0-beta.1 (2026-09-05, etter granskingens fiksebølge):
-// største JS 201 934 B · CSS 69 613 B · dist 344 579 B — takene står.
-const LARGEST_JS_MAX = 206_000;
-const LARGEST_CSS_MAX = 73_000;
-const DIST_TOTAL_MAX = 350_000;
+// Målt 2026-09-06 etter R7-bølge C (panelene lastes ved første åpning):
+// største JS 174 921 B · største CSS 49 997 B · dist totalt 357 322 B — se
+// §«Hva R7-bølge C flyttet» i docstringen over for den isolerte målingen og
+// for hvorfor de to første går NED mens totalen går opp. Alle tre er satt til
+// det MÅLTE tallet pluss ~5 kB margin, og C er eieren.
+const LARGEST_JS_MAX = 180_000;
+const LARGEST_CSS_MAX = 55_000;
+const DIST_TOTAL_MAX = 362_000;
 
 function walk(dir) {
   const out = [];

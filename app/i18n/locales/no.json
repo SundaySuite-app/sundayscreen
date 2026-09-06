@@ -20,7 +20,8 @@
     "membersRetry": "Prøv å lese på nytt"
   },
   "error": {
-    "ipcFailed": "Noe i bakgrunnen svarte ikke, så denne visningen kan være ufullstendig."
+    "ipcFailed": "Noe i bakgrunnen svarte ikke, så denne visningen kan være ufullstendig.",
+    "panelLoadFailed": "Fikk ikke åpnet panelet. Prøv igjen — hjelper det ikke, start SundayScreen på nytt."
   },
   "widget": {
     "delete": "Fjern",

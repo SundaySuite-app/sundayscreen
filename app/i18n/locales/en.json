@@ -20,7 +20,8 @@
     "membersRetry": "Try reading it again"
   },
   "error": {
-    "ipcFailed": "Something in the background did not answer, so this view may be incomplete."
+    "ipcFailed": "Something in the background did not answer, so this view may be incomplete.",
+    "panelLoadFailed": "Could not open the panel. Try again — if that does not help, restart SundayScreen."
   },
   "widget": {
     "delete": "Remove",

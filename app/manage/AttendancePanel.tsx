@@ -19,7 +19,7 @@ import { useRef, useState } from "preact/hooks";
 
 import { t, tn } from "../i18n";
 import { localDateStr } from "../planner/date-core";
-import { classMenuOpen, members } from "../state/classes";
+import { members } from "../state/classes";
 import { attendancePanelOpen, presentOn, setAway } from "../state/attendance";
 import { useDialogFocus } from "../ui/dialog-focus";
 import { Icon } from "../ui/Icon";
@@ -106,10 +106,4 @@ export function AttendancePanel() {
       </section>
     </div>
   );
-}
-
-/** Open the panel from a menu: the class list closes behind it. */
-export function openAttendanceFromMenu(): void {
-  classMenuOpen.value = false;
-  attendancePanelOpen.value = true;
 }

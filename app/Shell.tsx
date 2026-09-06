@@ -5,9 +5,6 @@
 import styles from "./Shell.module.css";
 import type { BootFault } from "./bindings/BootFault";
 import { t, tf } from "./i18n";
-import { AttendancePanel } from "./manage/AttendancePanel";
-import { ManagePanel } from "./manage/ManagePanel";
-import { PlannerPanel } from "./planner/PlannerPanel";
 import { SuggestionBanner } from "./screen/SuggestionBanner";
 import { Surface } from "./screen/Surface";
 import { Toolbar } from "./screen/Toolbar";
@@ -21,7 +18,7 @@ import {
   chromeVisible,
   modalPanelOpen,
 } from "./state/chrome";
-import { plannerPanelOpen } from "./state/planner";
+import { closePlanner, plannerPanelOpen } from "./state/planner";
 import { designSession } from "./state/design-session";
 import {
   focusedWidget,
@@ -31,6 +28,52 @@ import {
   undoSlot,
 } from "./state/layout";
 import { hydrated, hydrateError } from "./state/settings";
+import { lazyPanel } from "./ui/lazy-panel";
+
+// ── The panels are LOADED, not linked (ADR-019) ─────────────────────────────
+//
+// These `import()` calls are the only way into the planner/manage cluster, and
+// the boundary only holds while that stays true — one static import of either
+// panel, from anywhere, and the whole cluster is back in the index chunk with
+// nothing red to show for it. `ui/lazy-panel.tsx` carries the argument;
+// `scripts/check-bundle-budget.mjs` is what measures it.
+//
+// A panel module must export UI only. `AttendancePanel` sat outside the
+// boundary for a while because the toolbar imported `openAttendanceFromMenu`
+// from the panel file, and that ONE static import pinned the module in the
+// index chunk whatever the shell did (rolldown says so out loud —
+// INEFFECTIVE_DYNAMIC_IMPORT). Openers live in `state/*` now; a helper that
+// wants to live next to its panel is the same regression waiting to happen.
+//
+// The STATE modules stay eager on purpose. `state/planner.ts`,
+// `state/classes.ts`, `state/attendance.ts`, `state/design-session.ts` and
+// `state/scene-thumbs.ts` are what the widgets, the toolbar, the suggestion
+// banner and the Escape chain read on a board where no panel is open — moving
+// them behind the boundary would load the chunk on boot anyway, and give the
+// signals two module instances the day something got the import order wrong.
+// The boundary is UI only, which is also why it is safe: a panel that has not
+// loaded yet cannot be holding any state that the board needs.
+//
+// Module scope, so the cache is one per session and not one per open.
+const ManagePanel = lazyPanel(
+  () => import("./manage/ManagePanel").then((m) => m.ManagePanel),
+  () => {
+    managePanelOpen.value = false;
+  },
+);
+const PlannerPanel = lazyPanel(
+  () => import("./planner/PlannerPanel").then((m) => m.PlannerPanel),
+  // The ONE door (state/planner.ts), even here where no design session can be
+  // running — the rule is that no closer sets `plannerPanelOpen` directly, and
+  // an exception spelled in the shell is exactly how that rule stops holding.
+  () => void closePlanner(),
+);
+const AttendancePanel = lazyPanel(
+  () => import("./manage/AttendancePanel").then((m) => m.AttendancePanel),
+  () => {
+    attendancePanelOpen.value = false;
+  },
+);
 
 /**
  * What a boot fault reads as. Five sentences, and every one of them ends in
@@ -219,7 +262,11 @@ export function Shell() {
           effect — exist exactly while it is open. The planner used to gate
           itself with an early `return null`, which meant its hooks ran on the
           SHELL's mount and never again: a mount effect there could not tell
-          «the panel opened» from «the app booted». */}
+          «the panel opened» from «the app booted».
+          The gate is unchanged by ADR-019: what these names now hold is a
+          loading boundary that renders the panel and nothing else, so the
+          panel's own mount — and therefore `useDialogFocus` — still happens
+          exactly once per open, one tick later on the first one. */}
       {managePanelOpen.value && <ManagePanel />}
       {attendancePanelOpen.value && <AttendancePanel />}
       {plannerPanelOpen.value && <PlannerPanel />}

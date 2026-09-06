@@ -7,7 +7,7 @@
 
 import { useRef } from "preact/hooks";
 
-import { openAttendanceFromMenu } from "../manage/AttendancePanel";
+import { openAttendanceFromMenu } from "../state/attendance";
 import { t, tf } from "../i18n";
 import { classes, classMenuOpen, managePanelOpen } from "../state/classes";
 import { activeClass } from "../state/layout";

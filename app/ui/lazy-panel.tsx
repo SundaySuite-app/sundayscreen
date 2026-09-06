@@ -3,19 +3,24 @@
 //
 // ## The rule this file exists to hold
 //
-// `manage/ManagePanel` and `planner/PlannerPanel` are reached ONLY through the
-// `import()` calls in `Shell.tsx`. A static
-// `import { PlannerPanel } from "./planner/PlannerPanel"` anywhere melts the
-// whole cluster — the planner's three tabs, the design panel, the scene picker
-// and its thumbnails, the transfer forms — back into the index chunk, which
-// every teacher parses on every boot whether or not she opens a panel that
-// day. `LazyQr.tsx` is the precedent (ADR-017), `scripts/check-bundle-budget.mjs`
-// is what notices when it stops being true: an async chunk counts in the dist
-// TOTAL, never in the largest single JS file.
+// All three modal panels — `manage/ManagePanel`, `planner/PlannerPanel` and
+// `manage/AttendancePanel` — are reached ONLY through the `import()` calls in
+// `Shell.tsx`. A static `import { PlannerPanel } from "./planner/PlannerPanel"`
+// anywhere melts the whole cluster — the planner's three tabs, the design
+// panel, the scene picker and its thumbnails, the transfer forms — back into
+// the index chunk, which every teacher parses on every boot whether or not she
+// opens a panel that day. `LazyQr.tsx` is the precedent (ADR-017),
+// `scripts/check-bundle-budget.mjs` is what notices when it stops being true:
+// an async chunk counts in the dist TOTAL, never in the largest single JS
+// file.
 //
-// (`AttendancePanel` is the third modal panel and is NOT behind the boundary —
-// a static import in `screen/ClassSwitcher.tsx` pins it in the index chunk
-// whatever the shell does. The argument is at the call site in `Shell.tsx`.)
+// The rule that holds the boundary is not «use `import()`» — it is that a
+// panel file exports UI and nothing else, and openers live in `state/*`. The
+// attendance panel is the lesson: for a while `screen/ClassSwitcher.tsx`
+// imported `openAttendanceFromMenu` from the panel file, and that ONE static
+// import pinned the module in the index chunk whatever the shell did. The
+// opener lives in `state/attendance.ts` now (ADR-019), and a helper that
+// «fits so nicely» next to its panel is the same regression waiting to happen.
 //
 // ## Cached ONCE per session, and the failure is not cached
 //
@@ -46,11 +51,23 @@
 // afterwards. Measured off local disk the window is a few milliseconds, which
 // is why there is no spinner: a plate that flashes for one frame is worse on a
 // projector than nothing at all.
+//
+// One thing the window DOES own: the keyboard. The panel's own focus hook
+// (`useDialogFocus`) hands the keyboard back to the opener on unmount — and it
+// only exists once the panel has mounted. A panel closed inside the window
+// (Escape, or a chunk that failed and closed itself) had blurred the opener
+// when the wall went inert and had nobody to send the keyboard back:
+// measured, `document.activeElement` was `<body>`, one Tab from the top of the
+// document. So the boundary remembers the opener at the same moment the load
+// starts and restores it from its own cleanup — only when the panel never
+// landed, because once it has, the hook owns the way back and two `focus()`
+// calls for one close is the kind of pair that gets one of them deleted.
 
 import type { ComponentType } from "preact";
 import { useEffect, useState } from "preact/hooks";
 
 import { t } from "../i18n";
+import { rememberOpener } from "./dialog-focus";
 import { toast } from "./toast";
 
 /** A chunk that is fetched at most once — plus the synchronous answer to
@@ -137,7 +154,12 @@ export function lazyPanel(
     // list could catch.
     useEffect(() => {
       if (chunk.ready()) return;
+      // Who opened us — taken NOW, while the tracker still says the opener
+      // (the window has nothing else to focus), and used only from the
+      // cleanup below when the panel never got to hand it back itself.
+      const restoreOpener = rememberOpener();
       let live = true;
+      let landed = false;
       chunk.load().then(
         (Loaded) => {
           // The updater form, or `useState` would call the component.
@@ -147,7 +169,10 @@ export function lazyPanel(
           // this branch with the flag from one without it. It is the other
           // branch that needs it, and one arm of a pair that checks and one
           // that does not is how the checked arm gets deleted later.
-          if (live) setPanel(() => Loaded);
+          if (live) {
+            landed = true;
+            setPanel(() => Loaded);
+          }
         },
         (e: unknown) => {
           // A chunk that will not load is a broken install (ADR-017's reading
@@ -164,6 +189,13 @@ export function lazyPanel(
       );
       return () => {
         live = false;
+        // A flag rather than the `Panel` state: this effect is mount-only, so
+        // `Panel` in its closure is forever the seed value. Once the panel has
+        // landed its own hook owns the way back; before that, nobody does but
+        // us. The failed-load branch needs no call of its own — `onFailed()`
+        // closes the panel's signal, the shell unmounts this component, and
+        // this cleanup runs with `landed` still false.
+        if (!landed) restoreOpener();
       };
     }, []);
 

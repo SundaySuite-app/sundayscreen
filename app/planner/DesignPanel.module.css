@@ -177,3 +177,59 @@
   border-radius: var(--r);
   background: var(--bg);
 }
+
+/* The shell's undo bar, mirrored into the little board (DesignPanel.tsx says
+   why there are two). Same plate, same pill, same layer token — and one
+   difference that is this file's rule, not a preference: NO `transform` for
+   the centring. `left: 0; right: 0` with `width: max-content` and auto
+   margins centres a box just as well, and keeps this file free of the one
+   property that would silently re-point `.backdrop` at this panel.
+   `bottom` is a plain spacing rather than the shell's `--chrome-clearance`:
+   that clearance is the toolbar's, and the toolbar is unmounted in here. */
+.snackbar {
+  position: absolute;
+  bottom: var(--sp-3);
+  left: 0;
+  right: 0;
+  width: max-content;
+  max-width: calc(100% - 2 * var(--sp-3));
+  margin: 0 auto;
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  box-shadow: var(--shadow-chrome);
+  font-size: var(--fs-base);
+  color: var(--ink-2);
+}
+
+/* Into the corner while a card is shown large — the shell's R4-funn F1 rule,
+   for the same geometry: the enlarged card's settings row is centred in its
+   bottom edge, and a centred bar at `--z-toast` sits on every control in it.
+   Auto margin on the LEFT only is the transform-free spelling of the shell's
+   `left: auto; right: var(--sp-4)`. */
+.snackbar[data-focused] {
+  margin-left: auto;
+  margin-right: var(--sp-4);
+}
+
+.snackbarAction {
+  border: none;
+  background: var(--gold);
+  color: var(--on-gold);
+  border-radius: var(--r-pill);
+  font-weight: 700;
+  font-size: var(--fs-base);
+  cursor: pointer;
+  padding: var(--sp-1) var(--sp-4);
+}
+
+/* The shell darkens the plate with a `filter` on hover; that property is on
+   this file's banned list (header), so the hover is an edge instead. */
+.snackbarAction:hover {
+  box-shadow: 0 0 0 2px var(--gold-line);
+}

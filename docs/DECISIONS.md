@@ -894,9 +894,15 @@ snus først, panelet monteres et tikk senere. I mellomtiden er tavla allerede
 runden. Escape i vinduet lukker altså det som var på vei, og ingenting dukker
 opp etterpå. Fokus overlevde forsinkelsen fordi R7-B1 sporer åpneren med en
 `focusin`-lytter i stedet for å lese `document.activeElement` ved montering:
-åpneren var registrert før signalet snudde. Ingen spinner i vinduet — 2–3 ms
-mot lokal disk, og en plate som blinker ett bilde er verre på en projektor enn
-ingenting.
+åpneren var registrert før signalet snudde. Og siden sluttgranskingen (S1-5)
+gjelder det også panelet som ALDRI rakk å montere: Escape i vinduet, eller en
+chunk som feilet og lukket seg selv, hadde ingen `useDialogFocus` å levere
+tastaturet tilbake fra — målt: `<body>`. Lastegrensen husker derfor åpneren
+i det øyeblikket lastingen starter (`rememberOpener`, samme fangst, samme
+mikrotask, samme `isConnected` som panelets egen hook) og leverer tilbake fra
+sin egen cleanup, kun når panelet ikke landet; landet det, eier panelets hook
+veien tilbake alene. Ingen spinner i vinduet — 2–3 ms mot lokal disk, og en
+plate som blinker ett bilde er verre på en projektor enn ingenting.
 
 **Designøkta (ADR-016) kan ikke få to `<Surface/>`.** Skallet avmonterer sin
 når `designSession` settes, og panelet monterer sin egen inne i den lånte
@@ -974,7 +980,18 @@ annonsere seg på en projektor. Ingen snapping på tastatur: en nudge er et
 eksakt beløp, og en snap som spiser den får tasten til å se ødelagt ut. Ingen
 `bringToFront`: å heve er en z-skriving, og å steppe et kort 1 % til venstre
 er ikke en bønn om ny stabling. Skrivedøra er `commitWidgetRect(id, rect,
-{ debounce })`: ti piltrykk er én `layout_save` (elleve uten). Kortet er
+{ debounce })`: ti piltrykk er én `layout_save` (elleve uten). Det er den
+STRØMMENDE halvdelen av commit-kontrakten (app/ui/commit.ts); landingshalvdelen
+manglet (R7-sluttgransking S3-3): en avslutning innen 500 ms etter siste trykk
+gjenopprettet kortet der det sto før sekvensen. Nå lander `flushPending` når
+fokus forlater KORTET (`focusout` med `relatedTarget` utenfor — Tab fra kortet
+til dets eget «Vis stort» er en flytting INNE i det) og på Escape (uten
+preventDefault, så stigen skreller som før; et kort med ingenting over seg er
+ikke et trinn). `flushPending`, ikke `saveNow`: den skriver bare mens en
+debounce står, så Tab over et brett med ti kort er fortsatt null skrivinger.
+Ikke keyup: tre tapp er tre slipp, og det er skrivestormen debouncen finnes
+for. Ti trykk og Tab ut er fortsatt nøyaktig én skriving — landingen
+kansellerer timeren, den legger seg ikke oppå. Kortet er
 `role="group"` (ikke `section`s implisitte `region` — et brett med et dusin
 landemerker gjør landemerkenavigasjon ubrukelig) med `tabIndex` som forsvinner
 mens et kort vises stort, for da er brettet frosset og et håndtak for en gest
@@ -990,3 +1007,66 @@ tofarget: `--focus` (1,01:1 mot tavle-bakgrunnen — usynlig) med en
 ringen melder seg av begge halvdeler. `tokens.test.ts` pinner at én av tonene
 klarer 3:1 på hver grunnflate, og at `--focus` ALENE ikke gjør det på tavle —
 tallet som er grunnen til at halo-tokenet finnes.
+
+Kortet er det ENE brettelementet som er tabstopp, og det bærer den samme
+ringen — fra `.shell:focus-visible` i WidgetShell.module.css, ikke fra
+base.css-lista (R7-sluttgransking S2-3: kortet fikk nettleserens blå
+UA-ring). Ikke fordi «designet én gang» har et unntak, men fordi box-shadow
+ikke er additiv: kortets hvileskygge bor i samme egenskap, og
+`.shell[data-selected]`/`[data-dragging]` eier den på (0,2,0) over
+`:where(…):focus-visible` (0,1,0). Klikk-så-pil ER selected-tilstanden, så en
+base.css-oppføring hadde tegnet ink-ringen og mistet haloen nøyaktig der.
+Haloen lagdeles derfor over kortets egen skygge, per tilstand, begge halvdeler
+i én regel, samme to tokens og samme geometri — `tokens.test.ts` leser begge
+filene som tekst og holder dem til hverandre. `[tabindex]` står fortsatt
+utenfor lista (den ville matchet de fem backdroppenes -1). Kortet klipper aldri
+sin egen ring (outline tegnes utenfor `overflow: hidden`-boksen); flaten
+klipper, så et kort helt inntil kanten mister ringen på den ene siden —
+akseptert. Det forstørrede kortet (tabIndex -1) kan ikke få ringen; focus.spec
+pinner det.
+
+**…og siden sluttgranskingen: det som tegnes OVER panelet må enten stå utenfor
+veggen eller skjule seg mens veggen står — synlig-men-inert er en løgn.**
+`inert` fjerner treffing, ikke maling. Tre ting bodde inne i veggen på
+`--z-toast` (400), ett lag over panelenes `--z-overlay` (300), og ble derfor
+malt i full styrke oppå panelet mens de var døde for hvert klikk og borte fra
+tilgjengelighetstreet: forslagsbanneret («Bytt til timen» kl. 08:26 med
+klasselista åpen — `elementFromPoint` svarte scrimmen), angre-snackbaren (gull
+«Angre» i designøkta der bare ⌘Z virket, og ingenting sa det) og feilchippen
+(to identiske røde chips i designøkta, og null `alert`-noder i hele treet fordi
+den med rollen sto i et inert undertre). Popover-hosten står UTENFOR veggen og
+hadde den motsatte feilen: en åpen terningmeny overlevde at planleggeren åpnet
+over den — usynlig under scrimmen, nåbar med Tab fra panelet, og øverst på
+Escape-stigen så det første trykket lukket noe ingen så. Tre regler, alle lest
+fra den ENE computed-en:
+
+1. **`.topStack` og snackbaren skjules mens `modalPanelOpen`** (Shell.tsx).
+   Skjult, ikke flyttet ut av veggen: utenfor hadde «Bytt til timen» vært en
+   levende `switchLesson` — en `adoptSnapshot`-dør — nåbar med Tab fra et
+   modalt panel, nøyaktig det veggen finnes for å stenge. Forslaget består
+   (avledet av klokka), og angre-vinduet HOLDES mens det er ute av syne
+   (`holdUndoClock`/`resumeUndoClock` i state/layout.ts, koblet fra
+   `undoReachable` i state/chrome.ts, pila peker chrome → layout): femten
+   sekunder er femten sekunder med snackbaren foran seg, ikke femten sekunder
+   bak et panel. Chippen re-monteres når panelet lukkes, og et `alert` som
+   settes inn annonseres — altså i det øyeblikket det kan handles på.
+2. **Designøkta har egne kopier, inne i panelet der ingenting er inert:** sin
+   egen snackbar over minitavla (samme `undoSlot`/`undoRemove`, samme to
+   nøkler, samme utseende, samme hjørnesteg ved «Vis stort»; klokka løper
+   siden tilbudet er synlig) og sin egen feilchip, som nå bærer `role="alert"`.
+   Kommentaren som sa at skallets chip lå «bak» panelet var usann — den lå
+   oppå.
+3. **En popover lukkes i samme flipp som et panel åpner** (`modalPanelOpen`
+   .subscribe i `initChrome`, ved siden av stale-sweepen). Ingen
+   designøkt-vakt: økta åpnes FRA panelet (ADR-019), så ved kanten der
+   signalet snur finnes aldri en økt, og en popover et kort åpner UNDER økta
+   kommer med panelet allerede åpent — ingen kant, ingen lukking. `inert` på
+   hosten hadde skjult menyen for Tab og latt Escape-trinnet stå.
+
+Vakta er `e2e/panels-a11y.spec.ts` «nothing visible is dead while a panel is
+open»: for hver synlig knapp mens et panel er åpent må `elementFromPoint` på
+midtpunktet nå knappen — og en inert knapp som IKKE nås skilles fra en som
+legitimt ligger under scrimmen ved å løfte `inert` for ett treff: nås den da,
+var den malt oppå panelet. Unntakene (dismiss-lagene, som dekker hele
+visningsflaten og har sitt senter under det de lukker) står begrunnet i
+testen. Uten reglene over navngir vakta nøyaktig de tre knappene.

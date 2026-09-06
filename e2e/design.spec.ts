@@ -230,6 +230,122 @@ test("Escape peels the popover, then the session, then the panel", async ({
   await expect(page.getByRole("region", { name: "Planlegger" })).toHaveCount(0);
 });
 
+// ── What the session draws for itself ───────────────────────────────────────
+
+test("«Angre» in a session is the real one: a mouse press brings the card back", async ({
+  page,
+}) => {
+  // R7-slutt S1-3. ADR-016 promises the REAL editor, undo slot included, and
+  // the slot was real — the bar was not. It sat at `--z-toast` inside the
+  // inert wall, painted over this panel and dead to the pointer, so a card
+  // removed in here came back by ⌘Z or not at all, and nothing said so. The
+  // shell hides its bar while any panel is open; the panel draws the copy
+  // that can be pressed.
+  await installFixtures(page);
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  const panel = await planLessonOnNewScreen(page, "Angreskjerm");
+  await panel.getByRole("button", { name: "Design skjermen" }).click();
+  await expect(panel.getByText("Du designer «Angreskjerm»")).toBeVisible();
+
+  await addWidget(page, "Tekst");
+  const text = panel.locator('[data-widget-kind="text"]');
+  await expect(text).toHaveCount(1);
+  await text.hover();
+  await text.getByRole("button", { name: "Fjern" }).click();
+  await expect(text).toHaveCount(0);
+
+  // ONE bar, inside the panel, outside the wall. Two would be the old shape
+  // with a live copy added on top.
+  const undo = page.getByRole("button", { name: "Angre" });
+  await expect(undo).toHaveCount(1);
+  await expect(panel.getByRole("button", { name: "Angre" })).toHaveCount(1);
+  expect(await undo.evaluate((el) => !!el.closest("[data-wall]"))).toBe(false);
+
+  // A raw pointer click at the centre — the old bar timed out Playwright's
+  // actionability check, and the point is what a MOUSE reaches.
+  const box = (await undo.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(text).toHaveCount(1);
+  await expect(undo).toHaveCount(0);
+
+  // …and the card is in the DESIGN scene, not on the wall.
+  await panel.getByRole("button", { name: "Ferdig" }).click();
+  await panel.getByRole("button", { name: "Lukk" }).click();
+  await expect(page.locator('[data-widget-kind="text"]')).toHaveCount(0);
+});
+
+/**
+ * Let a journey kill `layout_save` on demand — the same flag shape as
+ * `breakableLayoutLoad` below, and for the same reason: a one-shot could be
+ * consumed by a write the journey did not mean to break.
+ */
+async function breakableLayoutSave(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    const fixtures = w.__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
+    const real = fixtures.layout_save as (
+      args?: Record<string, unknown>,
+    ) => unknown;
+    w.__failLayoutSave = false;
+    fixtures.layout_save = (args?: Record<string, unknown>) => {
+      if (w.__failLayoutSave)
+        throw new Error("layout_save: database is locked");
+      return real(args);
+    };
+  });
+}
+
+const setLayoutSaveFailing = (page: Page, failing: boolean) =>
+  page.evaluate((v) => {
+    (window as unknown as Record<string, unknown>).__failLayoutSave = v;
+  }, failing);
+
+test("a failed save in a session is ONE chip, and that chip is the alert", async ({
+  page,
+}) => {
+  // R7-slutt S1-7. Measured before this: two identical red chips — the
+  // shell's, painted over the panel from inside the inert wall, and the
+  // panel's mirror — and NO `alert` node anywhere in the accessibility tree,
+  // because the one carrying the role was in an inert subtree. The comment
+  // next to the mirror said the shell's chip was «behind» the panel; it was
+  // on top of it. Now the shell's chip is unmounted while a panel is open and
+  // the panel's copy is the live region.
+  await installFixtures(page);
+  await breakableLayoutSave(page);
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+
+  const panel = await planLessonOnNewScreen(page, "Låst skjerm");
+  await panel.getByRole("button", { name: "Design skjermen" }).click();
+  await expect(panel.getByText("Du designer «Låst skjerm»")).toBeVisible();
+
+  await setLayoutSaveFailing(page, true);
+  await addWidget(page, "Tekst");
+
+  const chip = page.locator('[data-status="error"]');
+  await expect(chip).toHaveCount(1);
+  await expect(chip).toHaveAttribute("role", "alert");
+  await expect(chip).toContainText("Klarte ikke å lagre tavla");
+  expect(
+    await chip.evaluate((el) => ({
+      inWall: !!el.closest("[data-wall]"),
+      inert: !!el.closest("[inert]"),
+    })),
+  ).toEqual({ inWall: false, inert: false });
+
+  // The state is sticky and the shell's chip is the one that carries it once
+  // the panel is gone — re-inserted, so announced, when it can be acted on.
+  await panel.getByRole("button", { name: "Ferdig" }).click();
+  await panel.getByRole("button", { name: "Lukk" }).click();
+  await expect(page.getByRole("region", { name: "Planlegger" })).toHaveCount(0);
+  await expect(chip).toHaveCount(1);
+  await expect(chip).toHaveAttribute("role", "alert");
+  expect(await chip.evaluate((el) => !!el.closest("[data-wall]"))).toBe(true);
+  await setLayoutSaveFailing(page, false);
+});
+
 // ── The board has to FIT ────────────────────────────────────────────────────
 
 test("the whole board and its header fit on a 1024×768 screen (F1)", async ({

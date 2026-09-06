@@ -244,13 +244,86 @@ export const UNDO_MS = 15000;
 export const undoSlot = signal<{ widget: WidgetInstance } | null>(null);
 let undoTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** Drop the pending undo and its timer. */
-function clearUndo(): void {
-  undoSlot.value = null;
+// ── The clock runs only while the offer is on screen ────────────────────────
+//
+// The snackbar hides behind the wall while a modal panel is open (Shell.tsx,
+// ADR-020): drawn at `--z-toast` from inside the inert wrapper it was a gold
+// «Angre» painted OVER the panel that no click could reach. Hidden is honest;
+// a hidden offer whose fifteen seconds keep running is not — the teacher who
+// removed a card, opened the class list and noticed the gap THERE came back to
+// a board with no way to take it back. So the window is HELD while nothing on
+// screen can show it, and resumes with the time it had left.
+//
+// Held, not restarted: the remaining time is what she had when the offer went
+// out of sight, so «fifteen seconds» stays fifteen seconds of looking at the
+// snackbar. And the slot itself is untouched by a hold — `adoptSnapshot` and
+// the design borrow still clear it on every board swap, which is the rule
+// that makes a long window safe in the first place.
+//
+// Who holds and who releases lives in `state/chrome.ts` (the arrow points
+// chrome → layout, never back): it is the one module that knows both which
+// panels are modal and whether the design panel is drawing its own copy.
+
+/** Is the window held? While true no timer runs, and a removal made in the
+ *  meantime (unreachable today: the board is inert) starts its window on
+ *  release rather than now. */
+let undoHeld = false;
+/** When the running window ends, epoch ms — the number a hold reads the
+ *  remainder from. */
+let undoDeadlineMs = 0;
+/** What was left when the window was held, ms. */
+let undoRemainingMs = 0;
+
+function stopUndoTimer(): void {
   if (undoTimer !== undefined) {
     clearTimeout(undoTimer);
     undoTimer = undefined;
   }
+}
+
+/** Run (or resume) the window for `ms` more milliseconds. */
+function armUndoTimer(ms: number): void {
+  stopUndoTimer();
+  undoDeadlineMs = Date.now() + ms;
+  undoTimer = setTimeout(() => {
+    undoTimer = undefined;
+    undoSlot.value = null;
+  }, ms);
+}
+
+/** Start a fresh window — now, or on release if the clock is held. */
+function startUndoWindow(): void {
+  if (undoHeld) {
+    undoRemainingMs = UNDO_MS;
+    return;
+  }
+  armUndoTimer(UNDO_MS);
+}
+
+/** Freeze the undo window: nothing on screen can show the offer. Idempotent,
+ *  so a subscriber that fires on every panel toggle cannot double-hold. */
+export function holdUndoClock(): void {
+  if (undoHeld) return;
+  undoHeld = true;
+  if (undoTimer !== undefined) {
+    undoRemainingMs = Math.max(0, undoDeadlineMs - Date.now());
+    stopUndoTimer();
+  }
+}
+
+/** Let the window run again, with whatever it had left. A resume with no
+ *  pending offer is a no-op — the slot is what says whether there is one. */
+export function resumeUndoClock(): void {
+  if (!undoHeld) return;
+  undoHeld = false;
+  if (undoSlot.peek()) armUndoTimer(undoRemainingMs);
+}
+
+/** Drop the pending undo and its timer. */
+function clearUndo(): void {
+  undoSlot.value = null;
+  stopUndoTimer();
+  undoRemainingMs = 0;
 }
 
 export function removeWidget(id: string): void {
@@ -265,10 +338,7 @@ export function removeWidget(id: string): void {
   if (focusedWidgetId.value === id) focusedWidgetId.value = null;
   if (removed) {
     undoSlot.value = { widget: removed };
-    if (undoTimer !== undefined) clearTimeout(undoTimer);
-    undoTimer = setTimeout(() => {
-      undoSlot.value = null;
-    }, UNDO_MS);
+    startUndoWindow();
   }
   saveNow();
 }
@@ -291,7 +361,8 @@ export function undoRemove(): void {
  * every repeat would be its own replace-all of the whole scene — a write
  * storm on a machine that is also drawing the board. The debounce makes one
  * key sequence one write, exactly like the text widget's typing, and
- * `flushPending` still catches it before a class or scene switch. Same signal
+ * `flushPending` still catches it before a class or scene switch, and when the
+ * keyboard leaves the card (screen/WidgetShell.tsx, R7-funn S3-3). Same signal
  * update either way: the card moves on screen at once, only the disk waits.
  */
 export function commitWidgetRect(
@@ -395,7 +466,10 @@ export function saveSoon(): void {
 }
 
 /** Resolve once every scheduled/in-flight write has landed — the class-switch
- *  sequencing seam (flush the OLD class before swapping to the new one). */
+ *  sequencing seam (flush the OLD class before swapping to the new one).
+ *  Also the keyboard's LANDING (screen/WidgetShell.tsx): focus leaving a card
+ *  or Escape on it flushes a pending nudge — only when one is pending, which
+ *  is why the card calls this and not `saveNow`. */
 export async function flushPending(): Promise<void> {
   if (debounceTimer !== undefined) {
     clearTimeout(debounceTimer);

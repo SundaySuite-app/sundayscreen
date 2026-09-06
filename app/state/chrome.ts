@@ -29,7 +29,8 @@ import { settings } from "./settings";
 // keeps `chrome ⇄ attendance` from becoming an import cycle.
 import { attendancePanelOpen } from "./attendance";
 import { classMenuOpen, managePanelOpen } from "./classes";
-import { widgets } from "./layout";
+import { designSession } from "./design-session";
+import { holdUndoClock, resumeUndoClock, widgets } from "./layout";
 import { sceneMenuOpen } from "./scenes";
 import { plannerPanelOpen } from "./planner";
 
@@ -132,6 +133,22 @@ export const modalPanelOpen = computed(
 );
 
 /**
+ * Can an undo offer be SEEN right now?
+ *
+ * The shell's snackbar hides while a modal panel is open — it rode at
+ * `--z-toast` from inside the inert wall, a gold «Angre» painted over the
+ * panel that no click could reach (ADR-020, the addendum). The design panel
+ * draws its own copy while a session runs, inside the panel where nothing is
+ * inert. So the offer is on screen on the wall with no panel up, or in the
+ * little board during a session — and the undo clock in `state/layout.ts` is
+ * held for exactly the remaining case, a panel with no session behind it.
+ * Read from `initChrome`, which is where the hold is wired.
+ */
+export const undoReachable = computed(
+  () => !modalPanelOpen.value || designSession.value !== null,
+);
+
+/**
  * Is any panel or menu open? ONE list, because it is read from two places
  * that must never disagree: the idle ticker (which may not hide the chrome
  * out from under an open panel) and Shell's reveal handle (which may not
@@ -205,10 +222,42 @@ export function initChrome(): () => void {
     if (open && !list.some((w) => w.id === open.id)) closeWidgetOverlay();
   });
 
+  // A widget popover does not survive a modal panel opening over it.
+  //
+  // The host stands OUTSIDE the wall (Shell.tsx, ADR-020) so that a card on
+  // the design panel's little board can open its popover through it. The
+  // price, measured: with the die's appearance menu open, Shift+Tab reaches
+  // «Planlegger» in four presses (the backdrop takes the pointer, never the
+  // key), and Enter there left the menu standing UNDER the scrim — invisible,
+  // not inert, six Tabs from the panel's last control, and holding the top
+  // rung of the Escape chain so the first Escape closed a menu nobody could
+  // see. Closing it here, in the same synchronous flip as the panel's signal,
+  // is what makes the Escape rung honest again; `inert` on the host would have
+  // hidden the menu from Tab and left that rung standing.
+  //
+  // No design-session guard, and on purpose: the session is opened FROM
+  // inside the panel (ADR-019), so at the edge where this signal turns true
+  // there is never a session, and a popover a card opens DURING one arrives
+  // with the panel already open — no edge, no close. That is the ADR-016
+  // case, and `design.spec.ts` is what keeps it green.
+  const stopPopoverSweep = modalPanelOpen.subscribe((open) => {
+    if (open && widgetOverlay.peek()) closeWidgetOverlay();
+  });
+
+  // The undo window runs only while an offer can be seen (`undoReachable`).
+  // Subscribed rather than read by the store: the arrow points chrome →
+  // layout, and the store must not learn which panels are modal.
+  const stopUndoHold = undoReachable.subscribe((reachable) => {
+    if (reachable) resumeUndoClock();
+    else holdUndoClock();
+  });
+
   return () => {
     window.removeEventListener("pointermove", onPointerMove);
     clearInterval(ticker);
     stopStaleSweep();
+    stopPopoverSweep();
+    stopUndoHold();
   };
 }
 

@@ -39,6 +39,14 @@ export function WidgetOverlay() {
   // an Escape that appears to do nothing because the top rung of the ladder is
   // held by a panel nobody can see. A data attribute rather than a second host
   // — same element, one layer up.
+  //
+  // The OTHER way round — a popover open on the wall when a panel opens over
+  // it — is not this host's to draw at all: `state/chrome.ts` closes the
+  // popover in the same flip that opens the panel (the panel sweep beside the
+  // stale sweep). Un-elevated under a scrim it was invisible, still reachable
+  // by Tab from the panel, and still the top rung of the Escape chain. So the
+  // only popover this host ever draws over a panel is one a card on the little
+  // board asked for, and that one is always elevated.
   const elevated = designSession.value !== null || undefined;
   const panelRef = useRef<HTMLDivElement>(null);
   const anchor = active?.anchor;

@@ -115,7 +115,11 @@ test("Escape during the load window closes it, and nothing arrives later", async
 
   await page.goto("/");
   const opener = page.getByRole("button", { name: "Planlegger" });
-  await opener.click();
+  // From the KEYBOARD, so there is an opener to come back to: a mouse open
+  // in this engine focuses the button too, but the promise below is about
+  // the keyboard, and the assertion must not pass on a click's side effect.
+  await opener.focus();
+  await page.keyboard.press("Enter");
 
   // INSIDE the window: the panel has not mounted, but the board is already
   // modal. Both halves matter — the shell reads the SIGNAL, not the mounted
@@ -136,6 +140,12 @@ test("Escape during the load window closes it, and nothing arrives later", async
   await settleEffects(page);
   await expect(plannerPanel(page)).toHaveCount(0);
   expect(await wallIsInert(page)).toBe(false);
+
+  // …and the keyboard is back on «Planlegger». The panel's own focus hook
+  // never existed here — it lives in a panel that never mounted — so the
+  // boundary hands the opener back itself (R7-slutt S1-5). Measured before:
+  // <body>, one Tab from the top of the document.
+  await expect(opener).toBeFocused();
 
   // The abandoned load poisoned nothing: opening again works, and works from
   // the cache the first attempt filled.
@@ -203,7 +213,8 @@ test("a chunk that will not load says so, and never leaves the board modal", asy
 
   await page.goto("/");
   const opener = page.getByRole("button", { name: "Planlegger" });
-  await opener.click();
+  await opener.focus();
+  await page.keyboard.press("Enter");
 
   // Said where she is looking — not swallowed into the console while the board
   // sits there refusing to change.
@@ -220,6 +231,9 @@ test("a chunk that will not load says so, and never leaves the board modal", asy
   // locked out of her own screen by a file that did not read.
   await expect.poll(() => wallIsInert(page)).toBe(false);
   await expect(plannerPanel(page)).toHaveCount(0);
+  // The failed load closed the panel's state; the boundary's cleanup is what
+  // sends the keyboard back, since no panel ever mounted to do it.
+  await expect(opener).toBeFocused();
 
   // …and the app tries again rather than going quiet on her: a second press
   // gets a second answer, never a button that has stopped responding.

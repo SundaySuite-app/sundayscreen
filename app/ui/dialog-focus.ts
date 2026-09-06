@@ -1,5 +1,9 @@
 // FOCUS FOR THE THREE MODAL PANELS: in on opening, back to the opener on
-// closing. `DieLookMenu.tsx` is the recipe this generalises (R7-funn 2).
+// closing — and back to the opener when a panel closes before it ever
+// mounted (Escape in the load window, a chunk that would not load), which is
+// the loading boundary's call to make (`lazy-panel.tsx`) and the reason the
+// way back is exported on its own. `DieLookMenu.tsx` is the recipe this
+// generalises (R7-funn 2).
 //
 // ## What was measured, and why it is not a small thing
 //
@@ -52,6 +56,40 @@ const FOCUSABLE =
   'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
 
 /**
+ * Take note of who holds the keyboard NOW, and get back the one call that
+ * hands it to them again later.
+ *
+ * Captured at the call, not read at restore time: by the time a panel closes,
+ * `lastFocused` is a control INSIDE the panel — the tracker saw the keyboard
+ * go in. So whoever wants the opener back has to have asked before that,
+ * which for a panel is its own mount, and for the loading boundary
+ * (`lazy-panel.tsx`) the moment the load starts.
+ *
+ * The restore runs in a MICROTASK, and it is not a nicety — it is the other
+ * half of the same ordering the module note above is about. Preact removes a
+ * child before it diffs its siblings' props, so in a cleanup the wall is
+ * STILL `inert`, and `focus()` on an inert element is a silent no-op:
+ * measured without this, `document.activeElement` after closing the planner
+ * is `<body>`, which is the bug this module exists to fix. The whole commit
+ * is synchronous, so a microtask runs once the attribute is gone.
+ *
+ * `isConnected` is read in that microtask rather than at capture time for the
+ * same reason, and it is CHECKED rather than attempted: a panel can close
+ * because the thing that opened it went away (a lesson auto-switch swapping
+ * the board under a widget's own button), and focusing a detached node is a
+ * silent no-op that would strand the keyboard on `<body>` with no way back.
+ */
+export function rememberOpener(): () => void {
+  const opener = lastFocused;
+  return () => {
+    if (!opener) return;
+    queueMicrotask(() => {
+      if (opener.isConnected) opener.focus();
+    });
+  };
+}
+
+/**
  * Move the keyboard INTO `root` when it mounts, and hand it back to whatever
  * opened it when it unmounts.
  *
@@ -62,35 +100,19 @@ const FOCUSABLE =
  * attribute, WKWebView included (the DieLookMenu argument), and it costs no
  * extra Tab to reach the first thing the teacher can do.
  *
- * `isConnected` on the way out: a panel can close because the thing that
- * opened it went away (a lesson auto-switch swapping the board under a
- * widget's own button). Focusing a detached node is a silent no-op that would
- * strand the keyboard on `<body>` with no way back, so it is CHECKED rather
- * than attempted.
+ * The way back is [`rememberOpener`], taken at mount — see it for the two
+ * orderings (capture time, microtask) that make it work at all.
  */
 export function useDialogFocus(root: { current: HTMLElement | null }): void {
   // Mount only: the three panels are never swapped for one another in place,
   // so there is no change for a dependency list to catch.
   useLayoutEffect(() => {
-    const opener = lastFocused;
+    const restore = rememberOpener();
     const first = root.current?.querySelector<HTMLElement>(FOCUSABLE);
     // `preventScroll`: the panel is full-screen and its body may be scrollable,
     // and a scroll to the first control before the first paint is a jump the
     // teacher sees.
     first?.focus({ preventScroll: true });
-    return () => {
-      if (!opener) return;
-      // A MICROTASK, and it is not a nicety — it is the other half of the same
-      // ordering the module note above is about. Preact removes a child before
-      // it diffs its siblings' props, so at this instant the wall is STILL
-      // `inert`, and `focus()` on an inert element is a silent no-op: measured
-      // without this, `document.activeElement` after closing the planner is
-      // `<body>`, which is the bug this hook exists to fix. The whole commit
-      // is synchronous, so a microtask runs once the attribute is gone.
-      // `isConnected` is re-read there rather than here for the same reason.
-      queueMicrotask(() => {
-        if (opener.isConnected) opener.focus();
-      });
-    };
+    return restore;
   }, []);
 }

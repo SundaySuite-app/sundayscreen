@@ -17,6 +17,14 @@ export function SuggestionBanner() {
   // design panel — one click on a board that is not the board, and
   // `switchLesson` would swap the globals out from under the borrow.
   //
+  // The shell already unmounts the whole top stack while ANY modal panel is
+  // open (Shell.tsx, `modalPanelOpen`; ADR-020's addendum — from inside the
+  // inert wall the banner was visible over the panel and dead to every click),
+  // and a session only ever runs inside the planner. This guard is kept as the
+  // BORROW's own: it is a statement about `switchLesson` and the globals, not
+  // about where the stack happens to be drawn, and it must hold on the day the
+  // banner is mounted from somewhere else.
+  //
   // Hidden rather than disabled: the suggestion is still true, and it comes
   // straight back the moment the session ends (its window is derived from the
   // clock, and «Ikke nå» is the only thing that settles it). A greyed-out

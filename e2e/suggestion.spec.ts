@@ -140,6 +140,106 @@ test("the banner suggests, one click switches class and scene", async ({
   await expect(banner).toHaveCount(0);
 });
 
+test("the banner hides behind a modal panel, and is back — and live — when it closes", async ({
+  page,
+}) => {
+  // R7-slutt S1-2. The banner rides at `--z-toast`, one layer over the
+  // panels' scrim, and after R7-B1 it did so from INSIDE the inert wall:
+  // painted at full strength on top of the planner, «Bytt til timen» under
+  // the pointer, and `elementFromPoint` on its centre answering the scrim. A
+  // teacher who had the class list open at 08:26 saw a button that did
+  // nothing, in front of the class. Hidden while the wall stands — not moved
+  // outside it, where it would be a live `switchLesson` reachable by Tab from
+  // a modal panel.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:20:00") });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+  await page.getByPlaceholder("Ny klasse …").fill("8A");
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "7B" }).click();
+  await planMondayLesson(page);
+
+  // Into the window with the planner OPEN. The suggestion is true — the tick
+  // has landed — but nothing that cannot be pressed is drawn.
+  await page.getByRole("button", { name: "Planlegger" }).click();
+  const panel = page.getByRole("region", { name: "Planlegger" });
+  await expect(panel).toBeVisible();
+  await page.clock.fastForward(6 * 60_000);
+  const banner = page.locator('[data-status="suggestion"]');
+  await expect(banner).toHaveCount(0);
+
+  // The same for the class list, which used to cover the banner's own area
+  // and answer the click with its header.
+  await panel.getByRole("button", { name: "Lukk" }).click();
+  await expect(banner).toBeVisible();
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+  await expect(
+    page.getByRole("region", { name: "Klasser og navn" }),
+  ).toBeVisible();
+  await expect(banner).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Back, and a REAL press: the whole finding was a button that looked live.
+  // A raw pointer click at the centre, not Playwright's actionability-checked
+  // click — the latter would have timed out on the old, inert banner instead
+  // of showing the click going through to the panel underneath.
+  await expect(banner).toBeVisible();
+  const box = (await banner
+    .getByRole("button", { name: "Bytt til timen" })
+    .boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const size = page.viewportSize()!;
+  await page.mouse.move(size.width / 2, size.height - 8);
+  await expect(page.getByRole("button", { name: "Bytt klasse" })).toContainText(
+    "8A",
+  );
+  await expect(banner).toHaveCount(0);
+});
+
+test("auto-switch still flips the board under an open panel", async ({
+  page,
+}) => {
+  // The banner hiding must not have taken the automation with it: the
+  // opt-in switch reads `currentSuggestion` straight from the store, never
+  // the component, so a lesson that starts while the class list is open
+  // still puts its screen on the projector — the class is looking at the
+  // board, not at the panel.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:20:00") });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+  await page.getByPlaceholder("Ny klasse …").fill("8A");
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "7B" }).click();
+  await planMondayLesson(page);
+
+  await page.getByRole("button", { name: "Planlegger" }).click();
+  await page.getByRole("button", { name: "Timeoppsett" }).click();
+  await page
+    .getByRole("checkbox", {
+      name: "Bytt skjerm automatisk når timen starter",
+    })
+    .check();
+  // The panel STAYS open across the start of the lesson.
+  await page.clock.fastForward(11 * 60_000);
+  await expect(page.locator('[data-status="suggestion"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Lukk" }).click();
+
+  const size = page.viewportSize()!;
+  await page.mouse.move(size.width / 2, size.height - 8);
+  await expect(page.getByRole("button", { name: "Bytt klasse" })).toContainText(
+    "8A",
+  );
+});
+
 test("«Ikke nå» silences the lesson", async ({ page }) => {
   await installFixtures(page);
   await page.clock.install({ time: new Date("2026-08-31T08:20:00") });

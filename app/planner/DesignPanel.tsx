@@ -30,7 +30,13 @@ import type { Size } from "../screen/coords-core";
 import { Surface } from "../screen/Surface";
 import { addMenuOpen } from "../state/chrome";
 import { designSession, exitDesign } from "../state/design-session";
-import { addWidget, saveError } from "../state/layout";
+import {
+  addWidget,
+  focusedWidget,
+  saveError,
+  undoRemove,
+  undoSlot,
+} from "../state/layout";
 import { Icon } from "../ui/Icon";
 import { WIDGET_KINDS, WIDGET_REGISTRY } from "../widgets/registry";
 import styles from "./DesignPanel.module.css";
@@ -144,11 +150,17 @@ export function DesignPanel() {
             </>
           )}
         </div>
-        {/* The shell's chip is BEHIND this panel, so the one state a teacher
-            must not miss while designing is mirrored here. Same sentence, same
-            `data-status` hook — one message, two places it can be read. */}
+        {/* The shell's chip is UNMOUNTED while this panel is open (Shell.tsx,
+            ADR-020's addendum), so this is the one copy of the one state a
+            teacher must not miss while designing — and it carries the live
+            region. It used to say the shell's chip was «behind» the panel; it
+            was not. It rode at `--z-toast` over the scrim from inside the inert
+            wall: two identical red chips on screen, and — measured in the
+            accessibility tree — no `alert` node at all, because an inert
+            subtree is announced to nobody. Same sentence, same `data-status`
+            hook, and now the same role. */}
         {saveError.value && (
-          <p class={styles.errorChip} data-status="error">
+          <p class={styles.errorChip} role="alert" data-status="error">
             {t("layout.saveFailed")}
           </p>
         )}
@@ -171,6 +183,29 @@ export function DesignPanel() {
           scrolled out of sight with it. */}
       <div class={styles.board} style={boardStyle(session.aspect)}>
         <Surface />
+        {/* The undo bar, drawn HERE for the session. ADR-016 promises the
+            REAL editor, undo slot included — and the slot is real: `undoSlot`
+            and `undoRemove` are the store's own, cleared by the borrow on the
+            way in and out. What could not be real was the shell's bar: it sat
+            at `--z-toast` inside the inert wall, painted over this panel and
+            dead to the pointer, so a card removed in here came back by ⌘Z or
+            not at all. The shell hides its bar while any panel is open; this
+            is the copy that can be pressed. Same two keys, same look
+            (`.snackbar` next door mirrors the shell's declarations), same
+            corner step while a card is shown large — the enlarged card's
+            settings row is centred in its bottom edge in here exactly as it is
+            on the wall. */}
+        {undoSlot.value && (
+          <div
+            class={styles.snackbar}
+            data-focused={focusedWidget.value ? true : undefined}
+          >
+            <span>{t("undo.removed")}</span>
+            <button class={styles.snackbarAction} onClick={undoRemove}>
+              {t("undo.action")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

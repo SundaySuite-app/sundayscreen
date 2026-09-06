@@ -187,25 +187,49 @@ export function Shell() {
         design session that card is on the panel's little board (ADR-016) —
         inerting the host would put the die's appearance panel behind glass in
         the one place it is opened from a panel.
+
+        WHAT RIDES ABOVE THE PANEL HIDES WHILE THE WALL STANDS. `.topStack`
+        and the snackbar sit at `--z-toast` (400), one layer over the panels'
+        `--z-overlay` (300) — and inert removes hit-testing, not paint. Measured
+        with the planner open: «Bytt til timen» drawn at full strength on top of
+        the scrim, `elementFromPoint` on its centre answering the scrim; the
+        same for «Angre», gold and dead, in a design session where ⌘Z was the
+        only way back and nothing said so. A control the teacher can see and
+        cannot press is a lie, so both are gated on the ONE computed the wall
+        reads. Gated rather than moved outside the wrapper: outside, «Bytt til
+        timen» would be a live `switchLesson` — an `adoptSnapshot` door —
+        reachable by Tab from a modal panel, which is the exact thing the wall
+        exists to close. The suggestion and the undo offer both persist (the
+        banner is derived from the clock; the undo window is HELD, not spent,
+        while it is out of sight — state/layout.ts), so both come straight
+        back when the panel closes. The design panel draws its own copy of the
+        undo bar and of the save-error chip, inside the panel where nothing is
+        inert.
       */}
       <div class={styles.wall} data-wall inert={modalPanelOpen.value}>
         {!designing && <Surface />}
-        <div class={styles.topStack}>
-          {/* `role="alert"` — an ASSERTIVE live region, and the one place in the
-            app that earns one. This chip is not a receipt: it says the
+        {!modalPanelOpen.value && (
+          <div class={styles.topStack}>
+            {/* `role="alert"` — an ASSERTIVE live region, and the one place in
+            the app that earns one. This chip is not a receipt: it says the
             database did not open, or the board has stopped saving, and it
             stays until the state changes (toast.ts draws that line). Unlike a
             polite `status`, an alert is announced when the node carrying the
             role is INSERTED, which is what lets the chip stay conditionally
             rendered — a permanently mounted empty `<p>` would draw an empty
-            plate on the board. */}
-          {chipText() !== null && (
-            <p class={styles.errorChip} role="alert" data-status="error">
-              {chipText()}
-            </p>
-          )}
-          <SuggestionBanner />
-        </div>
+            plate on the board. The gate above is the other half of that: an
+            alert inserted INSIDE an inert subtree is announced to nobody, and
+            was measured so — no `alert` node in the whole accessibility tree
+            with the planner open. Re-inserted when the panel closes, it is
+            announced then, which is when it can be acted on. */}
+            {chipText() !== null && (
+              <p class={styles.errorChip} role="alert" data-status="error">
+                {chipText()}
+              </p>
+            )}
+            <SuggestionBanner />
+          </div>
+        )}
         {/* The undo bar steps into the RIGHT CORNER while a card is shown large
           (R4-funn F1). Centred on `--chrome-clearance` it lands exactly on the
           enlarged card's own settings row — the row is centred in the card's
@@ -213,7 +237,7 @@ export function Shell() {
           the snackbar at `--z-toast` every control in the row belonged to the
           snackbar: «Lydvarsel» hit «Angre», and the card the teacher had just
           deleted came back. */}
-        {undoSlot.value && (
+        {undoSlot.value && !modalPanelOpen.value && (
           <div
             class={styles.snackbar}
             data-focused={focusedWidget.value ? true : undefined}

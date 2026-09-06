@@ -2,6 +2,10 @@ import { expect, test } from "@playwright/test";
 
 import { addWidget, installFixtures } from "./harness";
 
+/** `UNDO_MS` in state/layout.ts, mirrored by hand — the spec must not import
+ *  the store. */
+const UNDO_WINDOW_MS = 15_000;
+
 // The interaction layer's journeys: drag, resize, undo — driven the way a
 // teacher would, with the mouse.
 
@@ -167,6 +171,76 @@ test("the undo window outlasts five seconds, and closes at fifteen", async ({
   await page.clock.fastForward(8_000);
   await expect(undo).toBeVisible();
   await page.clock.fastForward(9_000);
+  await expect(undo).toHaveCount(0);
+});
+
+test("a panel over the board hides «Angre» and HOLDS its clock", async ({
+  page,
+}) => {
+  // R7-slutt S1-3/S2-5. The snackbar sits at `--z-toast`, one layer over the
+  // panels, and from inside the inert wall it was a gold «Angre» painted on
+  // top of the class list that no click could reach — while its fifteen
+  // seconds ran out behind the panel. Hidden while the wall stands, and the
+  // window is held rather than spent: a teacher who removes a card, opens the
+  // class list and notices the gap THERE comes back to an offer she can take.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  const text = page.locator('[data-widget-kind="text"]');
+  await text.hover();
+  await page.getByRole("button", { name: "Fjern" }).click();
+  const undo = page.getByRole("button", { name: "Angre" });
+  await expect(undo).toBeVisible();
+
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+  const panel = page.getByRole("region", { name: "Klasser og navn" });
+  await expect(panel).toBeVisible();
+  // Not drawn at all — not «there but inert».
+  await expect(undo).toHaveCount(0);
+
+  // Longer than the whole window, behind the panel.
+  await page.clock.fastForward(16_000);
+  await panel.getByRole("button", { name: "Lukk" }).click();
+  await expect(panel).toHaveCount(0);
+
+  // Back, and live: a mouse press — the one path the old bar could not take.
+  await expect(undo).toBeVisible();
+  await undo.click();
+  await expect(text).toHaveCount(1);
+});
+
+test("the held undo window resumes with the time it had left", async ({
+  page,
+}) => {
+  // The other half of the hold: held is not «forever». Once the panel is
+  // gone the clock runs again from where it stopped, so the offer still ends.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-27T10:00:00") });
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  await page.locator('[data-widget-kind="text"]').hover();
+  await page.getByRole("button", { name: "Fjern" }).click();
+  const undo = page.getByRole("button", { name: "Angre" });
+  await expect(undo).toBeVisible();
+
+  await page.getByRole("button", { name: "Planlegger" }).click();
+  const panel = page.getByRole("region", { name: "Planlegger" });
+  await expect(panel).toBeVisible();
+  await expect(undo).toHaveCount(0);
+  await page.clock.fastForward(60_000);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+
+  await expect(undo).toBeVisible();
+  // Fifteen seconds minus the moment between «Fjern» and the panel opening:
+  // still there after ten, gone after a full window more.
+  await page.clock.fastForward(10_000);
+  await expect(undo).toBeVisible();
+  await page.clock.fastForward(UNDO_WINDOW_MS);
   await expect(undo).toHaveCount(0);
 });
 

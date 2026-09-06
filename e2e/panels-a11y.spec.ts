@@ -13,12 +13,20 @@ import { addWidget, installFixtures } from "./harness";
 //   * no menu's first tab stop is an invisible full-screen dismiss layer;
 //   * a status message lives in a live region that existed before it did.
 
-/** Where the keyboard is, in the three terms these journeys care about. */
+/** Where the keyboard is, in the three terms these journeys care about.
+ *
+ *  A widget's popover counts as BEHIND. Its host stands outside the wall on
+ *  purpose (a card on the design panel's little board opens its menu through
+ *  it), but a popover left standing when a panel opened from the wall is
+ *  under the scrim — invisible, and not inert. Classified as «panel» it passed
+ *  the ring walk below with the bug in place (R7-slutt S1-4). */
 function focusZone(page: Page): Promise<"behind" | "panel" | "body"> {
   return page.evaluate(() => {
     const el = document.activeElement;
     if (!el || el === document.body) return "body" as const;
-    return el.closest("[data-wall]") ? ("behind" as const) : ("panel" as const);
+    return el.closest("[data-wall], [data-widget-overlay]")
+      ? ("behind" as const)
+      : ("panel" as const);
   });
 }
 
@@ -169,6 +177,225 @@ test("the panel — and the popover host — stand OUTSIDE the wall", async ({
   expect(structure.wallInert).toBe(true);
   expect(structure.panelInsideWall).toBe(false);
   expect(structure.siblingsOutsideWall).toBeGreaterThan(0);
+});
+
+test("a card's popover does not survive a panel opening over it", async ({
+  page,
+}) => {
+  // R7-slutt S1-4. The die's appearance menu is open; the backdrop stops the
+  // pointer but not the key, so four Shift+Tabs reach «Planlegger» with the
+  // menu still up. Enter there left the menu standing UNDER the scrim: not
+  // inert (its host is outside the wall), six Tabs from the panel's last
+  // control, and holding the top rung of the Escape chain — so the first
+  // Escape closed a menu nobody could see and the panel stood. Now the panel
+  // opening closes it, in the same flip.
+  await installFixtures(page);
+  await page.goto("/");
+  await addWidget(page, "Terning");
+
+  const die = page.locator('[data-widget-kind="dice"]');
+  await die.hover();
+  const look = die.locator("[data-dice-look]");
+  await look.focus();
+  await page.keyboard.press("Enter");
+  const overlay = page.locator("[data-widget-overlay]");
+  await expect(overlay).toBeVisible();
+
+  // The teacher's own road, no script focus: backwards out of the menu onto
+  // the toolbar.
+  for (let i = 0; i < 4; i++) await page.keyboard.press("Shift+Tab");
+  const opener = page.getByRole("button", { name: "Planlegger" });
+  await expect(opener).toBeFocused();
+  await expect(overlay).toHaveCount(1);
+
+  await page.keyboard.press("Enter");
+  await expect(plannerPanel(page)).toBeVisible();
+  await expect(overlay).toHaveCount(0);
+  // The keyboard went INTO the panel — not stranded on <body> by the menu's
+  // own focus-return landing on a trigger that is inert by then.
+  expect(await focusZone(page)).toBe("panel");
+  for (let i = 0; i < 25; i++) {
+    await page.keyboard.press("Tab");
+    expect(await focusZone(page), `tab ${i + 1}`).not.toBe("behind");
+  }
+
+  // ONE Escape closes the panel: nothing invisible is holding the top rung.
+  await page.keyboard.press("Escape");
+  await expect(plannerPanel(page)).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
+// ── ADR-020's addendum: nothing visible is dead ─────────────────────────────
+
+/**
+ * Every visible button on the page, judged by the one question a teacher
+ * asks of it: does a press at its centre reach it?
+ *
+ * The wall is `inert`, and inert removes hit-testing but not paint — so a
+ * button drawn OVER the panel from inside the wall looks exactly like one
+ * legitimately covered by the scrim: `elementFromPoint` answers the panel for
+ * both. They are told apart by lifting `inert` for the length of one
+ * hit-test: a button the press reaches then was painted on top of the modal,
+ * and hiding it with `inert` was a lie; one the press still does not reach is
+ * under the scrim, which is what modal means. The attribute is put back at
+ * once.
+ *
+ * Skipped, with the reason: buttons that are not visible at all
+ * (`checkVisibility` walks the ancestors for `visibility` and `opacity`);
+ * buttons whose centre is off-screen; and the dismiss layers — full-viewport
+ * buttons whose centre is under the very thing they dismiss, by design, and
+ * live at every uncovered pixel.
+ */
+function deadVisibleButtons(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const dead: string[] = [];
+    for (const b of document.querySelectorAll("button")) {
+      if (
+        !b.checkVisibility({ visibilityProperty: true, opacityProperty: true })
+      )
+        continue;
+      const r = b.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.width >= window.innerWidth && r.height >= window.innerHeight)
+        continue;
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      if (
+        cx < 0 ||
+        cy < 0 ||
+        cx >= window.innerWidth ||
+        cy >= window.innerHeight
+      )
+        continue;
+      const name = b.getAttribute("aria-label") ?? b.textContent?.trim() ?? "?";
+      const hit = document.elementFromPoint(cx, cy);
+      if (hit && b.contains(hit)) continue;
+      const inertRoot = b.closest<HTMLElement>("[inert]");
+      if (inertRoot) {
+        inertRoot.inert = false;
+        const lifted = document.elementFromPoint(cx, cy);
+        inertRoot.inert = true;
+        if (lifted && b.contains(lifted))
+          dead.push(`«${name}» — painted over the panel, inert`);
+        continue;
+      }
+      dead.push(`«${name}» — covered by <${hit?.tagName.toLowerCase()}>`);
+    }
+    return dead;
+  });
+}
+
+test("nothing visible is dead while a panel is open", async ({ page }) => {
+  // Everything that rides at `--z-toast` is on screen at once — the lesson
+  // banner (a suggestion in its window), the undo bar (a card just removed) —
+  // and then each of the three panels opens over it, and the design session
+  // removes a card of its own. R7-slutt S1-2, S1-3, S1-7: all three were
+  // «visible but inert» before this guard existed.
+  await installFixtures(page, { memberNames: ["Kari", "Ola"] });
+  await page.clock.install({ time: new Date("2026-08-31T08:20:00") });
+  await page.goto("/");
+
+  // A second class, and a lesson for it at 08:30 — the banner's material.
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+  await page.getByPlaceholder("Ny klasse …").fill("8A");
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "7B" }).click();
+  await page.getByRole("button", { name: "Planlegger" }).click();
+  const panel = plannerPanel(page);
+  await panel.getByRole("button", { name: "Timeoppsett", exact: true }).click();
+  await panel.getByRole("button", { name: "Legg til time" }).click();
+  await panel.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await expect(panel.getByText("Lagret")).toBeVisible();
+  await panel.getByRole("button", { name: "Ukeplan" }).click();
+  await panel.locator("button:has-text('—')").first().click();
+  await panel
+    .getByLabel("Klasse", { exact: true })
+    .selectOption({ label: "8A" });
+  await panel.getByLabel("Fag").fill("Norsk");
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await panel.getByRole("button", { name: "Lukk" }).click();
+
+  // Into the window, and a card removed: both `--z-toast` residents are up.
+  await page.clock.fastForward(6 * 60_000);
+  const banner = page.locator('[data-status="suggestion"]');
+  await expect(banner).toBeVisible();
+  const size = page.viewportSize()!;
+  await page.mouse.move(size.width / 2, size.height - 8);
+  await addWidget(page, "Tekst");
+  const text = page.locator('[data-widget-kind="text"]');
+  // A new card is born under the banner's column; walk it down first, or
+  // «Fjern» is under the banner — which is the wall's own overlap and not
+  // this guard's subject.
+  await text.focus();
+  for (let i = 0; i < 4; i++) await page.keyboard.press("Shift+ArrowDown");
+  await text.hover();
+  await text.getByRole("button", { name: "Fjern" }).click();
+  await expect(page.getByRole("button", { name: "Angre" })).toBeVisible();
+
+  // The control: on the bare board the guard has nothing to say.
+  expect(await deadVisibleButtons(page)).toEqual([]);
+
+  // The planner.
+  await page.mouse.move(size.width / 2, size.height - 8);
+  await page.getByRole("button", { name: "Planlegger" }).click();
+  await expect(panel).toBeVisible();
+  expect(await deadVisibleButtons(page)).toEqual([]);
+
+  // …and the design session inside it, with a card of its own removed: the
+  // panel's own undo bar must be the one that is live.
+  await panel.getByRole("button", { name: "Ukeplan" }).click();
+  await panel.getByRole("button", { name: "8A Norsk" }).click();
+  await panel
+    .getByRole("button", { name: "Lag ny skjerm for denne timen" })
+    .click();
+  const nameField = panel.getByPlaceholder("Navn på skjermen …");
+  await nameField.fill("Vaktskjerm");
+  await nameField.press("Enter");
+  await expect(panel.getByLabel("Skjerm", { exact: true })).not.toHaveValue("");
+  await panel.getByRole("button", { name: "Design skjermen" }).click();
+  await expect(panel.getByText("Du designer «Vaktskjerm»")).toBeVisible();
+  await addWidget(page, "Klokke");
+  const clock = panel.locator('[data-widget-kind="clock"]');
+  await clock.hover();
+  await clock.getByRole("button", { name: "Fjern" }).click();
+  await expect(clock).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Angre" })).toBeVisible();
+  expect(await deadVisibleButtons(page)).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(panel.getByText("Du designer")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+
+  // The class list. The session's borrow cleared the wall's pending undo on
+  // its way in (a board swap always does), so a fresh removal puts the bar
+  // back up for this pass.
+  await page.mouse.move(size.width / 2, size.height - 8);
+  await addWidget(page, "Tekst");
+  const text2 = page.locator('[data-widget-kind="text"]');
+  await text2.focus();
+  for (let i = 0; i < 4; i++) await page.keyboard.press("Shift+ArrowDown");
+  await text2.hover();
+  await text2.getByRole("button", { name: "Fjern" }).click();
+  await expect(page.getByRole("button", { name: "Angre" })).toBeVisible();
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Administrer klasser …" }).click();
+  await expect(
+    page.getByRole("region", { name: "Klasser og navn" }),
+  ).toBeVisible();
+  expect(await deadVisibleButtons(page)).toEqual([]);
+  await page.keyboard.press("Escape");
+
+  // Attendance.
+  await page.mouse.move(size.width / 2, size.height - 8);
+  await page.getByRole("button", { name: "Bytt klasse" }).click();
+  await page.getByRole("menuitem", { name: "Hvem er her i dag?" }).click();
+  await expect(
+    page.getByRole("region", { name: "Hvem er her i dag?" }),
+  ).toBeVisible();
+  expect(await deadVisibleButtons(page)).toEqual([]);
 });
 
 // ── funn 4: label in name ───────────────────────────────────────────────────

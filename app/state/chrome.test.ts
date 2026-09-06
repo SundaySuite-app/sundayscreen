@@ -32,9 +32,13 @@ const {
   anyOverlayOpen,
   closeWidgetOverlay,
   openWidgetOverlay,
+  undoReachable,
   widgetOverlay,
 } = await import("./chrome");
 const { widgets } = await import("./layout");
+const { managePanelOpen } = await import("./classes");
+const { plannerPanelOpen } = await import("./planner");
+const { designSession } = await import("./design-session");
 
 const ANCHOR = { x: 100, y: 200, w: 40, h: 40 };
 
@@ -109,5 +113,51 @@ describe("activeWidgetOverlay", () => {
     closeWidgetOverlay();
     expect(widgetOverlay.value).toBeNull();
     expect(activeWidgetOverlay.value).toBeNull();
+  });
+});
+
+describe("undoReachable", () => {
+  // The three signals this computed is made of, reset by hand: none of them
+  // has a store door that clears it, and a panel left «open» by one test would
+  // hold the clock in the next.
+  beforeEach(() => {
+    managePanelOpen.value = false;
+    plannerPanelOpen.value = false;
+    designSession.value = null;
+  });
+
+  it("is true on a bare board — the shell's snackbar can be seen", () => {
+    expect(undoReachable.value).toBe(true);
+  });
+
+  it("is false behind a modal panel — the shell hides the snackbar there", () => {
+    managePanelOpen.value = true;
+    expect(undoReachable.value).toBe(false);
+    managePanelOpen.value = false;
+    plannerPanelOpen.value = true;
+    expect(undoReachable.value).toBe(false);
+  });
+
+  it("is true again inside a design session — the panel draws its own copy", () => {
+    plannerPanelOpen.value = true;
+    // Only the fact of a session matters here; its contents belong to
+    // design-session.test.ts.
+    designSession.value = {
+      scene: {
+        id: "s",
+        classId: null,
+        name: "Onsdag",
+        sortIndex: 0,
+        createdAt: 0,
+        theme: "standard",
+      },
+      aspect: { w: 16, h: 9 },
+      returnTo: null,
+    };
+    expect(undoReachable.value).toBe(true);
+    // …and the session ending with the panel still up hides the offer again:
+    // the wall is covered and nothing inside the panel stands in for it.
+    designSession.value = null;
+    expect(undoReachable.value).toBe(false);
   });
 });

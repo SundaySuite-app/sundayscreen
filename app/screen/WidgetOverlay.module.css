@@ -46,9 +46,13 @@
    planner panel, and the panel's scrim is `--z-overlay` (300) — above this
    host's usual 200. So while one is open, both layers step over it, keeping
    the same one-apart relationship they have everywhere else.
-   `--z-toast` (400) is deliberately untouched above them: the undo snackbar
-   still has to be reachable, and a widget popover that covered it would take
-   away the way back from a card deleted by mistake. */
+   `--z-toast` (400) is deliberately untouched above them. On the wall the undo
+   snackbar rides there and a popover must not cover it; in a session the
+   shell's bar is hidden (ADR-020's addendum) and the panel draws its own
+   INSIDE the scrim's stacking context, so the elevated popover's backdrop
+   covers that copy — one click on the backdrop closes the popover, the next
+   reaches «Angre», which is the same one-layer-per-press rule every other
+   control under a popover follows. */
 .backdrop[data-elevated] {
   z-index: calc(var(--z-overlay) + 20);
 }

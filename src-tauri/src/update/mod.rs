@@ -43,6 +43,10 @@ pub enum UpdateStatus {
     UpToDate,
     Available {
         version: String,
+        /// What is new, in the release author's own words — see
+        /// [`release_notes`]. `None` on every release built before the note
+        /// mechanism, which is every release out there today.
+        notes: Option<String>,
     },
     /// Downloaded AND signature-verified; it installs when the app closes.
     ///
@@ -50,8 +54,15 @@ pub enum UpdateStatus {
     /// returned (minisign verification happens inside it). A manual check
     /// never answers this: it asks the feed, and the feed knows nothing about
     /// what this machine has already fetched.
+    ///
+    /// It carries the note too, and that is the phase that needed it MOST:
+    /// with automatic updates on, this is the only sentence the teacher ever
+    /// sees about the version her app will become when she closes it. Dropping
+    /// the note here would leave the whole automatic path silent about what it
+    /// is about to do.
     Downloaded {
         version: String,
+        notes: Option<String>,
     },
     /// Built without the updater feature.
     Disabled,
@@ -109,15 +120,47 @@ pub fn install_at_exit(phase: StagePhase, auto_update: bool) -> bool {
 /// `downloaded = false` deliberately keeps the OLD sentence: a failed
 /// download must leave the marker and the manual «Oppdater og start på nytt»
 /// exactly as they were, because that route still works.
-pub fn staged_status(version: &str, downloaded: bool) -> UpdateStatus {
+///
+/// The note rides along through BOTH answers, unchanged. It describes the
+/// version, not the transfer, so a download that failed does not make it any
+/// less true — and the manual route the failure falls back to is the one that
+/// still has to say what it is about to install.
+pub fn staged_status(version: &str, notes: Option<String>, downloaded: bool) -> UpdateStatus {
     if downloaded {
         UpdateStatus::Downloaded {
             version: version.to_string(),
+            notes,
         }
     } else {
         UpdateStatus::Available {
             version: version.to_string(),
+            notes,
         }
+    }
+}
+
+/// The release note that came with an offer, or `None` when there is nothing
+/// worth showing.
+///
+/// `docs/release-notes/<tagg>.md` reaches this machine as `latest.json`'s
+/// top-level `notes`, which tauri-plugin-updater hands over as `Update::body`.
+/// Three different shapes all mean "no note" — the field is absent, it is
+/// `""`, or it is nothing but whitespace — and EVERY release published before
+/// the note mechanism is one of those. Collapsing all three here, once, is
+/// what lets the panel ask a single question later, and it is the whole of the
+/// promise that an old manifest renders exactly as it did before this existed:
+/// no heading, no empty box, nothing.
+///
+/// The note is **plain text by contract** — `scripts/release-notes.mjs`
+/// rejects headings, bold, tables and links on every PR precisely because the
+/// box that shows it has no renderer. Nothing here parses it, and nothing
+/// downstream may either: it arrives over the network and is treated as data.
+pub fn release_notes(body: Option<String>) -> Option<String> {
+    let text = body?.trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
     }
 }
 
@@ -402,6 +445,10 @@ async fn check_feed_update(
         Ok(Some(update)) => (
             UpdateStatus::Available {
                 version: update.version.clone(),
+                // The plugin filled `body` from the manifest's top-level
+                // `notes`. Until now this field was fetched on every single
+                // check and dropped on the floor.
+                notes: release_notes(update.body.clone()),
             },
             Some(update),
         ),
@@ -522,7 +569,7 @@ pub fn spawn_boot_check(
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         let (status, update) = check_feed_update(&app, channel).await;
         match &status {
-            UpdateStatus::Available { version } => {
+            UpdateStatus::Available { version, .. } => {
                 tracing::info!(%version, "update available on the {} ring", channel.as_tag());
             }
             UpdateStatus::UpToDate => tracing::info!("up to date"),
@@ -545,6 +592,9 @@ pub fn spawn_boot_check(
         // `else` is belt and braces, not a path.
         let Some(update) = update else { return };
         let version = update.version.clone();
+        // Read BEFORE the download: `set_ready` MOVES the handle into the
+        // slot, and there is no second chance to ask it what the release said.
+        let notes = release_notes(update.body.clone());
         staged.mark_downloading();
         // Signature verification (minisign) happens INSIDE `download` — the
         // bytes that reach `set_ready` are already proven ours.
@@ -555,7 +605,7 @@ pub fn spawn_boot_check(
                     "update downloaded and verified — it installs when the app closes"
                 );
                 staged.set_ready(version.clone(), update, bytes);
-                slot.post(staged_status(&version, true));
+                slot.post(staged_status(&version, notes, true));
             }
             Err(e) => {
                 // Not an error the teacher should meet: the manual route is
@@ -663,6 +713,7 @@ mod decision_tests {
     fn available(v: &str) -> UpdateStatus {
         UpdateStatus::Available {
             version: v.to_string(),
+            notes: None,
         }
     }
 
@@ -686,6 +737,7 @@ mod decision_tests {
             // already hold.
             UpdateStatus::Downloaded {
                 version: "9.9.9".into(),
+                notes: None,
             },
         ] {
             assert!(
@@ -738,14 +790,14 @@ mod decision_tests {
     fn a_failed_download_leaves_the_old_sentence_standing() {
         // Downloaded → the panel says «installeres når du lukker appen».
         assert!(matches!(
-            staged_status("9.9.9", true),
-            UpdateStatus::Downloaded { version } if version == "9.9.9"
+            staged_status("9.9.9", None, true),
+            UpdateStatus::Downloaded { version, .. } if version == "9.9.9"
         ));
         // Not downloaded → exactly what the mailbox said before ADR-014, so
         // the marker and the manual button behave as they always did.
         assert!(matches!(
-            staged_status("9.9.9", false),
-            UpdateStatus::Available { version } if version == "9.9.9"
+            staged_status("9.9.9", None, false),
+            UpdateStatus::Available { version, .. } if version == "9.9.9"
         ));
     }
 
@@ -753,8 +805,65 @@ mod decision_tests {
     /// dead branch in `app-info.ts`, not a compile error.
     #[test]
     fn downloaded_serialises_as_its_camel_case_phase() {
-        let json = serde_json::to_string(&staged_status("9.9.9", true)).unwrap();
-        assert_eq!(json, r#"{"phase":"downloaded","version":"9.9.9"}"#);
+        let json = serde_json::to_string(&staged_status("9.9.9", None, true)).unwrap();
+        assert_eq!(
+            json,
+            r#"{"phase":"downloaded","version":"9.9.9","notes":null}"#
+        );
+    }
+
+    /// Every way a release can say "no note", and they must all be the same
+    /// `None` — otherwise the panel gets three different empties to reason
+    /// about and one of them ends up as a heading over nothing.
+    #[test]
+    fn every_shape_of_no_note_is_the_same_no() {
+        assert_eq!(release_notes(None), None);
+        assert_eq!(release_notes(Some(String::new())), None);
+        assert_eq!(release_notes(Some("   \n\t  ".into())), None);
+    }
+
+    /// …and a real note survives with the author's own line breaks. The
+    /// surrounding whitespace goes (a manifest's trailing newline is not
+    /// content); the breaks INSIDE do not, because they are the paragraphs
+    /// someone wrote for a teacher to read.
+    #[test]
+    fn a_written_note_keeps_the_shape_its_author_gave_it() {
+        assert_eq!(
+            release_notes(Some(
+                "\n  Terningen viser 0-9.\n\nTimeplanen tåler dobbelttimer.  \n".into()
+            )),
+            Some("Terningen viser 0-9.\n\nTimeplanen tåler dobbelttimer.".to_string())
+        );
+    }
+
+    /// The seam itself: what the shell serialises is what `UpdateStatus.ts`
+    /// declares and `ManagePanel.tsx` reads. A rename or a re-nesting on
+    /// either side is a field that silently reads `undefined` and a box that
+    /// silently never appears — no compile error anywhere.
+    #[test]
+    fn the_note_rides_beside_the_version_on_both_offering_phases() {
+        let offered = serde_json::to_string(&UpdateStatus::Available {
+            version: "9.9.9".into(),
+            notes: release_notes(Some("Terningen viser 0-9.".into())),
+        })
+        .unwrap();
+        assert_eq!(
+            offered,
+            r#"{"phase":"available","version":"9.9.9","notes":"Terningen viser 0-9."}"#
+        );
+
+        // The automatic path's own sentence carries it too — with the switch
+        // on, this is the ONLY place the teacher is told what she is getting.
+        let staged = serde_json::to_string(&staged_status(
+            "9.9.9",
+            release_notes(Some("Terningen viser 0-9.".into())),
+            true,
+        ))
+        .unwrap();
+        assert_eq!(
+            staged,
+            r#"{"phase":"downloaded","version":"9.9.9","notes":"Terningen viser 0-9."}"#
+        );
     }
 }
 

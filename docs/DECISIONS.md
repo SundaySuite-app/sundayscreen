@@ -689,3 +689,61 @@ lærernotatet sier at bildene er med, og overløpet er kvitteringsveien — take
 er 32 bilder / 20 MiB base64, og det som ikke fikk plass eller ikke ble funnet
 TELLES og VISES («… bilder fikk ikke plass i fila»), aldri svelges. Importen
 sniffer bytene på nytt, og en fiendtlig id i fila blir aldri en sti.
+
+## ADR-019 — Oppdateringen sier hva den er: notatet bæres helt fram, og fraværet av notat er en egen, bevisst tilstand (2026-09-06)
+
+`latest.json` har båret et `notes`-felt siden releasenotat-mekanismen landet:
+`release.yml` fyller det fra `docs/release-notes/<tagg>.md` via
+`scripts/release-notes.mjs --emit`. Appen har hentet det ned ved HVER eneste
+oppdateringssjekk siden — og kastet det. Fase-enumet skallet sender til
+frontenden hadde ikke noe felt å legge teksten i, så
+`tauri_plugin_updater::Update::body` ble aldri lest én eneste gang i hele
+repoet. Læreren fikk et versjonsnummer og en knapp, og oppdaterte i blinde.
+
+**Begge fasene som TILBYR en versjon bærer notatet, ikke bare den ene.**
+`Available` er den åpenbare. `Downloaded` er den viktige: med automatisk
+oppdatering på — som er standard — er «v9.9.9 installeres når du lukker appen»
+den ENESTE setningen hun noen gang møter om versjonen appen blir til når hun
+lukker den. Et notat som ble droppet der ville latt hele den automatiske veien
+være taus om hva den er i ferd med å gjøre. Notatet må derfor leses av
+`update.body` FØR `staged.set_ready(...)`, som flytter handtaket inn i slotten;
+det finnes ingen andre sjanse til å spørre.
+
+**Fraværet av notat er en tilstand vi har bestemt oss for, ikke en tom boks.**
+Tre former betyr det samme — feltet mangler, det er `""`, eller det er bare
+mellomrom — og hver eneste utgivelse som finnes der ute i dag er en av dem.
+`release_notes()` i skallet kollapser alle tre til `None`, og
+`releaseNotesOf()` i frontenden gjør det samme med `null`/`undefined`/blankt.
+Det er ETT spørsmål, stilt to steder, og svaret på et manifest uten notat er at
+panelet ser nøyaktig ut som det gjorde før dette fantes: ingen overskrift, ingen
+ramme, ingen «undefined». Vi valgte bort en «ingen beskrivelse fulgte med denne
+versjonen»-tekst av samme grunn — den ville gjort et ikke-problem synlig for
+alle på alle versjoner som finnes nå.
+
+**Ren tekst, og det er en kontrakt, ikke en forglemmelse.**
+`scripts/release-notes.mjs` avviser overskrifter, fet skrift, tabeller, lenker
+og HTML i notatet — nettopp fordi boksen som viser det ikke har noen
+renderer. Teksten settes inn som et tekstbarn i JSX (aldri
+`dangerouslySetInnerHTML`), og den eneste tolkningen den får er `pre-wrap` i
+stilarket: forfatterens egne linjeskift. Notatet kommer over nettet, og det
+behandles som data.
+
+**Én boks, plassert etter begge rutene.** Postkasselinja er allerede gated på
+`updStatus === null`, så et manuelt søk erstatter den. Notatet følger nøyaktig
+samme gate (`updStatus === null ? updateNotes.value : releaseNotesOf(updStatus)`),
+slik at notatet og versjonen det beskriver aldri kan komme fra to forskjellige
+svar. Under en feil viker notatet: en tekst som blir stående under «Fikk ikke
+sjekket nå» ville beskrevet et svar som aldri kom.
+
+**Boksen er høydebegrenset og fokuserbar.** Notatet er kappet til 1000 byte av
+vakten som skriver det, og panelet ruller allerede; et ukappet notat ville
+dyttet «Se etter oppdatering» ut av syne inne i den rullingen. Åtte linjer, og
+resten ruller inne i boksen — som derfor har `tabIndex={0}`, fordi en
+rulleflate et tastatur ikke når er en felle. Fargene er `--ink-2` på teksten og
+`--ink-3` på overskrifta: eksisterende tokens som `tokens.test.ts` allerede
+beviser klarer 4,5:1 mot både `--surface` og `--raised`, så AA-gulvet holder
+uten at et nytt token må inn i `INKS`.
+
+**Verktøylinjepilla ble bevisst stående urørt.** `.meta`-raden er allerede full
+på 1024 px — det er derfor pilla har den korte setningen og panelet den lange.
+Et notat der ville vært lang prosa på en projektor midt i en time.

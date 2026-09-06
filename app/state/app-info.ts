@@ -8,6 +8,8 @@
 
 import { signal } from "@preact/signals";
 
+import type { UpdateStatus } from "../bindings/UpdateStatus";
+
 export const appVersion = signal<string>("");
 
 /** The version the boot check found waiting, or `null` — which is the normal
@@ -18,6 +20,36 @@ export const updateReady = signal<string | null>(null);
  *  close? Then there is nothing for the teacher to DO, and the manage panel
  *  says so instead of asking her to press anything. */
 export const updateStaged = signal(false);
+
+/** …and what does that version say about itself? The release note the boot
+ *  check brought back, or `null` — which is what every release published
+ *  before the note mechanism answers, and what the panel renders as nothing at
+ *  all rather than as an empty heading. */
+export const updateNotes = signal<string | null>(null);
+
+/**
+ * The release note a status is offering, or `null` when there is none.
+ *
+ * ONE rule, asked from two places — the mailbox read below and the manual
+ * check in `ManagePanel.tsx` — because "when is there a note on screen" must
+ * not be answerable two different ways.
+ *
+ * Only the two phases that OFFER a version carry one. `upToDate`, `disabled`
+ * and `error` deliberately answer `null`: a note under «Fikk ikke sjekket nå»
+ * would be describing a version that never arrived.
+ *
+ * The trim is the fallback in one line. `null` (the shell's own
+ * normalisation), `undefined` (a status object older than the field — every
+ * fixture and every cached answer written before this) and `"  "` all land in
+ * the same place, so a manifest without a note leaves the panel EXACTLY as it
+ * was before any of this existed.
+ */
+export function releaseNotesOf(status: UpdateStatus | null): string | null {
+  if (status?.phase !== "available" && status?.phase !== "downloaded")
+    return null;
+  const text = status.notes?.trim();
+  return text ? text : null;
+}
 
 /**
  * How long after boot the mailbox is opened. The backend's check sleeps 5 s
@@ -54,9 +86,15 @@ export async function readUpdatePending(): Promise<void> {
   if (status?.phase === "available") {
     updateReady.value = status.version;
     updateStaged.value = false;
+    updateNotes.value = releaseNotesOf(status);
   } else if (status?.phase === "downloaded") {
     updateReady.value = status.version;
     updateStaged.value = true;
+    // Written inside the branch, alongside the version it belongs to: the
+    // panel re-reads the mailbox when it opens, and `available` → `downloaded`
+    // is the same version told twice. A note assigned outside these two arms
+    // would be cleared by every «up to date» read that followed.
+    updateNotes.value = releaseNotesOf(status);
   }
 }
 

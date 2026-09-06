@@ -17,6 +17,8 @@ import { LIMITS } from "@lib/limits.generated";
 import {
   appVersion,
   readUpdatePending,
+  releaseNotesOf,
+  updateNotes,
   updateReady,
   updateStaged,
 } from "../state/app-info";
@@ -96,6 +98,11 @@ export function ManagePanel() {
   const [updStatus, setUpdStatus] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
+  /* The release note on screen, from whichever of the two routes is showing.
+     Same gate as the mailbox line below (`updStatus === null`), so the note and
+     the version it describes can never come from different answers. */
+  const notes =
+    updStatus === null ? updateNotes.value : releaseNotesOf(updStatus);
 
   /* The transfer section's line — success AND failure — lives in
      `state/transfer`, so it survives the panel being closed over a running
@@ -642,6 +649,41 @@ export function ManagePanel() {
                 {t("update.install")}
               </button>
             </>
+          )}
+          {/* What the version SAYS about itself. `latest.json` has carried a
+              `notes` field since the release-note mechanism landed, and the app
+              downloaded it on every check and threw it away — the teacher was
+              told a number and asked to restart on faith.
+
+              ONE box for both routes, placed after both of them, because the
+              two are mutually exclusive by construction: the mailbox line is
+              gated on `updStatus === null`, so a manual check replaces it. The
+              source follows the same gate, and `releaseNotesOf` decides WHEN —
+              never under «Fikk ikke sjekket nå», never as an empty frame on a
+              release that shipped no note.
+
+              Rendered as a TEXT CHILD, never as markup: the note comes off the
+              network, and `scripts/release-notes.mjs` forbids headings, bold
+              and links on every PR precisely because this box has no renderer.
+              `pre-wrap` in the stylesheet is the only interpretation it gets —
+              the author's own line breaks. */}
+          {notes !== null && (
+            <div class={styles.relnotes}>
+              <span class={styles.relnotesTitle} id="update-notes-title">
+                {t("update.notesTitle")}
+              </span>
+              {/* Focusable because it scrolls: the note is capped at 1000 bytes,
+                  which is taller than the box, and a scroll region a keyboard
+                  cannot reach is a trap. */}
+              <p
+                class={styles.relnotesBody}
+                role="group"
+                tabIndex={0}
+                aria-labelledby="update-notes-title"
+              >
+                {notes}
+              </p>
+            </div>
           )}
         </div>
       </section>

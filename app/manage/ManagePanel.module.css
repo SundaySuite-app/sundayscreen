@@ -576,3 +576,50 @@
   background: var(--gold);
   color: var(--on-gold);
 }
+
+/* «Hva er nytt» — the release note that came with an offered version.
+   A full row of the wrapping `.about` flex, like `.autoHint` and for the same
+   reason: it is prose, and wedged between the version line and a button it
+   would read as a label for one of them.
+
+   `--ink-2`, not the `--ink-3` of the row around it. This is the one place in
+   the band where the TEXT is the point rather than a caption on a control, and
+   `tokens.test.ts` proves `--ink-2` clears 4.5:1 on both `--surface` and
+   `--raised`. No new colour is introduced — `check-app-css-tokens.mjs` allows
+   no literal here, and a token nobody listed in `INKS` is a token nobody
+   contrast-checks.
+
+   The height cap is the load-bearing part. `scripts/release-notes.mjs` caps a
+   note at 1000 bytes, and this panel already scrolls; an uncapped note would
+   push «Se etter oppdatering» and the whole update row down out of sight
+   inside that scroller. Eight lines is what a note of that size needs to read
+   as a paragraph, and anything past it scrolls inside the box — which is why
+   the box is focusable in the TSX. */
+.relnotes {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.relnotesTitle {
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.relnotesBody {
+  margin: 0;
+  /* `pre-wrap`, not `pre`: the note's own line breaks are the paragraphs its
+     author wrote and are kept, while a long line still wraps to the box
+     instead of pushing a horizontal scrollbar into a panel with no room for
+     one. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+  line-height: 1.5;
+  max-height: calc(8 * 1.5 * var(--fs-sm));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-left: 2px solid var(--line);
+  padding-left: var(--sp-3);
+}

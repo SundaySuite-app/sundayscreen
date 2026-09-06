@@ -273,3 +273,211 @@ test("a clock — a card whose every control is hover-revealed — is reachable"
   );
   expect(reached).toBe(true);
 });
+
+// ── THE RING ON THE CARD (R7-funn S2-3) ─────────────────────────────────────
+//
+// The card is a tab stop, and for one commit it wore Chromium's blue
+// `outline: auto` instead of the house's ink-and-halo ring — base.css lists
+// real controls, not `[tabindex]`, and nothing measured the card. The
+// numbers below are the ones panels-a11y.spec.ts already holds a button to:
+// `--focus` is rgb(35, 39, 47) and `--focus-halo` is white.
+
+/** The card's computed ring, and whether the browser thinks the keyboard put
+ *  focus there (`:focus-visible` is what every ring rule is keyed on). */
+function ringOf(card: Locator) {
+  return card.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return {
+      visible: el.matches(":focus-visible"),
+      color: cs.outlineColor,
+      outline: `${cs.outlineWidth} ${cs.outlineStyle}`,
+      shadow: cs.boxShadow,
+    };
+  });
+}
+
+const INK = "rgb(35, 39, 47)";
+const HALO = "rgb(255, 255, 255) 0px 0px 0px 5px";
+
+test("Tab to a card paints the house's ring, and a mouse click paints none", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+  await addWidget(page, "Klokke");
+  const card = page.locator('[data-widget-kind="clock"]');
+
+  // A real Tab from the document, not `focus()` — a programmatic focus does
+  // not decide `:focus-visible` the way a key does.
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  for (let i = 0; i < 6; i++) {
+    if (await card.evaluate((el) => el === document.activeElement)) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(card).toBeFocused();
+
+  let ring = await ringOf(card);
+  expect(ring.visible).toBe(true);
+  // `2px solid`, never `auto`: the UA ring is `outline: auto`, and a check
+  // for «some outline» would have been green with the bug.
+  expect(ring.outline).toBe("2px solid");
+  expect(ring.color).toBe(INK);
+  expect(ring.shadow).toContain(HALO);
+
+  // A click selects the card and moves focus to it — `:focus-visible` says
+  // the mouse did it, so no ring, exactly as on a button. Focus is taken OFF
+  // the card first: Chromium only re-decides `:focus-visible` when focus
+  // actually moves, and a click on the already-focused card moves nothing.
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  const box = (await card.boundingBox())!;
+  await page.mouse.click(box.x + 8, box.y + box.height - 8);
+  await expect(card).toBeFocused();
+  ring = await ringOf(card);
+  expect(ring.visible).toBe(false);
+  expect(ring.outline).toContain("none");
+  expect(ring.shadow).not.toContain(HALO);
+});
+
+test("click, then arrow: the SELECTED card wears both halves of the ring", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await page.goto("/");
+  await addWidget(page, "Klokke");
+  const card = page.locator('[data-widget-kind="clock"]');
+
+  const box = (await card.boundingBox())!;
+  await page.mouse.click(box.x + 8, box.y + box.height - 8);
+  await expect(card).toHaveAttribute("data-selected", "true");
+  await page.keyboard.press("ArrowRight");
+
+  // The key flips `:focus-visible` on — and this is the state in which a
+  // rule in base.css alone would have lost the halo: `.shell[data-selected]`
+  // owns box-shadow at a higher specificity than `:where(…):focus-visible`.
+  const ring = await ringOf(card);
+  expect(ring.visible).toBe(true);
+  expect(ring.outline).toBe("2px solid");
+  expect(ring.color).toBe(INK);
+  expect(ring.shadow).toContain(HALO);
+  // …and the card's own raised shadow is still under the halo, not replaced
+  // by it — the selected card must not go flat the moment a key is pressed.
+  expect(ring.shadow).toContain("rgba(35, 39, 47, 0.16)");
+});
+
+// ── THE ARROWS LAND (R7-funn S3-3) ──────────────────────────────────────────
+//
+// The nudge had only the streaming half of the commit contract
+// (app/ui/commit.ts): one key sequence, one debounced `layout_save` — and a
+// quit inside the 500 ms window took the whole sequence with it. Leaving the
+// card, and Escape, now land it AT ONCE. Two things are pinned per journey:
+// the position survives a reload started before the debounce could fire, and
+// the landing IS the one write — the timer is cancelled, not joined.
+
+/** Tab forward until focus is outside `card` — through «Vis stort»,
+ *  «Dupliser», «Fjern», the settings row and the handle, every one of which
+ *  is a move INSIDE the card and must not land anything. */
+async function tabOutOf(page: Page, card: Locator): Promise<void> {
+  for (let i = 0; i < 24; i++) {
+    await page.keyboard.press("Tab");
+    const inside = await card.evaluate((el) =>
+      el.contains(document.activeElement),
+    );
+    if (!inside) return;
+  }
+  throw new Error("Tab never left the card");
+}
+
+test("leaving the card lands the nudge: Tab out, reload at once, position kept", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await countSaves(page);
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  const card = page.locator('[data-widget-kind="text"]');
+  await focusCard(card);
+  await page.waitForTimeout(800);
+  const baseline = await savesSoFar(page);
+  const before = (await card.boundingBox())!;
+
+  for (let i = 0; i < 10; i++) await page.keyboard.press("ArrowRight");
+  // Nothing has been written yet — that is the debounce doing its job.
+  expect(await savesSoFar(page)).toBe(baseline);
+  const after = (await card.boundingBox())!;
+  expect(after.x - before.x).toBeCloseTo(10 * step(page, "w"), 0);
+
+  await tabOutOf(page, card);
+  // The landing is synchronous with the focus change — one write, and the
+  // budget «ten presses = one save» still holds because the timer is
+  // cancelled by it rather than firing on top of it.
+  expect(await savesSoFar(page)).toBe(baseline + 1);
+
+  // Reload NOW, well inside the 500 ms the debounce would still have needed.
+  await page.reload();
+  const restored = (await page
+    .locator('[data-widget-kind="text"]')
+    .boundingBox())!;
+  expect(Math.abs(restored.x - after.x)).toBeLessThan(2);
+  expect(Math.abs(restored.y - after.y)).toBeLessThan(2);
+});
+
+test("Tab from the card to its own chrome lands NOTHING — that is a move inside it", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await countSaves(page);
+  await page.goto("/");
+  await addWidget(page, "Tekst");
+
+  const card = page.locator('[data-widget-kind="text"]');
+  await focusCard(card);
+  await page.waitForTimeout(800);
+  const baseline = await savesSoFar(page);
+
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Tab");
+  const inside = await card.evaluate((el) =>
+    el.contains(document.activeElement),
+  );
+  expect(inside).toBe(true);
+  // Still streaming: the write waits for the timer, as it should while the
+  // keyboard is anywhere in the card.
+  expect(await savesSoFar(page)).toBe(baseline);
+  await page.waitForTimeout(900);
+  expect(await savesSoFar(page)).toBe(baseline + 1);
+});
+
+test("Escape on the card lands the nudge and still leaves the ladder alone", async ({
+  page,
+}) => {
+  await installFixtures(page);
+  await countSaves(page);
+  await page.goto("/");
+  await addWidget(page, "Klokke");
+
+  const card = page.locator('[data-widget-kind="clock"]');
+  await focusCard(card);
+  await page.waitForTimeout(800);
+  const baseline = await savesSoFar(page);
+
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  const after = (await card.boundingBox())!;
+  expect(await savesSoFar(page)).toBe(baseline);
+
+  await page.keyboard.press("Escape");
+  expect(await savesSoFar(page)).toBe(baseline + 1);
+  // Escape is not consumed by the card: with nothing above it the ladder has
+  // no rung to peel, so focus stays exactly where it was.
+  await expect(card).toBeFocused();
+
+  await page.reload();
+  const restored = (await page
+    .locator('[data-widget-kind="clock"]')
+    .boundingBox())!;
+  expect(Math.abs(restored.y - after.y)).toBeLessThan(2);
+
+  // …and no second write arrives from a timer that should have been cancelled.
+  await page.waitForTimeout(900);
+});

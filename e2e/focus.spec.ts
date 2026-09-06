@@ -540,3 +540,40 @@ test("adding a tool while a card is enlarged delivers a VISIBLE card", async ({
   await expect(timer).toHaveAttribute("data-selected", "true");
   expect(await coveredBy(timer)).toBeNull();
 });
+
+test("the enlarged card is not a tab stop, and never wears the ring", async ({
+  page,
+}) => {
+  // The card's tab stop goes away in this mode (`tabIndex={-1}` while the
+  // board is frozen), so the ring the card wears on the board (R7-funn S2-3,
+  // keyboard-widgets.spec.ts) must have nowhere to appear: a ring is «the
+  // keyboard is here», and a walk through the mode's controls must never say
+  // it on a card the keys cannot move.
+  await installFixtures(page);
+  await page.goto("/");
+  await addWidget(page, "Klokke");
+  await addWidget(page, "Tekst");
+
+  const clock = page.locator('[data-widget-kind="clock"]');
+  await clock.hover();
+  await clock.getByRole("button", { name: "Vis stort" }).click();
+  await expect.poll(() => widthOf(clock)).toBe(focusWidth(page));
+  await expect(clock).toHaveAttribute("tabindex", "-1");
+
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press("Tab");
+    const onACard = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el instanceof HTMLElement && el.matches("[data-widget-kind]");
+    });
+    expect(onACard, `Tab #${i + 1} landed on a card`).toBe(false);
+  }
+  // Nor by any other route: a focus the mode did not hand out is not visible.
+  const ring = await clock.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { visible: el.matches(":focus-visible"), outline: cs.outlineStyle };
+  });
+  expect(ring.visible).toBe(false);
+  expect(ring.outline).toBe("none");
+});

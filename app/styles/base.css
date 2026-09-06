@@ -81,10 +81,18 @@ button {
  * halo left standing without its ink ring would be a mark nobody designed.
  *
  * The selector list is the real controls and NOT `[tabindex]`. Nothing in the
- * app puts a positive tabindex on anything, and including the attribute would
- * be a standing invitation for this ring to appear one day on the board
- * itself, in front of a class. (`tabindex="-1"` is used — on the five dismiss
- * backdrops — and is deliberately NOT matched: those are never focused.)
+ * app puts a positive tabindex on anything, and the attribute would match the
+ * five dismiss backdrops' `tabindex="-1"` — never focused, deliberately not
+ * matched. The ONE element on the board that is a tab stop, the widget card
+ * (`tabindex="0"`, WidgetShell.tsx, R7-funn 1), wears this same ring — same
+ * two tokens, same geometry — from `.shell:focus-visible` in its own module
+ * rather than from this list. That is not an exception to «designed once»; it
+ * is where the card's shadow lives, and a box-shadow is not additive: the
+ * halo has to be layered over the card's own shadow, per selection state, or
+ * the click-then-arrow sequence would show the ink half without the halo.
+ * The module says why. A future tab stop on the board joins EITHER this list
+ * or a rule like the card's — it must never be left to the UA ring, which is
+ * what the card was for one commit (R7-funn S2-3).
  * :where() keeps specificity at zero so any component can still opt out.
  */
 :where(button, a, input, textarea, select, summary):focus-visible {

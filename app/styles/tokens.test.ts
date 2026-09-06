@@ -520,6 +520,86 @@ describe("the focus ring is visible on every ground the app draws", () => {
   });
 });
 
+/**
+ * The card wears the SAME ring, from its own module (R7-funn S2-3).
+ *
+ * base.css designs the ring once and lists real controls, not `[tabindex]`;
+ * the widget card is the one board element that is a tab stop, and for one
+ * commit it fell through to the browser's blue `outline: auto`. Its ring lives
+ * in WidgetShell.module.css because its shadow lives there (a box-shadow is
+ * not additive — the halo has to be layered over the card's own shadow, per
+ * selection state). Two declarations of one ring is exactly the seam that
+ * drifts, so this reads both files as text — the house has no cascade in
+ * node — and holds them to the same two tokens and the same geometry.
+ */
+describe("the widget card wears the designed ring, not the browser's", () => {
+  const base = readFileSync(join(root, "app", "styles", "base.css"), "utf8");
+  const shell = readFileSync(
+    join(root, "app", "screen", "WidgetShell.module.css"),
+    "utf8",
+  );
+  const uncommented = (source: string) =>
+    source.replace(/\/\*[\s\S]*?\*\//g, " ");
+  /** The declaration block of the first rule whose selector list contains
+   *  `selector` — `null` when no such rule exists, which is the failure. */
+  const block = (source: string, selector: string): string | null => {
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(uncommented(source))) !== null) {
+      // Whole list first: base.css's own selector carries commas INSIDE its
+      // `:where(…)`, and splitting it would lose it.
+      const list = m[1].trim();
+      if (list === selector) return m[2];
+      if (list.split(",").some((sel) => sel.trim() === selector)) return m[2];
+    }
+    return null;
+  };
+  const squash = (s: string | null) => (s ?? "").replace(/\s+/g, " ").trim();
+
+  const INK = "outline: 2px solid var(--focus)";
+  const OFFSET = "outline-offset: 2px";
+  const HALO = "0 0 0 5px var(--focus-halo)";
+
+  it("base.css still draws the ring these numbers describe", () => {
+    // The card's rule copies base.css by hand; if base.css moves, the numbers
+    // below have to move with it, and this is what says so.
+    const ring = squash(
+      block(
+        base,
+        ":where(button, a, input, textarea, select, summary):focus-visible",
+      ),
+    );
+    expect(ring).toContain(INK);
+    expect(ring).toContain(OFFSET);
+    expect(ring).toContain(`box-shadow: ${HALO}`);
+  });
+
+  it("the resting card: ink ring, halo, and its own shadow under it", () => {
+    const rule = squash(block(shell, ".shell:focus-visible"));
+    expect(rule, "no .shell:focus-visible rule — the UA ring is back").not.toBe(
+      "",
+    );
+    expect(rule).toContain(INK);
+    expect(rule).toContain(OFFSET);
+    // Halo FIRST, the card's shadow after it: the halo is a solid band from
+    // the edge, and a shadow painted over it would tint the tone the test
+    // above measured.
+    expect(rule).toContain(`box-shadow: ${HALO}, var(--shadow-widget)`);
+  });
+
+  it("the SELECTED card keeps both halves — click, then arrow", () => {
+    // `.shell[data-selected]` sets box-shadow at (0,2,0); without a variant
+    // here it wins over the ring and the halo goes missing in the one state a
+    // keyboard nudge after a click is always in.
+    for (const state of ["data-selected", "data-dragging"]) {
+      const rule = squash(block(shell, `.shell[${state}]:focus-visible`));
+      expect(rule, state).toContain(
+        `box-shadow: ${HALO}, var(--shadow-widget-active)`,
+      );
+    }
+  });
+});
+
 describe("the guard's own arithmetic", () => {
   // A contrast checker that is silently wrong is the most expensive kind of
   // green tick, so it is pinned to values anyone can look up.

@@ -24,12 +24,35 @@
 // to move anything then, and a handle for a gesture that cannot happen is a
 // stop that does nothing. That also keeps «Vis stort»'s tab ring on the
 // controls the mode actually has.
+//
+// The stop wears the house's ring, not the browser's: `.shell:focus-visible`
+// in WidgetShell.module.css. base.css's one ring rule lists real controls and
+// deliberately not `[tabindex]`, so the card — a `<section>` — has to be named
+// where its own shadow is, and the reason it cannot simply join that list is
+// in the module.
+//
+// ## THE ARROWS LAND WHEN THE KEYBOARD LEAVES (R7-funn S3-3)
+//
+// A nudge writes through the debounced door (`commitWidgetRect`, `{ debounce:
+// true }`): one key sequence, one `layout_save`. That is the streaming half of
+// the commit contract in app/ui/commit.ts, and for a while it was the ONLY
+// half — nothing landed the write, so a quit within 500 ms of the last press
+// restored the card where it stood before the sequence (promise 2 says
+// «exactly»). The landing is `flushPending` on `focusout` — when focus leaves
+// the CARD, not when it moves between the card and its own chrome — and on
+// Escape. `flushPending`, not `saveNow`: it writes only while a debounce is
+// pending, so every Tab across a board of ten cards is still zero writes, and
+// the text field's own blur (which lands first) leaves nothing for it to do.
+// NOT on keyup: a held key is one write on release either way, but a teacher
+// who taps three times has released three times, and that is the write storm
+// the debounce exists for.
 
 import type { WidgetInstance } from "../bindings/WidgetInstance";
 import { t, tDyn } from "../i18n";
 import {
   clearFocus,
   duplicateWidget,
+  flushPending,
   focusWidget,
   focusedWidgetId,
   removeWidget,
@@ -74,6 +97,16 @@ export function WidgetShell({ widget }: { widget: WidgetInstance }) {
         // in a message being written, never the card it is written on.
         const target = e.target as HTMLElement | null;
         if (isTextEntry(target)) return;
+        // Escape LANDS a pending nudge and is otherwise left alone — no
+        // preventDefault, no stopPropagation — so the global ladder
+        // (screen/keyboard.ts) still peels whatever layer it was going to.
+        // A card with nothing above it is not a rung, and must not become
+        // one here: a layer the ladder does not know about is the exact
+        // silence chrome-core.ts warns against.
+        if (e.key === "Escape") {
+          void flushPending();
+          return;
+        }
         // Arrows anywhere ELSE in the card belong to the card: no control it
         // contains uses them, and «the card the keyboard is inside is the one
         // that moves» is a rule with no second reading. On the resize handle
@@ -97,6 +130,15 @@ export function WidgetShell({ widget }: { widget: WidgetInstance }) {
         zIndex: focused ? FOCUS_Z : widget.z + 1,
       }}
       onPointerDown={(e) => startMove(e, widget)}
+      onFocusOut={(e) => {
+        // Only when focus leaves the card altogether. Tab from the card to its
+        // own «Vis stort» is a move INSIDE it, and a resize nudge on the handle
+        // is still being typed. `relatedTarget` is null when focus goes to the
+        // document or out of the window — both are leaving, both land.
+        const next = e.relatedTarget;
+        if (next instanceof Node && e.currentTarget.contains(next)) return;
+        void flushPending();
+      }}
     >
       <def.Component widget={widget} />
       {/* Furthest from the corner, left of «Dupliser»: «Fjern» keeps the spot

@@ -15,7 +15,9 @@
 //
 // Copy number six is the one that forgets half 2, and nothing in the gates
 // can see it: the config is right in memory, the tests pass, and only the
-// restart is wrong. So there is no copy number six.
+// restart is wrong. So there is no copy number six. (The arrow nudge in
+// screen/WidgetShell.tsx is the same contract, with `flushPending` as its
+// landing.)
 
 import { saveNow } from "../state/layout";
 

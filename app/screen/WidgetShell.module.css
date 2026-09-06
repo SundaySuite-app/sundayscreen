@@ -111,6 +111,41 @@
   cursor: grabbing;
 }
 
+/* ── The keyboard's ring on the card (R7-funn S2-3) ───────────────────────
+   The card is a tab stop (WidgetShell.tsx) and the ONE board element that
+   is: base.css's ring rule lists the real controls and deliberately not
+   `[tabindex]`, so a `<section>` fell through to Chromium's own `outline:
+   auto` — a blue hairline on the projector, in an app where every other
+   control wears ink and halo. Same two tokens and the same geometry as
+   base.css (`tokens.test.ts` pins the pair), BOTH halves in ONE rule, so an
+   opt-out here removes both at once.
+
+   Not simply added to base.css's selector list, and this is the reason:
+   `box-shadow` is not additive. The card's resting shadow lives in that very
+   property, and `.shell[data-selected]` / `.shell[data-dragging]` set it at
+   (0,2,0) — above `:where(…):focus-visible`'s (0,1,0). The click-then-arrow
+   sequence IS the selected state, so a base.css entry would have painted the
+   ink ring and lost the halo exactly there — the half-a-ring nobody designed.
+   Layered instead: halo first, the card's own shadow under it, per state.
+
+   The outline draws outside the card's `overflow: hidden` box, so the card
+   never clips its own ring; the SURFACE clips, so a card pushed flush against
+   the board's edge loses the ring on that side only. Accepted. */
+.shell:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 5px var(--focus-halo),
+    var(--shadow-widget);
+}
+
+.shell[data-selected]:focus-visible,
+.shell[data-dragging]:focus-visible {
+  box-shadow:
+    0 0 0 5px var(--focus-halo),
+    var(--shadow-widget-active);
+}
+
 /* ── «Vis stort» ─────────────────────────────────────────────────────────
    The growth is animated, the return is not — and the rule lives on
    `[data-focused]` for exactly that reason. On `.shell` it would also

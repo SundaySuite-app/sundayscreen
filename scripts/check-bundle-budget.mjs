@@ -13,11 +13,23 @@
 // enten en falsk regresjon ingen kan reprodusere lokalt, eller en falsk grønn
 // som skjuler en ekte økning. Rå filstørrelse er den samme overalt.
 //
-// Budsjetter (målt 2026-09-06, R7-bølge C «panelene lastes ved første
-// åpning» + fraværspanelet bak samme grense: 173 817 / 48 229 / 357 688 B):
+// Budsjetter (målt 2026-09-06 etter R7s sluttgransking-fiksebølge:
+// 175 663 / 48 469 / 360 805 B, 14 filer):
 //   - største enkelt-JS-fil   ≤ 180 000 B
 //   - største enkelt-CSS-fil  ≤  55 000 B
-//   - HELE dist/, alle filer  ≤ 362 000 B
+//   - HELE dist/, alle filer  ≤ 366 000 B
+//
+// ## Hva R7s sluttgransking-fiksebølge la til, målt på det samlede treet
+//
+// Fra målingen rett etter bølge C (173 817 / 48 229 / 357 688 B) til treet
+// med de fem sluttgranskingsfiksene inne: JS +1 846 B, CSS +240 B, dist
+// +3 117 B. Det er avvikseditorens såing (planlegger), veggens regler for
+// banner/snackbar/chip + designøktas egne kopier + popover-lukking +
+// fokusretur (den største), kortets fokusring + nudge-landing, gruppedelingens
+// målte navnebredde (to nye kjerner) og bildecachens release-vakt. Ingen ny
+// avhengighet. Bare dist-taket flyttes (362 000 → 366 000, målt + ~5 kB):
+// JS- og CSS-takene fra C holder fortsatt med 4,3 og 6,5 kB luft, og et tak
+// som holder flyttes ikke.
 //
 // ## Hva R7-bølge C flyttet, ISOLERT målt
 //
@@ -157,7 +169,7 @@ const DIST = join(root, "dist");
 // det MÅLTE tallet pluss ~5 kB margin, og C er eieren.
 const LARGEST_JS_MAX = 180_000;
 const LARGEST_CSS_MAX = 55_000;
-const DIST_TOTAL_MAX = 362_000;
+const DIST_TOTAL_MAX = 366_000;
 
 function walk(dir) {
   const out = [];

@@ -1,5 +1,120 @@
 # Changelog
 
+## [0.7.0] — 2026-09-06
+
+Runde 7 «Fiksrunden». Ingen nye verktøy: seks granskere gikk gjennom
+v0.6.0-beta.1 med hver sin linse (robusthet, kodehelse, tilgjengelighet og
+språk, skjøtene mellom lagene, klasserommet på 1024×768, ytelse over en
+lang økt) og fant rundt 45 ting. Nesten alt er fikset her; det som er
+eierbeslutninger står i docs/NEEDS-RICHARD.md. Ingen ny migrasjon. Dette er
+også den første utgivelsen på stabil-ringen: en installasjon som aldri har
+byttet til «Beta» i klassepanelet får nå sin første oppdatering.
+
+**I klasserommet**
+
+- **Gruppedelingen kan leses fra pultene.** Navnene skalerte etter hvor
+  mange de var, ikke hvor mye plass de hadde: 25 elever i to grupper ga
+  7 px navn på et kort med halve panelet tomt. Nå regnes størrelsen av
+  plassen — 15 px på standardkortet, 46 px i «Vis stort», og «Trekk 5» gikk
+  fra 19 til 76 px stort.
+- **Tidtakeren kjenner skolens timelengde.** Løper ingen time, står 45 (eller
+  30/60 — det du satte i Timeoppsett) som eget forhåndsvalg. «Dere får 45
+  minutter» var 26 klikk; nå er det ett.
+- **Et fjerde verktøy lander ikke oppå et annet.** På en 1024×768-projektor
+  krympes det nye kortet ned mot minste størrelse før det får legge seg over
+  noe.
+- **Terningsummen** er større og i full farge — poenget med den var at
+  klassen slipper å regne selv.
+- **Arbeidssymbolet:** etiketten klippes ikke lenger av knapperaden, og et
+  klikk på selve symbolet bytter modus (som lampene på trafikklyset).
+- «Dagen i dag» uten timeplan er nå en dør til planleggeren; fristkortets
+  «Timer»-pille heter «Vis timer» og datovelgeren følger appens språk.
+
+**Planleggeren**
+
+- **En avlyst time SIER at den er avlyst** («Utgår»), og «Lagre» i
+  avvikseditoren opphever ikke lenger avlysningen i stillhet. Før så en
+  avlyst time ut som en fri periode.
+- **Automatisk skjermbytte handler aldri på gårsdagens plan** — maskinen
+  som våknet fra dvale tirsdag morgen kunne bytte til mandagens klasse.
+- **Én lesefeil ved oppstart låser ikke dagen.** Fikk appen ikke lest planen
+  i det sekundet den startet, sto «Dagens time», banneret og autobyttet
+  døde til neste omstart. Nå prøver den igjen hvert halvminutt — og dagfanen
+  sier «Fikk ikke lest planen» i stedet for å påstå at timeoppsettet mangler.
+- Lagringsfeil i Timeoppsett får ikke lenger diagnosen «overlapp» uansett
+  årsak. Sletting av skjermen på tavla gir ikke falsk «lagring feilet».
+- Ett språk: time og friminutt (ikke økt og pause), «Antall grupper» og
+  «Gruppestørrelse» i stedet for «X grupper», «Verktøyet er fjernet».
+
+**Tastatur og skjermleser**
+
+- **Kortene kan flyttes og skaleres med tastatur.** Piltaster flytter det
+  valgte kortet, Shift ganger steget med ti, og piler mens «Endre størrelse»
+  har fokus skalerer det. Før gjorde den knappen ingenting uten mus.
+- **Panelene er modale.** Tab vandret bak planleggeren og ut på et korts
+  «Fjern» — usynlig. Nå går fokus inn i panelet ved åpning, holder seg der,
+  og kommer tilbake til knappen du åpnet med.
+- «Bytt skjerm» og «Bytt klasse» heter det de viser («Bytt skjerm —
+  «Norsktavla»»), så talestyring treffer. Fokusringen synes også på
+  Tavle-fargen, og lukkeflaten bak menyene er ikke lenger første tabstopp.
+- Statusmeldinger («Lagret», feil, trukket navn) annonseres for skjermleser;
+  radknapper heter hva de rammer («Slett «Time 3»», ikke «Slett» ×N).
+  Navnetrekkeren respekterer «reduser bevegelse».
+
+**Oppdatering, lenke og bilde**
+
+- **«Hva er nytt» vises i panelet** når en ny versjon er funnet — før sa den
+  bare nummeret. En installasjon som avbrytes lover ikke lenger «installeres
+  når du lukker», og «Oppdater nå» midt i en bakgrunnsnedlasting laster ikke
+  ned to ganger.
+- **Lenke: «Åpne» åpner adressen du nettopp skrev**, ikke den forrige. Klikket
+  ventet ikke på lagringen, og lesingen kunne vinne.
+- **Bilde:** lastes én gang per økt også når du bytter skjerm fram og
+  tilbake (før: hver gang, med 10 MiB over IPC og en frys på gamle
+  maskiner), dekodes sju ganger raskere, og en lesefeil sier «Fikk ikke lest
+  bildet nå — det er ikke borte» med en prøv-igjen-knapp i stedet for å
+  påstå at bildet mangler.
+- Klassepanelet på 1024×768 viser oppdateringsvalgene uten scrolling.
+- **Panelene lastes først når du åpner dem.** Planleggeren, klassepanelet og
+  fraværspanelet er ikke lenger med i det appen leser inn ved oppstart —
+  35 kB mindre å tolke på en gammel maskin, og første åpning koster 2–3 ms
+  fra lokal disk. Kan en panelfil ikke leses (ødelagt installasjon), sier
+  appen det og tavla står som før.
+
+**Sluttgranskingen** (tre linser til på det ferdige treet, hvert funn prøvd
+felt av tre uavhengige skeptikere før det fikk stå)
+
+- **«Overstyr» på en time fra ukeplanen beholder klasse, fag og skjerm.**
+  Editoren startet tom, så «Overstyr» → tittel → Lagre skrev timen uten 7B,
+  uten Norsk og uten skjermen — og forslag/autobytte hoppet over den. Nå
+  refinerer den timen slik den står. «Fjern avvik» på en dag som bare har
+  «Slå sammen med neste» sletter ikke lenger dobbelttimen i stillhet.
+- **Gruppedeling med ekte navn.** «Andreas» og «Mathias» er bredere enn
+  «Elev 7»: navnebredden måles nå i stedet for å telles, to kolonner velges
+  bare når det gir større skrift, og et navn som likevel ikke passer koster
+  én linje med «…» — aldri en nabo som klippes bort under kanten.
+- **Ingenting synlig er dødt mens et panel er åpent.** Forslagsbanneret,
+  angre-knappen og feilchippen lå oppå panelet uten å kunne trykkes; nå
+  viker de mens panelet står, angre-fristen venter, og designøkta har sin
+  egen «Angre». Et åpent verktøypanel (terningens «Utseende») lukkes når et
+  panel åpnes, så Escape ikke lukker noe du ikke ser.
+- Tastatur: kortet får husets fokusring (ikke nettleserens blå), og det
+  siste piltrykket lagres i det fokus forlater kortet — også om du lukker
+  appen med det samme. Fokus kommer tilbake til knappen også når panelet
+  aldri rakk å åpne seg.
+
+**Under panseret** (for den som bygger med oss)
+
+- Navneskrubben i «Flytt oppsettet» er en tvunget beslutning per verktøy:
+  et nytt verktøy kompilerer ikke før noen har svart om det bærer elevnavn,
+  og en tabelltest rundtripper alle 14 gjennom eksport og import.
+- PlannerPanel (1 422 linjer) er delt i tre faner; terningens malelag er
+  egen kjerne; tre håndkopierte kontrakter (tikk, commit) er én hjelper.
+- ADR-013s påbudte sjekk er gjort: en fil skjemaoppdateringen snubler over
+  er byte-urørt etterpå (test). ARCHITECTURE.md er à jour (47 kommandoer,
+  0006/0007), reachability-baseline regenerert, feilringen ser alle
+  skrivere.
+
 ## [0.6.0-beta.1] — 2026-09-05
 
 Runde 6 «Skjermen er planen». Planleggeren har visst siden runde 2 hvilken

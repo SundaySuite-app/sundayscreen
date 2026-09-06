@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   FOCUS_MARGIN_PX,
   FOCUS_Z,
+  type NormRect,
   REFERENCE_SURFACE,
+  type Size,
   focusRect,
   fromNorm,
   offsetRect,
@@ -73,6 +75,57 @@ describe("placeNew", () => {
     for (const r of placed) {
       expect(r.y + r.h).toBeLessThanOrEqual(chromeTop + 0.0001);
     }
+  });
+
+  // ── Shrink before you cascade (R7-funn K3) ───────────────────────────────
+
+  it("the morning board on 1024×768 fits four cards without one overlap", () => {
+    // The reproduced journey: Dagens time, Dagen i dag, Sjekkliste, Frist —
+    // the registry's own sizes, in the order the toolbar lists them. The
+    // fourth used to be dealt straight to the cascade and drawn ON TOP of
+    // the day's plan, because 320×368 did not fit; 200×160 did.
+    const surface = { w: 1024, h: 768 };
+    const board: { want: Size; min: Size }[] = [
+      { want: { w: 460, h: 520 }, min: { w: 240, h: 200 } }, // agenda
+      { want: { w: 520, h: 420 }, min: { w: 260, h: 180 } }, // today
+      { want: { w: 400, h: 460 }, min: { w: 200, h: 160 } }, // checklist
+      { want: { w: 420, h: 300 }, min: { w: 180, h: 130 } }, // deadline
+    ];
+    const placed: NormRect[] = [];
+    for (const { want, min } of board) {
+      placed.push(placeNew(placed, want, min, surface));
+    }
+    for (let i = 0; i < placed.length; i++) {
+      for (let j = i + 1; j < placed.length; j++) {
+        expect(overlaps(placed[i], placed[j]), `${i} vs ${j}`).toBe(false);
+      }
+      // …and every one of them is still a card the teacher could have
+      // dragged to that size herself.
+      const px = fromNorm(placed[i], surface);
+      expect(px.w, `${i} width`).toBeGreaterThanOrEqual(board[i].min.w - 1e-6);
+      expect(px.h, `${i} height`).toBeGreaterThanOrEqual(board[i].min.h - 1e-6);
+    }
+  });
+
+  it("shrinks only as far as it has to — a free board keeps the full size", () => {
+    // The ladder must not cost a card its size when nothing is in the way.
+    const surface = { w: 1024, h: 768 };
+    const r = placeNew([], { w: 460, h: 520 }, { w: 240, h: 200 }, surface);
+    const px = fromNorm(r, surface);
+    const k = Math.min(1024 / 1280, 768 / 800); // 0.8
+    expect(px.w).toBeCloseTo(460 * k, 6);
+    expect(px.h).toBeCloseTo(520 * k, 6);
+  });
+
+  it("a card that fits at a middle rung is not shrunk all the way down", () => {
+    // Half the board taken, and the wanted card is a shade too wide for the
+    // other half: the answer is a slightly smaller card, not the minimum.
+    const surface = { w: 1000, h: 1000 };
+    const wall = { x: 0, y: 0, w: 0.5, h: 1 };
+    const r = placeNew([wall], { w: 700, h: 500 }, { w: 100, h: 100 }, surface);
+    expect(overlaps(r, wall)).toBe(false);
+    const px = fromNorm(r, surface);
+    expect(px.w).toBeGreaterThan(200);
   });
 
   it("a full board still accepts one more card (cascade fallback)", () => {

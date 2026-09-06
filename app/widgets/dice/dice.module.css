@@ -423,10 +423,16 @@
   color: var(--die-ink);
 }
 
+/* The whole point of the sum line is that the CLASS does not have to add the
+   faces up — so it has to be readable from where the class sits. At 7cqmin it
+   measured 13,3 px of muted grey on a standard board card: a number only the
+   teacher standing at the wall could read, which is the one person who did
+   not need it. The line exists only at count > 1, so the cards with a single
+   big die pay nothing for this. */
 .sum {
-  font-size: 7cqmin;
-  font-weight: 600;
-  color: var(--ink-2);
+  font-size: 11cqmin;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 /* ── The appearance panel ─────────────────────────────────────────────────

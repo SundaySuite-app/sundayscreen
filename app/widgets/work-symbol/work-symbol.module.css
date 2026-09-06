@@ -1,3 +1,16 @@
+/* The hover row is `position: absolute; bottom: var(--sp-2)` on the shell, so
+   the card has to RESERVE that strip — the account groups.module.css carries
+   in full, and the reserve this widget was missing (R7-funn K4). Measured on
+   the standard card, 256×240: «Stille arbeid» ends at y=208.8 and the row's
+   plate starts at 195, so the word the class is meant to read was cut by
+   about 14 px — every time the teacher reached for the card to change mode,
+   which is many times a day.
+
+   Three terms, all load-bearing, same as the other cards: one row (--sp-1 +
+   36px + --sp-1 = 44px), its `bottom: var(--sp-2)` offset, and the row's own
+   `box-shadow` plate, which paints --sp-2 of card colour beyond its box. The
+   four glyph buttons measure ~180px, so the row does not wrap at this card's
+   180px minimum — no doubled reserve, unlike groups and the picker. */
 .symbol {
   width: 100%;
   height: 100%;
@@ -7,9 +20,32 @@
   justify-content: center;
   gap: var(--sp-2);
   padding: var(--sp-3);
+  padding-bottom: calc(44px + var(--sp-2) + var(--sp-2));
+}
+
+/* Glyph + word are ONE control — a click cycles the modes, the way the
+   traffic light's lamps are its own buttons (R7-funn K5). `width: auto`
+   rather than the card's full width: the strip either side stays drag
+   surface, which is how the traffic light leaves room around its housing. */
+.signal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--r-md);
 }
 
 .glyph {
+  display: block;
   width: 44cqmin;
   height: 44cqmin;
   color: var(--ink);
@@ -30,6 +66,7 @@
    what does wrap into even lines instead of leaving one orphan word, and 1.15
    keeps a two-line label from drifting away from its glyph. */
 .label {
+  display: block;
   font-size: 12cqmin;
   font-weight: 700;
   line-height: 1.15;

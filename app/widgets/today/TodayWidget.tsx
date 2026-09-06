@@ -2,26 +2,29 @@
 // planner and the day's messages. A good-morning screen — everything
 // derives from the shared planner store and Intl at paint time.
 
-import { useEffect, useState } from "preact/hooks";
-
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { localeTag } from "@lib/i18n";
 import { t } from "../../i18n";
 import { formatMin } from "../../planner/date-core";
-import { plannerNowMs, todayPlan, todayReadFailed } from "../../state/planner";
+import {
+  openPlanner,
+  plannerNowMs,
+  todayPlan,
+  todayReadFailed,
+} from "../../state/planner";
 import { updateWidgetConfig } from "../../state/layout";
 import { blockEnd } from "../agenda/agenda-widget-core";
 import styles from "./today.module.css";
 
 export function TodayWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
-  const [, force] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => force((n) => n + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
   if (cfg.kind !== "today") return null;
 
+  // ONE clock, and it is the planner's (the agenda's E2-10 lesson). The
+  // widget carried a private 60 s `setInterval` on top of this subscription;
+  // it was DEAD code, because the 30 s planner tick already re-renders
+  // everything the interval could have — twice as often, and from the same
+  // signal the date and the plan are read off.
   void plannerNowMs.value; // subscribe: date rollover refetches the plan
   const now = new Date();
   const weekday = new Intl.DateTimeFormat(localeTag(), {
@@ -62,11 +65,22 @@ export function TodayWidget({ widget }: { widget: WidgetInstance }) {
             // ENTRY list means no timetable exists at all. (`plan != null`
             // keeps the text from flickering before the first IPC answer.)
             <li class={styles.emptyRow}>
-              {todayReadFailed.value
-                ? t("planner.readFailed")
-                : plan != null && plan.entries.length === 0
-                  ? t("planner.noTimetable")
-                  : t("today.noLessons")}
+              {todayReadFailed.value ? (
+                t("planner.readFailed")
+              ) : plan != null && plan.entries.length === 0 ? (
+                // A DOOR, not a message. «Ingen timeplan satt opp ennå» is
+                // the one sentence in this app that names something the
+                // teacher can do, and everywhere else it says it — the
+                // agenda's own empty state, the picker's «Legg inn navn»,
+                // the group generator's. Here it was dead text she clicked
+                // on day one and nothing happened. `data-no-drag` is
+                // mandatory: the list is part of the drag surface.
+                <button class={styles.door} data-no-drag onClick={openPlanner}>
+                  {t("planner.noTimetable")}
+                </button>
+              ) : (
+                t("today.noLessons")
+              )}
             </li>
           ) : (
             lessons.map((e) => {

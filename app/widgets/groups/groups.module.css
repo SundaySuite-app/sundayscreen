@@ -28,13 +28,19 @@
 /* The result FILLS the card: pupils read their group from their seat, so
  * the names scale with the box (they were locked to --fs-base, ~14 px,
  * unreadable past the front row) and the columns stretch to use the
- * height instead of huddling at the top. */
+ * height instead of huddling at the top.
+ *
+ * The counts the size formula runs on arrive here inline, from the widget;
+ * the formula itself lives on `.group`'s children (below). */
 .result {
   flex: 1;
   display: grid;
   gap: 2cqmin;
   min-height: 0;
-  --group-scale: 1;
+  --lines: 1;
+  --lines-split: 1;
+  --chip-cols: 1;
+  --name-chars: 8;
 }
 
 .empty {
@@ -49,21 +55,83 @@
   text-align: center;
 }
 
+/* The panel is its own size container — that is the whole fix: `100cqh`
+   inside here is the height ONE GROUP got, whatever the card is doing.
+   `container-type: size` also means the panel no longer sizes to its names,
+   which is why `.result` hands out explicit `1fr` rows: every panel is the
+   same box, so every name is the same size. `overflow: hidden` stays as the
+   last resort — the formula is set to clear the budget, not to fill it. */
 .group {
+  container-type: size;
+  container-name: group;
   min-width: 0;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1cqmin;
   background: var(--bg);
   border-radius: var(--r-sm);
   padding: 2cqmin 2.5cqmin;
   overflow: hidden;
 }
 
+/* ── The size formula (R7-funn K1) ─────────────────────────────────────────
+ *
+ * The ladder this replaces counted NAMES (`max(rows, ceil(longest/5))` → one
+ * of four fixed scales) and so answered the same 0.56 whether the panel was
+ * 183 px tall or 539: measured 7,4 px on a standard card with 25 pupils in
+ * two groups, and 16,2 px in «Vis stort» with 43 % of every panel standing
+ * empty. What the class can read is a function of the BOX, so that is what
+ * the two terms are:
+ *
+ *   height — one line is 1.25 of the type (the `.chip` line-height) plus
+ *     0.14 of row gap; the heading and its margin cost about 1.1 lines more.
+ *     Hence `1.42 × lines + 1.1`, a hair conservative on both counts because
+ *     `.group` CLIPS and a cut-off pupil is worse than a small one.
+ *   width — a name is about 0.55 em per character, `--name-chars` is the
+ *     longest one on the board, and a split panel pays it per COLUMN.
+ *
+ * `min()` of the two, so whichever runs out first decides.
+ *
+ * ⚠️ TWO placement rules, and the formula is silently wrong if either is
+ * broken (both were, and both were caught only by measuring):
+ *
+ *   - it must be declared on the panel's CHILDREN, not on `.result`. A custom
+ *     property's `var()`s are substituted where the property is DECLARED, so
+ *     a `--name-size` written on `.result` bakes in `.result`'s counts — and
+ *     the split's `--lines`/`--chip-cols` below, which land on these
+ *     children, would never reach it. (Measured: two columns of names sized
+ *     for thirteen lines.) Only the LENGTHS stay unresolved.
+ *   - it must not be a `font-size` on `.group` itself. Container-query units
+ *     in a declaration on the container resolve against that container's own
+ *     ancestor container — i.e. against the card, which is the bug. Here they
+ *     resolve against `.group`, because that is these elements' container. */
+.group > * {
+  --name-size: min(
+    calc(100cqh / (var(--lines) * 1.42 + 1.1)),
+    calc(100cqw / (var(--chip-cols) * var(--name-chars) * 0.55))
+  );
+}
+
+/* TWO COLUMNS in a panel that has the width for them. Thirteen names down one
+   column of a 452×527 panel is 28 px of type; the same thirteen in two
+   columns is 48 px, because the height budget is what binds and splitting
+   halves it. It is a CONTAINER question, not a count question — a narrow tall
+   panel (200×500) is better off with one column, and the query says so: split
+   only when the panel is at least 0.7 as wide as it is tall.
+   `data-split` is the count half of the same decision (the widget sets it
+   from eight names up; below that the width cap eats the gain), and it sits
+   on the panel so ONE rule can hand the new line count to the heading and the
+   names together — they have to agree, or the heading is sized for a column
+   that is no longer there. */
+@container group (min-aspect-ratio: 7 / 10) {
+  .group[data-split] > * {
+    --chip-cols: 2;
+    --lines: var(--lines-split);
+  }
+}
+
 .groupTitle {
-  margin: 0;
-  font-size: calc(3.2cqmin * var(--group-scale));
+  margin: 0 0 0.3em;
+  font-size: calc(var(--name-size) * 0.6);
+  line-height: 1.2;
   font-weight: 700;
   color: var(--ink-2);
   text-transform: uppercase;
@@ -74,15 +142,17 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6cqmin;
+  display: grid;
+  grid-template-columns: repeat(var(--chip-cols), minmax(0, 1fr));
+  column-gap: 1em;
+  row-gap: 0.14em;
+  font-size: var(--name-size);
 }
 
 /* Plain lines, not pills: at reading size the pill borders became visual
  * noise, and a column of names is what a pupil scans for their own. */
 .chip {
-  font-size: calc(4.4cqmin * var(--group-scale));
+  font-size: inherit;
   line-height: 1.25;
   font-weight: 600;
   color: var(--ink);

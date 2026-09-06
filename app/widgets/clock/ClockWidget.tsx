@@ -3,23 +3,18 @@
 // wall clock at paint time, so throttling can never make it wrong — only
 // briefly stale.
 
-import { useEffect, useState } from "preact/hooks";
-
 import { localeTag } from "@lib/i18n";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
 import { updateWidgetConfig } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
+import { SECOND_TICK_MS, useTick } from "../../ui/useTick";
 import styles from "./clock.module.css";
 
 export function ClockWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
-  const [, force] = useState(0);
 
-  useEffect(() => {
-    const id = setInterval(() => force((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
+  useTick(SECOND_TICK_MS);
 
   if (cfg.kind !== "clock") return null;
 

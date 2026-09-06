@@ -13,7 +13,8 @@ import type { TextAlign } from "../../bindings/TextAlign";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t } from "../../i18n";
 import { LIMITS } from "@lib/limits.generated";
-import { saveNow, updateWidgetConfig } from "../../state/layout";
+import { updateWidgetConfig } from "../../state/layout";
+import { commitField } from "../../ui/commit";
 import { clampFontScale, steppedScale } from "./text-core";
 import styles from "./text.module.css";
 
@@ -25,7 +26,7 @@ export function TextWidget({ widget }: { widget: WidgetInstance }) {
   if (cfg.kind !== "text") return null;
   const [editing, setEditing] = useState(false);
 
-  const commit = (content: string, opts: { debounce: boolean }) => {
+  const commit = (content: string, opts: { debounce?: boolean }) => {
     updateWidgetConfig(widget.id, { ...cfg, content }, opts);
   };
 
@@ -114,13 +115,15 @@ export function TextWidget({ widget }: { widget: WidgetInstance }) {
           maxLength={LIMITS.TEXT_CONTENT_MAX_CHARS}
           data-no-drag
           autofocus
-          onInput={(e) =>
-            commit((e.target as HTMLTextAreaElement).value, { debounce: true })
-          }
-          onBlur={() => {
-            setEditing(false);
-            saveNow();
-          }}
+          // The shared edit-in-place contract (app/ui/commit.ts).
+          // `enterCommits: false` because this one is a MESSAGE: Enter is a
+          // line break here, and the landings are blur and the global Escape
+          // (which blurs the field, see app/screen/keyboard.ts).
+          {...commitField({
+            write: commit,
+            close: () => setEditing(false),
+            enterCommits: false,
+          })}
         />
         {row}
       </>

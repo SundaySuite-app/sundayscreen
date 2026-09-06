@@ -80,6 +80,23 @@
   font-size: 6.5cqmin;
 }
 
+/* «Ingen timeplan satt opp ennå» is a BUTTON now, and keeps the row's
+   expression exactly — muted, cqmin-scaled, no gold CTA. Same shape the
+   picker's and the group generator's doors carry, and for the same reason:
+   this stands on a projector, and the one person it addresses is holding the
+   mouse. The radius only shapes base.css's focus ring. */
+.door {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 /* Notes are capped and do NOT flex: without this, three or four messages grow
    the notes list, squeeze .lessons and push the timetable into a scroll area —
    and nobody scrolls a projector. The timetable keeps the card. */

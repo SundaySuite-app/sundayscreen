@@ -20,6 +20,8 @@
   gap: var(--sp-3);
   padding: var(--sp-4);
   padding-bottom: calc(44px + var(--sp-2) + var(--sp-3));
+  --pick-count: 1;
+  --pick-chars: 8;
 }
 
 @container (max-width: 370px) {
@@ -28,31 +30,57 @@
   }
 }
 
-/* One name or five, stacked in a column. `--pick-scale` comes in inline from
-   the COUNT (the group generator's crowding ladder) — at one name it is 1,
-   i.e. byte-for-byte the size the picker has always drawn a name at. Five
-   names at full 20cqmin would be 285 px of line in a 260 px card; the ladder
-   is set so all five still fit at `minSizePx` (measured). */
+/* One name or five, stacked in a column — and sized against the COLUMN'S OWN
+   BOX (R7-funn K1).
+ *
+ * `--pick-scale` was a ladder of five constants calibrated against the
+ * SMALLEST card (`minSizePx`, 380×260) and then applied to every card: a
+ * five-name draw measured 16,5 px on a standard card and the same 16,5 px
+ * fraction of a card twice the size, because the ladder only ever asked how
+ * many names there were. It is the group generator's disease, and it has the
+ * group generator's cure: make the column a size container and let the type
+ * fall out of the height it actually has.
+ *
+ *   height — a line is 1.1 of the type (`.name`'s line-height) plus 0.08 of
+ *     gap, so `1.18 × count` with the cap set a hair low; the column CLIPS,
+ *     and a cut-off pupil is worse than a small one.
+ *   width — a name is about 0.55 em per character and `--pick-chars` is the
+ *     longest one in the draw, so a long name shrinks the draw instead of
+ *     wrapping out of its line budget.
+ *
+ * `flex: 1` + `min-height: 0` is what hands it the leftover height: the round
+ * counter, the presence line and «Trekk navn» keep their own, and everything
+ * between belongs to the names. `container-type: size` zeroes the column's
+ * intrinsic size, which is precisely why it can never push «Trekk navn» down
+ * under the hover row again.
+ *
+ * ⚠️ The formula sits on `.name`, not here, and that is not a style choice:
+ * container-query units in a declaration on the CONTAINER ITSELF resolve
+ * against that container's own ancestor container — a `font-size: 100cqh`
+ * here would measure the card again, which IS the bug. On `.name` they
+ * resolve against this column. `align-self: stretch` is load-bearing for the
+ * same formula: `contain: size` gives the column no intrinsic width, so a
+ * shrink-to-fit cross size collapses it to zero and `100cqw` with it
+ * (measured: 0 px names). Same trap as groups' `--name-size`. */
 .display {
+  container-type: size;
+  flex: 1 1 0;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.5cqmin;
-  /* Shrink, then CLIP. A card persisted narrower than `minSizePx` (an old
-     layout, or a normalised rect on a 1024 px projector) pays the doubled
-     reserve and has very little left; without `min-height: 0` the column
-     would push «Trekk navn» down under the hover row, and without the clip a
-     zero-height centred column paints its names straight out over the card's
-     top edge. Both were measured, not guessed. */
   min-height: 0;
   overflow: hidden;
   text-align: center;
-  --pick-scale: 1;
 }
 
 .name {
-  font-size: calc(20cqmin * var(--pick-scale));
+  font-size: min(
+    calc(100cqh / (var(--pick-count) * 1.18)),
+    calc(100cqw / (var(--pick-chars) * 0.55))
+  );
   font-weight: 700;
   color: var(--ink);
   line-height: 1.1;

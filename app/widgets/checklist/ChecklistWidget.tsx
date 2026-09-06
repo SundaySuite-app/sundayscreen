@@ -6,9 +6,10 @@ import { useState } from "preact/hooks";
 
 import type { ChecklistItem } from "../../bindings/ChecklistItem";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
-import { t } from "../../i18n";
+import { t, tf } from "../../i18n";
 import { LIMITS } from "@lib/limits.generated";
-import { saveNow, updateWidgetConfigBy } from "../../state/layout";
+import { updateWidgetConfigBy } from "../../state/layout";
+import { commitField } from "../../ui/commit";
 import { Icon } from "../../ui/Icon";
 import {
   addItem,
@@ -49,9 +50,24 @@ export function ChecklistWidget({ widget }: { widget: WidgetInstance }) {
             class={styles.item}
             data-done={item.done || undefined}
           >
+            {/*
+             * The row's own text is IN the accessible name (R7/a11y-funn 8).
+             * Every check button in the list used to be «Merk gjort» and
+             * every remove button «Fjern punkt», so a screen-reader user in
+             * the button list heard the same two words N times and had no
+             * way to tell which item she was about to clear. The VISIBLE
+             * text is untouched — the board says nothing new; the title
+             * attribute keeps the short form for the same reason (a tooltip
+             * repeating the row it is sitting on is noise).
+             *
+             * `data-check-btn` / `data-remove-btn` are the stable hooks for
+             * tests: the accessible name now varies with the content, so
+             * matching on it row by row would be matching on data.
+             */}
             <button
               class={styles.checkBtn}
-              aria-label={t("checklist.check")}
+              data-check-btn
+              aria-label={tf("checklist.checkNamed", { name: item.text })}
               title={t("checklist.check")}
               aria-pressed={item.done}
               onClick={() => patch((items) => toggleItem(items, item.id))}
@@ -65,27 +81,12 @@ export function ChecklistWidget({ widget }: { widget: WidgetInstance }) {
                 maxLength={CHECKLIST_TEXT_MAX}
                 value={item.text}
                 autofocus
-                onInput={(e) =>
-                  patch(
-                    (items) =>
-                      renameItem(
-                        items,
-                        item.id,
-                        (e.target as HTMLInputElement).value,
-                      ),
-                    { debounce: true },
-                  )
-                }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === "Escape") {
-                    setEditingId(null);
-                    saveNow();
-                  }
-                }}
-                onBlur={() => {
-                  setEditingId(null);
-                  saveNow();
-                }}
+                // The shared edit-in-place contract (app/ui/commit.ts).
+                {...commitField({
+                  write: (text, opts) =>
+                    patch((items) => renameItem(items, item.id, text), opts),
+                  close: () => setEditingId(null),
+                })}
               />
             ) : (
               <button
@@ -98,7 +99,8 @@ export function ChecklistWidget({ widget }: { widget: WidgetInstance }) {
             )}
             <button
               class={styles.removeBtn}
-              aria-label={t("checklist.remove")}
+              data-remove-btn
+              aria-label={tf("checklist.removeNamed", { name: item.text })}
               title={t("checklist.remove")}
               onClick={() => patch((items) => removeItem(items, item.id))}
             >

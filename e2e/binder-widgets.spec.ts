@@ -56,17 +56,16 @@ test("plan a lesson, see it in both widgets, check off an activity", async ({
   await expect(agenda).toContainText("08:30");
 
   // Check the activity off — and it SURVIVES a reload (stored in the plan).
-  await agenda.getByRole("button", { name: "Merk gjort" }).click();
-  await expect(
-    agenda.getByRole("button", { name: "Merk gjort" }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await agenda.locator("[data-check-btn]").click();
+  await expect(agenda.locator("[data-check-btn]")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   // A plain goto, not reload(): reload keeps ?goto=planner in the URL and
   // the boot wiring would reopen the panel over the board.
   await page.goto("/");
   await expect(
-    page
-      .locator('[data-widget-kind="agenda"]')
-      .getByRole("button", { name: "Merk gjort" }),
+    page.locator('[data-widget-kind="agenda"] [data-check-btn]'),
   ).toHaveAttribute("aria-pressed", "true");
 
   // «Dagen i dag» shows the weekday, the timetable and the message.
@@ -120,22 +119,26 @@ test("a line typed on the board lands in the PLAN — and leaves it again", asyn
   await field.fill("Gjennomgang");
   await field.press("Enter");
   await expect(
-    agenda.getByRole("button", { name: "Gjennomgang" }),
+    agenda.getByRole("button", { name: "Gjennomgang", exact: true }),
   ).toBeVisible();
   await expect(field).toHaveValue("");
   await field.fill("Oppgaver");
   await field.press("Enter");
-  await expect(agenda.getByRole("button", { name: "Oppgaver" })).toBeVisible();
+  await expect(
+    agenda.getByRole("button", { name: "Oppgaver", exact: true }),
+  ).toBeVisible();
 
   // Off the board again: the row's own remove button (hover-revealed, so the
   // hover is part of the gesture).
   const row = agenda.locator('li:has-text("Gjennomgang")');
   await row.hover();
-  await row.getByRole("button", { name: "Fjern aktivitet" }).click();
-  await expect(agenda.getByRole("button", { name: "Gjennomgang" })).toHaveCount(
-    0,
-  );
-  await expect(agenda.getByRole("button", { name: "Oppgaver" })).toBeVisible();
+  await row.locator("[data-remove-btn]").click();
+  await expect(
+    agenda.getByRole("button", { name: "Gjennomgang", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    agenda.getByRole("button", { name: "Oppgaver", exact: true }),
+  ).toBeVisible();
 
   // THE seam: none of that lived in the widget's config — it went through
   // `planner_agenda_set` into the plan, so a fresh boot into the planner's
@@ -182,9 +185,7 @@ test("a failed read locks the board's field instead of replacing the plan", asyn
   const row = agenda.locator('li:has-text("Gjennomgang")');
   await expect(row).toBeVisible();
   await row.hover();
-  await expect(
-    row.getByRole("button", { name: "Fjern aktivitet" }),
-  ).toHaveCount(1);
+  await expect(row.locator("[data-remove-btn]")).toHaveCount(1);
 
   // The store goes away under her feet. The check-off itself SUCCEEDS; the
   // re-read after it is what fails, which is the ordinary way this state
@@ -192,7 +193,7 @@ test("a failed read locks the board's field instead of replacing the plan", asyn
   await page.evaluate(() => {
     (window as unknown as Record<string, unknown>).__failDayGet = true;
   });
-  await agenda.getByRole("button", { name: "Merk gjort" }).click();
+  await agenda.locator("[data-check-btn]").click();
 
   // `planner_agenda_set` is a replace-all: writing the list back on a plan we
   // KNOW is stale would resurrect rows deleted in the panel. So both writing
@@ -200,11 +201,9 @@ test("a failed read locks the board's field instead of replacing the plan", asyn
   // pretending the lesson has nothing in it.
   await expect(field).toBeDisabled();
   await row.hover();
+  await expect(row.locator("[data-remove-btn]")).toHaveCount(0);
   await expect(
-    row.getByRole("button", { name: "Fjern aktivitet" }),
-  ).toHaveCount(0);
-  await expect(
-    agenda.getByRole("button", { name: "Gjennomgang" }),
+    agenda.getByRole("button", { name: "Gjennomgang", exact: true }),
   ).toBeVisible();
 });
 

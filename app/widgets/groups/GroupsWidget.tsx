@@ -15,11 +15,7 @@ import {
   members,
   membersReadFailed,
 } from "../../state/classes";
-import {
-  activeClass,
-  updateWidgetConfig,
-  updateWidgetConfigBy,
-} from "../../state/layout";
+import { activeClass, updateWidgetConfigBy } from "../../state/layout";
 import { Icon } from "../../ui/Icon";
 import { toast } from "../../ui/toast";
 import styles from "./groups.module.css";
@@ -78,20 +74,42 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
     }
   };
 
+  /**
+   * The stepper, merged into the CURRENT config (R4-funn E1-L9, the S#6
+   * pattern the name picker's `setCount` carries the full account of).
+   *
+   * It used to spread `cfg` — the config from the render the teacher is
+   * looking at — which makes the press a REPLACE of the whole object rather
+   * than an edit of one field. `doSplit` lands asynchronously and writes
+   * `lastResult`; a `{ ...cfg, n }` built before it landed puts the PREVIOUS
+   * split straight back, so the groups the class just read off the board
+   * revert — and the second promise makes that permanent.
+   */
   const setN = (delta: number) => {
-    const n = Math.min(
-      Math.max(cfg.n + delta, LIMITS.GROUP_N_MIN),
-      LIMITS.GROUP_N_MAX,
+    updateWidgetConfigBy(widget.id, (c) =>
+      c.kind === "groups"
+        ? {
+            ...c,
+            n: Math.min(
+              Math.max(c.n + delta, LIMITS.GROUP_N_MIN),
+              LIMITS.GROUP_N_MAX,
+            ),
+          }
+        : c,
     );
-    updateWidgetConfig(widget.id, { ...cfg, n });
+  };
+
+  /** «Antall grupper» / «Gruppestørrelse», on the same terms as the stepper:
+   *  one field, never a replace of a config a landing split is writing. */
+  const setMode = (mode: "count" | "size") => {
+    updateWidgetConfigBy(widget.id, (c) =>
+      c.kind === "groups" ? { ...c, mode } : c,
+    );
   };
 
   return (
     <div class={styles.groups}>
-      <div
-        class={styles.result}
-        style={gridStyle(result.length, longestGroup(result))}
-      >
+      <div class={styles.result} style={gridStyle(result)}>
         {result.length === 0 ? (
           <div class={styles.empty}>
             {noNames ? (
@@ -116,7 +134,11 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
           </div>
         ) : (
           result.map((group, i) => (
-            <section key={i} class={styles.group}>
+            <section
+              key={i}
+              class={styles.group}
+              data-split={splittable(result) || undefined}
+            >
               <h3 class={styles.groupTitle}>
                 {tf("groups.header", { n: i + 1 })}
               </h3>
@@ -160,18 +182,14 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
         <button
           data-settings-btn
           data-current={cfg.mode === "count" || undefined}
-          onClick={() =>
-            updateWidgetConfig(widget.id, { ...cfg, mode: "count" })
-          }
+          onClick={() => setMode("count")}
         >
           {t("groups.modeCount")}
         </button>
         <button
           data-settings-btn
           data-current={cfg.mode === "size" || undefined}
-          onClick={() =>
-            updateWidgetConfig(widget.id, { ...cfg, mode: "size" })
-          }
+          onClick={() => setMode("size")}
         >
           {t("groups.modeSize")}
         </button>
@@ -201,23 +219,68 @@ export function GroupsWidget({ widget }: { widget: WidgetInstance }) {
 }
 
 /**
+ * From how many names to split a panel into two columns.
+ *
+ * The container query in the stylesheet owns the other half of the decision
+ * (is the panel wide enough), and this is the half it cannot see: below eight
+ * names the second column halves the width each name gets before it has
+ * halved enough lines to pay for it, so the split makes the type SMALLER.
+ */
+const SPLIT_MIN_NAMES = 8;
+
+/** How long a name the width term budgets for. The floor keeps a class of
+ *  «Bo» and «Li» from turning two names into a poster; the ceiling keeps one
+ *  outlier from shrinking the whole board. */
+const NAME_CHARS_MIN = 6;
+const NAME_CHARS_MAX = 18;
+
+/**
  * Groups are laid out on a grid whose column count comes from HOW MANY
  * groups there are — flex-wrap gave 3-per-row always, so four groups broke
  * into 3 + 1 and the last one was clipped. Near-square reads best on a
  * board: 2→2, 3→3, 4→2×2, 5–6→3, 7–9→3, more→4.
+ *
+ * Rows are spelled out as `1fr` for the same reason the panels are size
+ * containers (see groups.module.css): a panel with `contain: size` no longer
+ * grows to its names, so the row heights have to be the grid's decision, and
+ * equal rows are what makes one shared name size honest.
+ *
+ * The three custom properties are the INPUTS to the size formula — the counts
+ * CSS cannot work out for itself. Nothing here is a font size: what a name
+ * measures is decided in the stylesheet, against the panel it stands in.
  */
-function gridStyle(count: number, longest: number): string {
+function gridStyle(groups: string[][]): string {
+  const count = groups.length;
   if (count === 0) return "";
   const cols = count <= 3 ? count : count <= 4 ? 2 : count <= 9 ? 3 : 4;
   const rows = Math.ceil(count / cols);
-  // Names shrink as the board fills up, so a big class in many groups still
-  // fits without scrolling (a scrollbar is invisible from the back row).
-  const crowding = Math.max(rows, Math.ceil(longest / 5));
-  const scale =
-    crowding <= 1 ? 1 : crowding === 2 ? 0.72 : crowding === 3 ? 0.56 : 0.45;
-  return `grid-template-columns: repeat(${cols}, minmax(0, 1fr)); --group-scale: ${scale}`;
+  const lines = longestGroup(groups);
+  const chars = Math.min(
+    Math.max(longestName(groups), NAME_CHARS_MIN),
+    NAME_CHARS_MAX,
+  );
+  return [
+    `grid-template-columns: repeat(${cols}, minmax(0, 1fr))`,
+    `grid-template-rows: repeat(${rows}, minmax(0, 1fr))`,
+    `--lines: ${lines}`,
+    `--lines-split: ${Math.ceil(lines / 2)}`,
+    `--name-chars: ${chars}`,
+  ].join("; ");
 }
 
 function longestGroup(groups: string[][]): number {
   return groups.reduce((max, g) => Math.max(max, g.length), 0);
+}
+
+function longestName(groups: string[][]): number {
+  return groups.reduce(
+    (max, g) => g.reduce((m, n) => Math.max(m, n.length), max),
+    0,
+  );
+}
+
+/** Are the panels crowded enough for the two-column layout to be worth
+ *  asking the container about? */
+function splittable(groups: string[][]): boolean {
+  return longestGroup(groups) >= SPLIT_MIN_NAMES;
 }

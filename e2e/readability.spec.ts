@@ -238,11 +238,123 @@ test("agenda rows are projector-sized at the default size", async ({
   await agenda.getByLabel("Ny aktivitet …").fill("Lese stille");
   await agenda.getByLabel("Ny aktivitet …").press("Enter");
 
-  const row = agenda.getByRole("button", { name: "Lese stille" });
+  // `exact: true`: the row's check button is named after the row now
+  // («Merk «Lese stille» som gjort»), so the default substring match would
+  // find two buttons.
+  const row = agenda.getByRole("button", {
+    name: "Lese stille",
+    exact: true,
+  });
   await expect(row).toBeVisible();
   const px = await fontSizePx(row);
 
   expect(px, `agenda row renders at ${px}px`).toBeGreaterThanOrEqual(24);
+});
+
+// A real class, in the two places the group generator is actually read from:
+// the card it is born on, and «Vis stort» during a split.
+const CLASS_25 = Array.from({ length: 25 }, (_, i) => `Elev ${i + 1}`);
+
+test("25 pupils in two groups are readable — on the card and enlarged", async ({
+  page,
+}) => {
+  // THE finding of the classroom round. The crowding ladder counted NAMES
+  // (`max(rows, ceil(longest/5))` → one of four fixed scales), so it answered
+  // the same 0.56 whatever the box was: measured 7,4 px of name and 5,4 px of
+  // «GRUPPE 1» on the standard card — unreadable from the FIRST desk — and
+  // 16,2 px in «Vis stort» with 43 % of each panel standing empty. The class
+  // could not read who was where, so the teacher read it out and the widget
+  // had lost its job.
+  //
+  // FLOORS, not pins: the formulas land at 15,5 px and 46,4 px today.
+  await installFixtures(page, { memberNames: CLASS_25 });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/");
+  await addWidget(page, "Grupper");
+
+  const groups = page.locator('[data-widget-kind="groups"]');
+  await groups.hover();
+  // The default is four groups; two is the crowded case (13 to a panel).
+  await groups.getByRole("button", { name: "Senk tallet" }).click();
+  await groups.getByRole("button", { name: "Senk tallet" }).click();
+  await groups.getByRole("button", { name: "Del inn" }).click();
+  await expect(groups.locator("li")).toHaveCount(25);
+
+  const name = groups.locator("li").first();
+  const heading = groups.locator("h3").first();
+  const onCard = await fontSizePx(name);
+  expect(
+    onCard,
+    `a name in a group renders at ${onCard}px`,
+  ).toBeGreaterThanOrEqual(13);
+  const headingPx = await fontSizePx(heading);
+  expect(
+    headingPx,
+    `«Gruppe 1» renders at ${headingPx}px`,
+  ).toBeGreaterThanOrEqual(8);
+
+  // …and the names still FIT the panel they were sized against. The whole
+  // point of scaling from the container is that the budget is real: `.group`
+  // clips, so an over-eager formula would cut the last pupil off instead of
+  // shrinking.
+  const panel = (await groups.locator("section").first().boundingBox())!;
+  const list = (await groups
+    .locator("section")
+    .first()
+    .locator("ul")
+    .boundingBox())!;
+  await assertContained(list, panel, "the first group's names");
+
+  await groups.hover();
+  await groups.getByRole("button", { name: "Vis stort" }).click();
+  await expect.poll(() => fontSizePx(name)).toBeGreaterThanOrEqual(34);
+
+  const bigPanel = (await groups.locator("section").first().boundingBox())!;
+  const bigList = (await groups
+    .locator("section")
+    .first()
+    .locator("ul")
+    .boundingBox())!;
+  await assertContained(bigList, bigPanel, "the first group's names, enlarged");
+  // The card really did grow — without this the floor above could be met by
+  // a «Vis stort» that never happened.
+  expect(bigPanel.height).toBeGreaterThan(panel.height * 2);
+});
+
+test("a five-name draw is readable, and grows with the card", async ({
+  page,
+}) => {
+  // The same disease in the picker: `PICK_SCALE` was calibrated against the
+  // SMALLEST card (380×260) and then applied to every card, so a five-name
+  // draw was 16,5 px whether the card was minimum-sized or twice that. The
+  // floor here is the small card's own physics; the second half of the test
+  // is the part the ladder could never pass.
+  await installFixtures(page, { memberNames: CLASS_25 });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/");
+  await addWidget(page, "Navnetrekker");
+
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  await picker.hover();
+  for (let i = 0; i < 4; i++) {
+    await picker.getByRole("button", { name: "Ett navn til" }).click();
+  }
+  await picker.getByRole("button", { name: "Trekk navn" }).click();
+  await expect(
+    picker.getByRole("button", { name: "Trekk navn" }),
+  ).toBeEnabled();
+  await expect(picker.locator("[data-display] > div")).toHaveCount(5);
+
+  const name = picker.locator("[data-display] > div").first();
+  const small = await fontSizePx(name);
+  expect(small, `five drawn names render at ${small}px`).toBeGreaterThanOrEqual(
+    15,
+  );
+
+  await picker.hover();
+  await picker.getByRole("button", { name: "Vis stort" }).click();
+  // Four times the card has to buy the names more than four per cent.
+  await expect.poll(() => fontSizePx(name)).toBeGreaterThanOrEqual(55);
 });
 
 test("a keyboard user can see where they are — in the app and in a panel", async ({

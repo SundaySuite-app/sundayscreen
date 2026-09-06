@@ -51,6 +51,43 @@ test("no-repeat draws everyone before starting a new round", async ({
   await expect(picker.getByText("Ny runde!")).toBeVisible();
 });
 
+test("the draw skips the spin when the teacher asks for less movement", async ({
+  page,
+}) => {
+  // The die has had this gate since R5 (`DiceWidget.prefersReducedMotion`);
+  // the draw never got it, and measured under emulated `reduce` the names
+  // still strobed in 60 ms steps for the full 700 ms window.
+  //
+  // The mocked clock is what makes this a real assertion rather than a race:
+  // with the page's timers frozen, a spin can NEVER end on its own, so
+  // «the answer is on the board» can only be true if no spin was scheduled.
+  await installFixtures(page, { memberNames: NAMES });
+  await page.clock.install({ time: new Date("2026-08-31T09:00:00") });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+
+  await addWidget(page, "Navnetrekker");
+  const picker = page.locator('[data-widget-kind="namepicker"]');
+  const drawBtn = picker.getByRole("button", { name: "Trekk navn" });
+  const display = picker.locator("[data-display]");
+
+  await drawBtn.click();
+  await expect(display).toHaveText("Kari");
+  await expect(display).not.toHaveAttribute("data-spinning", "true");
+  await expect(drawBtn).toBeEnabled();
+
+  // …and the CONTRAST, on the same frozen clock: with the preference off the
+  // spin is real, and it is still running when the reduced-motion draw had
+  // long since landed. Without this half, a broken freeze would let the test
+  // above pass for the wrong reason.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await drawBtn.click();
+  await expect(display).toHaveAttribute("data-spinning", "true");
+  await page.clock.fastForward(800);
+  await expect(display).not.toHaveAttribute("data-spinning", "true");
+  await expect(display).toHaveText("Ola");
+});
+
 test("the round counter counts down and the drawn name persists", async ({
   page,
 }) => {

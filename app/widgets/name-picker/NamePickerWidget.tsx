@@ -28,22 +28,40 @@ import styles from "./name-picker.module.css";
 const SPIN_MS = 700;
 const SPIN_STEP_MS = 60;
 
-/**
- * How much the drawn names shrink as more of them share the card — the group
- * generator's crowding ladder, one column instead of a grid. One name is
- * scale 1, i.e. exactly the size the widget has always drawn it at.
- *
- * The steps below three are not a curve, they are a MEASUREMENT: the base is
- * `cqmin`, which grows with the card, so a bigger card does not by itself buy
- * a fifth name any room — the binding case is the smallest card
- * (`minSizePx`, 380×260) with the round counter under the names, and these
- * are the largest values that still fit it. Bigger cards are left slightly
- * conservative on purpose; a clipped last name is worse than a small one.
- */
-const PICK_SCALE = [1, 1, 0.72, 0.54, 0.4, 0.32];
+/** How long a name the width term budgets for — the group generator's floor
+ *  and ceiling, and the same reasons. */
+const NAME_CHARS_MIN = 6;
+const NAME_CHARS_MAX = 18;
 
-function pickScale(count: number): number {
-  return PICK_SCALE[Math.min(count, PICK_SCALE.length - 1)] ?? 1;
+/**
+ * The two counts the size formula needs (see name-picker.module.css).
+ *
+ * They REPLACE `PICK_SCALE`, a ladder of five constants calibrated against
+ * the smallest card and then applied to every card: the base was `cqmin`, so
+ * a bigger card bought a five-name draw nothing at all — measured 16,5 px on
+ * a standard board card, with the column's lower half empty. Nothing here is
+ * a size; the column's own box decides that.
+ */
+function displayVars(names: string[]): string {
+  const chars = names.reduce((m, n) => Math.max(m, n.length), 0);
+  return [
+    `--pick-count: ${Math.max(names.length, 1)}`,
+    `--pick-chars: ${Math.min(Math.max(chars, NAME_CHARS_MIN), NAME_CHARS_MAX)}`,
+  ].join("; ");
+}
+
+/**
+ * Does the teacher's OS ask for less movement? Read fresh at every draw, on
+ * the die's terms (`DiceWidget.tsx`) and for the die's reason: a `setInterval`
+ * that flashes names is invisible to a media query, so this half of the
+ * promise has to be asked in JS.
+ */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 /** The stored count, inside the backend's range. Applied to the value READ
@@ -148,6 +166,27 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
         localDateStr(new Date()),
       );
       const drawn = result.members.map((m) => m.name);
+      // No spin when the teacher's OS asks for less movement: the answer
+      // lands at once, in the same shape the timeout below would have left
+      // it. The die has had this gate since R5; the draw never got it, and a
+      // 700 ms strobe of names at 60 ms a step is exactly what
+      // `prefers-reduced-motion` is a request about.
+      if (prefersReducedMotion()) {
+        setPreview(null);
+        setSpinning(false);
+        setRound({
+          remaining: result.remaining,
+          reshuffled: result.reshuffled,
+          short: drawn.length < drawCount,
+          drawn: drawn.length,
+        });
+        updateWidgetConfigBy(widget.id, (c) =>
+          c.kind === "namepicker"
+            ? { ...c, lastDrawn: drawn[0] ?? null, lastDrawnMany: drawn }
+            : c,
+        );
+        return;
+      }
       // The spin teases from the PRESENT pupils only: flashing a name the
       // draw can never land on is a small lie the front row reads. ONE spin
       // for the whole draw — every name is already decided, and 700 ms per
@@ -241,7 +280,7 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
         data-display
         data-empty={shown.length === 0 || undefined}
         data-spinning={spinning || undefined}
-        style={`--pick-scale: ${pickScale(shown.length)}`}
+        style={displayVars(shown)}
       >
         {shown.length === 0
           ? t("picker.ready")

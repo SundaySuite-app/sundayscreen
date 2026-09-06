@@ -251,8 +251,10 @@ test("a duplicate carries the settings and is its own card", async ({
 
   // structuredClone, not a spread: ticking the copy must leave the original
   // alone, or the two share one `items` array.
-  const done = (i: number) =>
-    lists.nth(i).getByRole("button", { name: "Merk gjort" }).first();
+  // `[data-check-btn]`, not the accessible name: a checklist row's check
+  // button is named after the ROW now («Merk «Matpakke-lapp» som gjort»), so
+  // a by-name lookup here would be a lookup on the fixture's own text.
+  const done = (i: number) => lists.nth(i).locator("[data-check-btn]").first();
   await done(1).click();
   await expect(done(1)).toHaveAttribute("aria-pressed", "true");
   await expect(done(0)).not.toHaveAttribute("aria-pressed", "true");

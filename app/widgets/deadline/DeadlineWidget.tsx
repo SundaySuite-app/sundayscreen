@@ -3,12 +3,15 @@
 // (60 s repaint is a re-derivation, never a counter), and the urgency bands
 // recolour the number as the date closes in.
 
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
 import { t, tn } from "../../i18n";
+import { localeTag } from "@lib/i18n";
 import { LIMITS } from "@lib/limits.generated";
-import { saveNow, updateWidgetConfig } from "../../state/layout";
+import { updateWidgetConfig } from "../../state/layout";
+import { commitField } from "../../ui/commit";
+import { MINUTE_TICK_MS, useTick } from "../../ui/useTick";
 import { breakdown, urgency } from "./deadline-core";
 import styles from "./deadline.module.css";
 
@@ -32,11 +35,9 @@ function toDateInput(targetEpochMs: number): string {
 export function DeadlineWidget({ widget }: { widget: WidgetInstance }) {
   const cfg = widget.config;
   const [editingTitle, setEditingTitle] = useState(false);
-  const [, force] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => force((n) => n + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // A re-derivation, never a counter: everything below is computed from
+  // `Date.now()` at paint time, so a missed minute is stale, not wrong.
+  useTick(MINUTE_TICK_MS);
   if (cfg.kind !== "deadline") return null;
 
   const now = Date.now();
@@ -56,25 +57,14 @@ export function DeadlineWidget({ widget }: { widget: WidgetInstance }) {
           maxLength={LIMITS.DEADLINE_TITLE_MAX_CHARS}
           autofocus
           data-no-drag
-          onInput={(e) =>
-            updateWidgetConfig(
-              widget.id,
-              { ...cfg, title: (e.target as HTMLInputElement).value },
-              { debounce: true },
-            )
-          }
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === "Escape") {
-              setEditingTitle(false);
-              // Blur commits with the immediate save (the text-widget
-              // contract) — a pending debounce must not die with a quit.
-              saveNow();
-            }
-          }}
-          onBlur={() => {
-            setEditingTitle(false);
-            saveNow();
-          }}
+          // The shared edit-in-place contract (app/ui/commit.ts) — the three
+          // hand copies it replaces all said the same thing in different
+          // words, and cross-referenced each other for the reason.
+          {...commitField({
+            write: (title, opts) =>
+              updateWidgetConfig(widget.id, { ...cfg, title }, opts),
+            close: () => setEditingTitle(false),
+          })}
         />
       ) : (
         <button
@@ -113,9 +103,22 @@ export function DeadlineWidget({ widget }: { widget: WidgetInstance }) {
       )}
 
       <div data-settings-row data-no-drag>
+        {/*
+         * `lang` is the cheap half of R7-funn K8. A native date field takes
+         * its placeholder and its picker from the LOCALE, and on a school Mac
+         * running an English system that meant «mm/dd/yyyy» and an English
+         * calendar in the middle of a Norwegian app, on a projector. Chromium
+         * and WebKit both let the element's own `lang` decide that, so the
+         * app's language answers for its own field.
+         *
+         * The other half — printing the chosen date ourselves, «05.09.2026»
+         * through `Intl` — is a bigger change (own display + a hidden field
+         * for the picker) and is not made here.
+         */}
         <input
           data-settings-btn
           type="date"
+          lang={localeTag()}
           class={styles.dateInput}
           aria-label={t("deadline.pickDate")}
           title={t("deadline.pickDate")}

@@ -12,6 +12,7 @@ import { t, tf, tn } from "../../i18n";
 import { formatMin } from "../../planner/date-core";
 import { updateWidgetConfig } from "../../state/layout";
 import { runningLessonEndMin } from "../../state/planner";
+import { settings } from "../../state/settings";
 import { Icon } from "../../ui/Icon";
 import { playChime } from "./chime";
 import styles from "./timer.module.css";
@@ -56,6 +57,21 @@ const PRESET_MINUTES = [1, 5, 10, 15, 20];
  * teacher actually means by it is «until we are done here».
  */
 const PRESET_REPLACED_BY_LESSON = 15;
+
+/**
+ * The school's own lesson length, when it is worth a pill of its own — or
+ * `null`, which means the row keeps all five numbers.
+ *
+ * `null` in exactly two cases, and both of them are «the row already says
+ * this»: the length IS one of the presets (a 20-minute school hour needs no
+ * sixth button), or it is the very preset the swap would remove. The swap
+ * rule itself is the lesson pill's, unchanged — FIVE is the constraint, so
+ * the conditional pill REPLACES 15 rather than joining it, and the two can
+ * never both be on the row because a lesson is either running or it is not.
+ */
+function lessonMinutesPreset(lessonMinutes: number): number | null {
+  return PRESET_MINUTES.includes(lessonMinutes) ? null : lessonMinutes;
+}
 
 /**
  * The backend clamps `durationMs` on the way in, so a value outside the
@@ -175,8 +191,14 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
   // `null` whenever no lesson is running — the pill cannot appear on a
   // Saturday, in a break, or in front of a lesson that has not started.
   const lessonEndMin = runningLessonEndMin.value;
+  // …and when no lesson IS running, the school's own lesson length takes the
+  // same seat (R7-funn K2). The app has known that number since Timeoppsett
+  // and never said it either: a vikartime, a tentamen in the gym, or simply
+  // day one before the week is set up meant «Sett til 20» plus twenty-five
+  // presses of «Ett minutt til», in front of the class.
+  const lessonLength = lessonMinutesPreset(settings.value.lessonMinutes);
   const presets =
-    lessonEndMin == null
+    lessonEndMin == null && lessonLength == null
       ? PRESET_MINUTES
       : PRESET_MINUTES.filter((m) => m !== PRESET_REPLACED_BY_LESSON);
 
@@ -276,6 +298,32 @@ export function TimerWidget({ widget }: { widget: WidgetInstance }) {
          * from the render that drew the pill (see `setDurationToLessonEnd`,
          * which also refuses a pill that has outlived its lesson).
          */}
+        {/*
+         * «Skoletimen», in one click — the pill that stands in the seat the
+         * lesson pill leaves empty. The face carries its unit («45 min»,
+         * `planner.minutePill` — the same words Timeoppsett sets it with),
+         * because a bare 45 among 1 · 5 · 10 · 20 reads as one more round
+         * number rather than as this school's hour. The accessible name is
+         * the presets' own sentence, so «Sett til 45 minutter» is what a
+         * screen reader and a voice command both get.
+         */}
+        {state.phase === "idle" &&
+          cfg.mode === "countdown" &&
+          lessonEndMin == null &&
+          lessonLength != null && (
+            <button
+              data-settings-btn
+              data-lesson-length
+              data-current={
+                cfg.durationMs === lessonLength * MINUTE_MS || undefined
+              }
+              aria-label={tn("timer.presetMinutes", lessonLength)}
+              title={tn("timer.presetMinutes", lessonLength)}
+              onClick={() => setDuration(lessonLength)}
+            >
+              {tf("planner.minutePill", { n: String(lessonLength) })}
+            </button>
+          )}
         {state.phase === "idle" &&
           cfg.mode === "countdown" &&
           lessonEndMin != null && (

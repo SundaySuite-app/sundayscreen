@@ -10,7 +10,7 @@ import type { AgendaItem } from "../../bindings/AgendaItem";
 import type { AgendaItemSpec } from "../../bindings/AgendaItemSpec";
 import type { ManualAgendaItem } from "../../bindings/ManualAgendaItem";
 import type { WidgetInstance } from "../../bindings/WidgetInstance";
-import { t } from "../../i18n";
+import { t, tf } from "../../i18n";
 import { markedIndex, startOffsets } from "../../planner/agenda-core";
 import { formatMin, minutesOfDay } from "../../planner/date-core";
 import {
@@ -447,9 +447,16 @@ function ItemList(props: {
           data-done={item.done || undefined}
         >
           {i === marked && <span class={styles.nowBar} />}
+          {/* The activity's own text is IN the accessible name (R7/a11y-funn
+              8): a list of «Merk gjort, Merk gjort, Merk gjort» told a screen
+              reader nothing about WHICH activity was about to be ticked off.
+              The visible board and the tooltips are untouched, and
+              `data-check-btn` / `data-remove-btn` are what tests match on
+              now that the name follows the teacher's own words. */}
           <button
             class={styles.checkBtn}
-            aria-label={t("agenda.check")}
+            data-check-btn
+            aria-label={tf("agenda.checkNamed", { name: item.text })}
             title={t("agenda.check")}
             aria-pressed={item.done}
             onClick={() => props.onToggleDone(item)}
@@ -471,7 +478,8 @@ function ItemList(props: {
           {props.removable && props.onRemove && (
             <button
               class={styles.removeBtn}
-              aria-label={t("agenda.remove")}
+              data-remove-btn
+              aria-label={tf("agenda.removeNamed", { name: item.text })}
               title={t("agenda.remove")}
               onClick={() => props.onRemove!(item)}
             >

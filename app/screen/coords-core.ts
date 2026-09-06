@@ -79,9 +79,11 @@ function surfaceScale(surface: Size): number {
  * The old rule was "centre, plus 32 px per existing widget", which is fine
  * for two cards and a pile for six — the teacher had to drag every widget
  * out of the stack before the board was usable. Now the surface is scanned
- * on a coarse grid and the first candidate that overlaps nothing wins;
- * only when genuinely nothing fits do we fall back to the old cascade (a
- * full board should still accept one more card rather than refuse).
+ * on a coarse grid and the first candidate that overlaps nothing wins; if
+ * nothing fits at the wanted size the scan is repeated at progressively
+ * smaller ones down to `minPx`, and only when nothing fits even there do we
+ * fall back to the old cascade (a full board should still accept one more
+ * card rather than refuse).
  *
  * `minPx` is the kind's own minimum from the registry: it is the FLOOR, so
  * no widget is ever born smaller than the interaction layer would let the
@@ -120,13 +122,38 @@ export function placeNew(
   const marginY = 16 / surface.h;
   const chrome = CHROME_BAND_PX / surface.h;
 
-  const spot = firstFreeSpot(existing, w, h, {
+  const bounds = {
     left: margin,
     top: marginY,
     right: 1 - margin,
     bottom: 1 - Math.max(marginY, chrome),
-  });
-  if (spot) return spot;
+  };
+
+  // The wanted size first, then progressively smaller ones down to the
+  // kind's own minimum (R7-funn K3).
+  //
+  // «It does not fit at 320×368» is not «it does not fit»: the checklist's
+  // minimum is 200×160, and on a 1024×768 board with Dagens time + Dagen i
+  // dag + Sjekkliste + Frist the fourth card used to be dealt straight to
+  // the cascade — drawn ON TOP of the day's plan, in front of the class,
+  // while the room for a smaller card was there the whole time. A card the
+  // teacher can read is worth more than a card at its default size.
+  //
+  // The floors are the same ones the wanted size was clamped to above, so a
+  // shrunken card is never born below what `useDrag` would let her drag it
+  // to; the last step IS the minimum, so nothing is missed between rungs.
+  const minW = Math.min(minPx.w / surface.w, w);
+  const minH = Math.min(minPx.h / surface.h, h);
+  for (let step = 0; step <= SHRINK_STEPS; step++) {
+    const t = step / SHRINK_STEPS;
+    const spot = firstFreeSpot(
+      existing,
+      w + (minW - w) * t,
+      h + (minH - h) * t,
+      bounds,
+    );
+    if (spot) return spot;
+  }
 
   // Full board: fall back to the cascade, so adding still does something.
   const stepX = 32 / surface.w;
@@ -154,6 +181,12 @@ const CHROME_BAND_PX = CHROME_CLEARANCE_PX + 12;
 
 /** How finely the free-spot scan steps across the surface. */
 const SCAN_STEPS = 24;
+
+/** How many rungs there are between the wanted size and the kind's minimum
+ *  before `placeNew` gives up and cascades. Six is a shrink of a sixth of the
+ *  gap per rung — fine enough that a card rarely lands much smaller than it
+ *  had to, coarse enough that a full board is answered in a few scans. */
+const SHRINK_STEPS = 6;
 
 interface Bounds {
   left: number;

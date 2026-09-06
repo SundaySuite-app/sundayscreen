@@ -308,8 +308,12 @@ test("pressing install mid-download does not start a second one", async ({
 
   // The honest answer: it IS on its way, and it installs at closing time —
   // the promise the download is already keeping. No restart, no second fetch.
+  // (The fixture boots with the switch ON; with it off the line would be the
+  // plain «klar», because nothing installs at exit then.)
   await expect(
-    panel.getByText("v9.9.9 installeres når du lukker appen"),
+    panel.getByText(
+      "v9.9.9 lastes ned nå — den installeres når du lukker appen",
+    ),
   ).toBeVisible();
   // …and the note stays on screen. She pressed a button, she did not ask to
   // stop reading what the version brings.

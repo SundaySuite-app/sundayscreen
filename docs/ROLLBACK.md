@@ -65,3 +65,23 @@ ekte data igjen.
 Updateren selv tilbyr ALDRI en lavere versjon (semver-sammenligning) —
 nedgradering er alltid en manuell handling utført av den som sitter ved
 maskinen, aldri noe appen gjør av seg selv.
+
+### Etter v0.6: hva en nedgradering forbi 0006/0007 faktisk koster
+
+v0.6.0-beta.1 er den første utgivelsen som legger til kolonner i en base som
+står der fra før — `scene.theme` (0006) og de to `merged_with_next` (0007).
+Begge er rene `ALTER TABLE ADD COLUMN`, så de er **additive**: ingen kolonne
+fjernes, ingen tabell bygges om, og ingenting en eldre versjon skrev endrer
+betydning.
+
+Vær likevel presis på hva en nedgradering gir, for det er ikke «alt virker
+som før»: en v0.5-app leser hovedboka i basen, finner migrasjon 0006 og 0007
+som den ikke kjenner, og **starter degradert** — chipen sier at databasen er
+fra en nyere SundayScreen, og klasselistene er ikke synlige i den økta.
+Løftet som holder er løfte 3: **fila røres ikke**. Ingen omdøping, ingen
+sletting, ingen halvveis migrering (pinnet byte for byte i
+`db::store::tests::a_downgrade_over_0005_must_not_touch_the_file`).
+Installerer man den nyere versjonen igjen, er alt tilbake — timeplan,
+skjermfarger og dobbelttimer inkludert. Kort sagt: en nedgradering koster
+ØKTA, aldri dataene, og veien tilbake er å installere den nye appen på nytt
+— ikke å redde en fil for hånd.

@@ -7,15 +7,18 @@
 //   - `data-face-up`    — the die's own word for what is turned at the room,
 //                         which `e2e/dice.spec.ts` reads as protocol.
 //
-// Both were found lying in R5 (funn M2 and L2), and both are DOM writes, so
-// neither can be reduced to a `*-core.ts` the way the house style asks. The
-// stand-in below is four methods wide and is not a DOM: it is the smallest
-// object `paintDie` can be handed, which is the only reason this file is not
-// jsdom. Everything geometric is tested against the real cores next door.
+// Both were found lying in R5 (funn M2 and L2), and both are DOM WRITES —
+// they cannot be reduced to arithmetic the way the house style asks for. R7
+// lifted them into `die-paint-core.ts` all the same: a module that only
+// writes is still a module, and this file no longer reaches into a `.tsx` to
+// test one. The stand-in below is four methods wide and is not a DOM: it is
+// the smallest object `paintDie` can be handed, which is the only reason this
+// file is not jsdom. Everything geometric is tested against the real cores
+// next door.
 
 import { describe, expect, it } from "vitest";
 
-import { paintDie } from "./DiceWidget";
+import { paintDie } from "./die-paint-core";
 import { PIP_FACES } from "./dice-core";
 import { DIE_MATERIALS, MATERIAL_TRAITS } from "./die-materials-core";
 import { QUAT_IDENTITY } from "./die-orient-core";

@@ -15,7 +15,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PIPS, PIP_FACES } from "./dice-core";
-import { pipsForValue } from "./DiceWidget";
+import { pipsForValue } from "./die-paint-core";
 import {
   orientationForFace,
   qNormalize,

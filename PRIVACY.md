@@ -51,11 +51,14 @@ Kort versjon: **alt bor på din maskin.**
   **bildene du har lagt på skjermene** (se punktet over), så den hører hjemme
   samme sted som resten av klasselistene dine. Den inneholder
   ALDRI fraværsmarkeringer (se punktet over), og heller ikke dagens
-  trekningsrunde, dagens gruppedeling, agendaer eller dagsnotater —
-  navnetrekkerens og gruppegeneratorens siste resultat fjernes fra fila når
-  den skrives. Gruppedelingen er nevnt for seg fordi den er den mest
-  følsomme av dem: den deles alltid ut fra de som er TIL STEDE, så en lagret
-  gruppeliste er i praksis en oppteling av hvem som var i rommet den dagen.
+  trekningsrunde, dagens gruppedeling eller planleggerens datoknyttede
+  agendapunkter og dagsnotater — navnetrekkerens og gruppegeneratorens siste
+  resultat fjernes fra fila når den skrives. (Aktivitetene du selv har
+  skrevet på et «Dagens time»-kort er derimot en del av skjermoppsettet, og
+  blir med — de er dine egne linjer, ikke en elevliste.) Gruppedelingen er
+  nevnt for seg fordi den er den mest følsomme av dem: den deles alltid ut
+  fra de som er TIL STEDE, så en lagret gruppeliste er i praksis en oppteling
+  av hvem som var i rommet den dagen.
 - Appen sender ingen telemetri, ingen analyser, ingen krasjrapporter.
 - Det eneste nettkallet appen noensinne gjør, er å spørre
   `updates.sundaysuite.app` om det finnes en ny versjon. Kallet inneholder

@@ -43,7 +43,7 @@ use std::path::{Path, PathBuf};
 use base64::Engine as _;
 use serde::Serialize;
 use sqlx::SqlitePool;
-use sundayscreen_core::layout::sanitized_image_id;
+use sundayscreen_core::layout::{sanitized_image_id, WidgetConfig};
 use sundayscreen_core::transfer::{
     self, ImportRefusal, TransferClass, TransferFile, TransferImage, TransferScene, TransferSlot,
     TransferWidget, TRANSFER_IMAGES_MAX, TRANSFER_IMAGE_BYTES_MAX,
@@ -70,23 +70,85 @@ const FILTER_EXTENSIONS: [&str; 1] = ["json"];
 /// file with the right extension, not a limit on teaching.
 const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 
-/// Config fields that hold pupil NAMES rather than settings, per widget kind.
+/// Does this widget kind's stored config hold pupil NAMES, and which keys?
 ///
-/// These are yesterday's screen, not a setup: `lastDrawn`/`lastDrawnMany` is
-/// the round the teacher drew in the last lesson, and `lastResult` is the
-/// group split — dealt from the PRESENT pool, which makes it a record of who
-/// was in the room that day. A file on a memory stick carrying that is the
-/// attendance history ADR-010 and PRIVACY.md promise does not exist anywhere,
-/// wearing a different name. It also has no value on the other machine: the
-/// names in it belong to a class list that has just been re-minted.
+/// The answer for a kind is a DECISION, and [`classify`] is where the compiler
+/// makes someone take it. See there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NameClass {
+    /// Nothing in this kind's config is a pupil's name — the config travels
+    /// byte-for-byte.
+    Clean,
+    /// These SERIALISED keys hold names and are lifted out on the way into
+    /// the file. Camel-case, because `WidgetConfig` carries
+    /// `rename_all_fields = "camelCase"` — this operates on the stored JSON
+    /// text, never on the Rust type.
+    Names(&'static [&'static str]),
+}
+
+/// The one place a widget kind is judged "does this carry pupil names?".
 ///
-/// Camel-case, because these are the keys as SERIALISED (`rename_all_fields =
-/// "camelCase"` on `WidgetConfig`) — this operates on the stored JSON text,
-/// never on the Rust type.
-const NAME_BEARING_CONFIG_FIELDS: [(&str, &[&str]); 2] = [
-    ("namepicker", &["lastDrawn", "lastDrawnMany"]),
-    ("groups", &["lastResult"]),
-];
+/// The match has NO wildcard, and that is the whole point of the function: a
+/// fifteenth `WidgetConfig` variant does not compile until someone has
+/// answered the question for it. It used to be a hand-kept two-row table
+/// beside an enum that grew without it — the two agreed by memory, and the
+/// day they stopped agreeing, the export would have gone green while writing
+/// pupil names onto a memory stick (the exact seam-bug shape this house
+/// hunts: two layers each correct alone, disagreeing where they meet).
+///
+/// What is being classified, and why these keys: `lastDrawn`/`lastDrawnMany`
+/// is the round the teacher drew in the last lesson, and `lastResult` is the
+/// group split — dealt from the PRESENT pool (ADR-010), which makes it a
+/// record of who was in the room that day. A file on a memory stick carrying
+/// that is the attendance history ADR-010 and PRIVACY.md promise does not
+/// exist anywhere, wearing a different name. It also has no value on the
+/// other machine: the names in it belong to a class list that has just been
+/// re-minted.
+///
+/// A NEW kind that persists a name — a seating plan, «dagens hjelper» — is
+/// `Names(..)`. Everything whose config is settings only is `Clean`, and a
+/// kind whose stored names are ids rather than display strings is `Clean`
+/// too (an id means nothing on the other machine's re-minted class list).
+fn classify(config: &WidgetConfig) -> NameClass {
+    match config {
+        WidgetConfig::Text { .. } => NameClass::Clean,
+        WidgetConfig::Clock { .. } => NameClass::Clean,
+        WidgetConfig::Timer { .. } => NameClass::Clean,
+        WidgetConfig::NamePicker { .. } => NameClass::Names(&["lastDrawn", "lastDrawnMany"]),
+        WidgetConfig::Groups { .. } => NameClass::Names(&["lastResult"]),
+        WidgetConfig::Dice { .. } => NameClass::Clean,
+        WidgetConfig::TrafficLight { .. } => NameClass::Clean,
+        WidgetConfig::WorkSymbol { .. } => NameClass::Clean,
+        // The manual agenda is the teacher's own lines («Lese stille»), not a
+        // pupil list, and the planner-bound source stores nothing at all.
+        WidgetConfig::Agenda { .. } => NameClass::Clean,
+        WidgetConfig::Deadline { .. } => NameClass::Clean,
+        WidgetConfig::Checklist { .. } => NameClass::Clean,
+        WidgetConfig::Today { .. } => NameClass::Clean,
+        WidgetConfig::Link { .. } => NameClass::Clean,
+        // The picture's config is an id and a caption; the BYTES travel
+        // separately (`attach_images`), and a photograph of a class is the
+        // teacher's own deliberate choice to carry, unlike a draw she never
+        // asked to export.
+        WidgetConfig::Image { .. } => NameClass::Clean,
+    }
+}
+
+/// The scrub list for a STORED row, whose kind is a string in a column.
+///
+/// The bridge between the two spellings, and it is deliberately the only one:
+/// `default_for` answers `None` for a kind this build has never heard of, and
+/// an unknown kind is never operated on (see [`without_names`]). Going
+/// through the typed value rather than keeping a second, string-keyed table
+/// is what makes [`classify`]'s exhaustive match the single decision point —
+/// a table beside it could drift from it in silence, which is the bug this
+/// replaced.
+fn name_bearing_fields(kind: &str) -> &'static [&'static str] {
+    match WidgetConfig::default_for(kind).as_ref().map(classify) {
+        Some(NameClass::Names(fields)) => fields,
+        Some(NameClass::Clean) | None => &[],
+    }
+}
 
 /// Remove the name-bearing fields from ONE widget's stored config, and change
 /// nothing else about it.
@@ -98,10 +160,10 @@ const NAME_BEARING_CONFIG_FIELDS: [(&str, &[&str]); 2] = [
 /// name, leave every other key — including fields a NEWER SundayScreen wrote
 /// (ADR-007's `extra`) — byte-for-byte as they were.
 ///
-/// A kind not in [`NAME_BEARING_CONFIG_FIELDS`] is never touched at all. That
-/// includes kinds from the future: we cannot know which of their fields hold
-/// names, and guessing at an unknown shape would be the very thing this
-/// function refuses to do to a known one.
+/// A kind [`classify`] calls `Clean` is never touched at all, and neither is
+/// a kind this build has never heard of: we cannot know which of a future
+/// kind's fields hold names, and guessing at an unknown shape would be the
+/// very thing this function refuses to do to a known one.
 ///
 /// The one case with no good answer is a KNOWN name-bearing kind whose config
 /// is not a JSON object — hand-edited, since everything this app writes is.
@@ -110,14 +172,15 @@ const NAME_BEARING_CONFIG_FIELDS: [(&str, &[&str]); 2] = [
 /// answers `default_for(kind)` for it anyway), and returning it verbatim
 /// would be a leak through the one door this function exists to close.
 fn without_names(kind: &str, config: String) -> String {
-    let Some((_, fields)) = NAME_BEARING_CONFIG_FIELDS.iter().find(|(k, _)| *k == kind) else {
+    let fields = name_bearing_fields(kind);
+    if fields.is_empty() {
         return config;
-    };
+    }
     let stripped = serde_json::from_str::<serde_json::Value>(&config)
         .ok()
         .and_then(|mut value| {
             let obj = value.as_object_mut()?;
-            for field in *fields {
+            for field in fields {
                 obj.remove(*field);
             }
             serde_json::to_string(&value).ok()
@@ -1617,5 +1680,397 @@ mod tests {
             .unwrap();
         assert_eq!(receipt.outcome, ImportOutcome::Imported);
         assert_eq!(receipt.images_skipped, 0);
+    }
+
+    // ── Every kind, judged once and carried whole (R7) ──────────────────────
+    //
+    // The two tests below are the seam the hand-kept scrub table did not have.
+    // The table agreed with the enum by MEMORY: the day a kind with pupil
+    // names in its config was added without a matching row, the export would
+    // have gone green while writing yesterday's class onto a memory stick.
+    // `classify`'s wildcard-free match is the compiler's half of the fix;
+    // these are the test's half.
+
+    /// Every `WidgetConfig` variant, once — the checklist the compiler keeps.
+    ///
+    /// NO wildcard, deliberately: a fifteenth variant stops compiling HERE
+    /// until someone gives it a populated config in [`populated_configs`],
+    /// and the coverage assertion in the table test then refuses to pass
+    /// until the expectation beside it is written down too.
+    fn variant_slot(config: &WidgetConfig) -> usize {
+        match config {
+            WidgetConfig::Text { .. } => 0,
+            WidgetConfig::Clock { .. } => 1,
+            WidgetConfig::Timer { .. } => 2,
+            WidgetConfig::NamePicker { .. } => 3,
+            WidgetConfig::Groups { .. } => 4,
+            WidgetConfig::Dice { .. } => 5,
+            WidgetConfig::TrafficLight { .. } => 6,
+            WidgetConfig::WorkSymbol { .. } => 7,
+            WidgetConfig::Agenda { .. } => 8,
+            WidgetConfig::Deadline { .. } => 9,
+            WidgetConfig::Checklist { .. } => 10,
+            WidgetConfig::Today { .. } => 11,
+            WidgetConfig::Link { .. } => 12,
+            WidgetConfig::Image { .. } => 13,
+        }
+    }
+
+    /// How many slots [`variant_slot`] hands out. Bumped by hand, on purpose:
+    /// it is the line that makes "I added an arm and forgot the table" fail.
+    const VARIANT_COUNT: usize = 14;
+
+    /// The pupil names, and ONLY in the fields that hold pupil names. Every
+    /// other string in the table below is a setting, so a hit on one of these
+    /// anywhere in the file is a leak and nothing else.
+    const PUPILS: [&str; 5] = ["Kari", "Ola", "Nils", "Ida", "Sara"];
+
+    /// A key no build has ever written — ADR-007's `extra`, on every kind at
+    /// once. It must survive the scrub untouched: the export lifts out the
+    /// fields it NAMES, never "everything that looks unfamiliar".
+    fn future_field() -> serde_json::Map<String, serde_json::Value> {
+        let mut extra = serde_json::Map::new();
+        extra.insert("futureField".into(), serde_json::json!(7));
+        extra
+    }
+
+    /// One config per kind with EVERY field set away from its default, paired
+    /// with the keys the export must lift out of it.
+    ///
+    /// The expectation is written down HERE, as data, and never read out of
+    /// `classify`: a test that asks the code under test what to expect agrees
+    /// with any answer it is given. Removing `"lastResult"` from `classify`
+    /// (or the `Groups` arm's whole classification) turns this table red.
+    fn populated_configs(image_id: &str) -> Vec<(WidgetConfig, &'static [&'static str])> {
+        use sundayscreen_core::layout::{
+            AgendaSource, ChecklistItem, ClockFace, DieColor, DieMaterial, GroupMode, ImageFit,
+            ManualAgendaItem, TextAlign, TimerMode, TrafficColor, WorkMode,
+        };
+        vec![
+            (
+                WidgetConfig::Text {
+                    content: "Husk gymtøy".into(),
+                    font_scale: 2.5,
+                    align: TextAlign::Right,
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::Clock {
+                    face: ClockFace::Analog,
+                    show_seconds: true,
+                    show_date: true,
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::Timer {
+                    duration_ms: 900_000.0,
+                    warn_at_ms: 120_000.0,
+                    sound_on: false,
+                    mode: TimerMode::Stopwatch,
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::NamePicker {
+                    no_repeat: false,
+                    last_drawn: Some("Kari".into()),
+                    last_drawn_many: vec!["Kari".into(), "Ola".into()],
+                    draw_count: 3,
+                    extra: future_field(),
+                },
+                &["lastDrawn", "lastDrawnMany"],
+            ),
+            (
+                WidgetConfig::Groups {
+                    mode: GroupMode::Size,
+                    n: 5,
+                    last_result: vec![vec!["Nils".into()], vec!["Ida".into(), "Sara".into()]],
+                    extra: future_field(),
+                },
+                &["lastResult"],
+            ),
+            (
+                // A d10 in its zero-based reading, so `zero_based` and every
+                // roll value are away from the defaults AND survive the clamp
+                // (which clears the flag on any other body).
+                WidgetConfig::Dice {
+                    count: 3,
+                    faces: 10,
+                    zero_based: true,
+                    last_roll: vec![0, 9, 4],
+                    color: DieColor::Gold,
+                    material: DieMaterial::Metal,
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::TrafficLight {
+                    active: TrafficColor::Green,
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::WorkSymbol {
+                    mode: WorkMode::RaiseHand,
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::Agenda {
+                    source: AgendaSource::Manual,
+                    show_times: false,
+                    manual_items: vec![ManualAgendaItem {
+                        id: "a1".into(),
+                        // The teacher's own line, never a pupil list — which
+                        // is exactly why the agenda is `Clean`.
+                        text: "Lese stille".into(),
+                        duration_min: Some(10),
+                        done: true,
+                        extra: Default::default(),
+                    }],
+                    pinned_item_id: Some("a1".into()),
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::Deadline {
+                    title: "Prøve i naturfag".into(),
+                    target_epoch_ms: 1_800_000_000_000.0,
+                    show_hours: false,
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::Checklist {
+                    items: vec![ChecklistItem {
+                        id: "c1".into(),
+                        text: "Ta med boka".into(),
+                        done: true,
+                        extra: Default::default(),
+                    }],
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::Today {
+                    show_lessons: false,
+                    show_notes: false,
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::Link {
+                    title: "Oppgaver".into(),
+                    url: "https://www.udir.no/oppgaver".into(),
+                    show_qr: false,
+                    extra: future_field(),
+                },
+                &[],
+            ),
+            (
+                WidgetConfig::Image {
+                    image_id: image_id.to_string(),
+                    fit: ImageFit::Cover,
+                    caption: "Bildet fra turen".into(),
+                    extra: future_field(),
+                },
+                &[],
+            ),
+        ]
+    }
+
+    /// The populated config as it must come back on the other machine: the
+    /// same JSON with exactly `gone` removed, read back through the same
+    /// parse+clamp the board's own load runs. Derived from the file's shape
+    /// rather than hand-written twice, so the assertion is about the JOURNEY
+    /// and not about my typing.
+    fn without(config: &WidgetConfig, gone: &[&str]) -> WidgetConfig {
+        let mut value = serde_json::to_value(config).expect("a config serialises");
+        let obj = value.as_object_mut().expect("a config is an object");
+        for field in gone {
+            obj.remove(*field);
+        }
+        let mut back: WidgetConfig = serde_json::from_value(value).expect("…and reads back");
+        back.clamp();
+        back
+    }
+
+    #[test]
+    fn the_stored_kind_string_reaches_the_same_classification_as_the_type() {
+        // The bridge `without_names` crosses: the export knows a kind as the
+        // TEXT in a column, `classify` knows it as a variant, and
+        // `default_for` is the only thing joining them. If it ever lost an
+        // arm, the scrub would stop for that kind in complete silence.
+        for (config, expected) in populated_configs("0192aaaa-bbbb-7ccc-8ddd-eeeeffff0000") {
+            let kind = config.kind();
+            assert!(
+                WidgetConfig::default_for(kind).is_some(),
+                "«{kind}» has no default to classify through"
+            );
+            assert_eq!(
+                name_bearing_fields(kind),
+                expected,
+                "«{kind}» is scrubbed differently through its kind string than through its type"
+            );
+        }
+        // A kind from a NEWER build is never operated on: we do not know
+        // which of its fields hold names (promise 3 outranks a guess).
+        assert!(name_bearing_fields("seatingplan").is_empty());
+    }
+
+    #[tokio::test]
+    async fn every_kind_travels_whole_except_the_fields_that_hold_names() {
+        let (source, ds) = temp_pool().await;
+        let source_images = ds.path().join("images");
+        let image_id = store::new_id();
+        images::write_stored(&source_images, &image_id, PNG)
+            .unwrap()
+            .expect("the test picture is a picture");
+
+        let table = populated_configs(&image_id);
+
+        // Every variant is in the table, exactly once — see `variant_slot`.
+        let slots: std::collections::BTreeSet<usize> =
+            table.iter().map(|(c, _)| variant_slot(c)).collect();
+        assert_eq!(
+            slots.len(),
+            VARIANT_COUNT,
+            "a WidgetConfig variant has no populated config here"
+        );
+        assert_eq!(slots.iter().copied().max(), Some(VARIANT_COUNT - 1));
+
+        let class = store::insert_class(&source, "7B").await.unwrap();
+        let scene = store::default_scene_id(&class.id);
+        let rows: Vec<WidgetRow> = table
+            .iter()
+            .enumerate()
+            .map(|(i, (config, _))| {
+                raw_widget(
+                    &format!("w{i}"),
+                    config.kind(),
+                    &serde_json::to_string(config).unwrap(),
+                    i as i64,
+                )
+            })
+            .collect();
+        store::replace_widgets(&source, &scene, &rows)
+            .await
+            .unwrap();
+
+        let (file, images, left_out) =
+            export_payload(&source, "0.6.0-test", 0.0, Some(&source_images))
+                .await
+                .unwrap();
+        assert_eq!((images, left_out), (1, 0), "the picture rides along");
+
+        let written = &file.classes[0].default_scene.as_ref().unwrap().widgets;
+        assert_eq!(written.len(), VARIANT_COUNT, "every card is in the file");
+
+        for (config, expected_gone) in &table {
+            let kind = config.kind();
+            let before: serde_json::Value = serde_json::to_value(config).unwrap();
+            let out: serde_json::Value = serde_json::from_str(
+                &written
+                    .iter()
+                    .find(|w| w.kind == kind)
+                    .unwrap_or_else(|| panic!("«{kind}» is in the file"))
+                    .config,
+            )
+            .unwrap();
+
+            let keys_before: Vec<&str> = before
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect();
+            let keys_after: Vec<&str> = out
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect();
+
+            // EXACTLY the classified fields, and nothing else: too few is a
+            // leak, too many is a setting the teacher loses on the way over.
+            let removed: Vec<&str> = keys_before
+                .iter()
+                .filter(|k| !keys_after.contains(k))
+                .copied()
+                .collect();
+            assert_eq!(
+                removed,
+                expected_gone.to_vec(),
+                "«{kind}» lost the wrong fields on the way out"
+            );
+            let invented: Vec<&str> = keys_after
+                .iter()
+                .filter(|k| !keys_before.contains(k))
+                .copied()
+                .collect();
+            assert!(
+                invented.is_empty(),
+                "«{kind}» gained {invented:?} on the way out"
+            );
+            // …and every surviving key is byte-for-byte what was stored,
+            // `futureField` (ADR-007) included.
+            for key in keys_after {
+                assert_eq!(
+                    out[key], before[key],
+                    "«{kind}»: «{key}» changed on the way out"
+                );
+            }
+        }
+
+        // The whole point, said once about the whole file: not one pupil's
+        // name is in it — and the CLASS is, so the check is not passing on an
+        // empty file.
+        let json = serde_json::to_string(&file).unwrap();
+        for pupil in PUPILS {
+            assert!(!json.contains(pupil), "{pupil} must not travel: {json}");
+        }
+        assert!(json.contains("7B"), "the class list itself does travel");
+
+        // …and the board lands whole on the other machine, through the file's
+        // own port and the board's own load.
+        let parsed = transfer::parse(&json).expect("our own file passes our own gate");
+        let (target, dt) = temp_pool().await;
+        let target_images = dt.path().join("images");
+        let receipt = import::import_setup(&target, &parsed, Some(&target_images))
+            .await
+            .unwrap();
+        assert_eq!(receipt.outcome, ImportOutcome::Imported);
+        assert_eq!(receipt.images_skipped, 0, "the picture arrived with it");
+
+        let new_class = &store::list_classes(&target).await.unwrap()[0];
+        let loaded =
+            crate::commands::layout::load_for(&target, &store::default_scene_id(&new_class.id))
+                .await
+                .unwrap();
+        assert_eq!(loaded.len(), VARIANT_COUNT, "every card is on the board");
+        for (config, gone) in &table {
+            let kind = config.kind();
+            let landed = loaded
+                .iter()
+                .find(|w| w.config.kind() == kind)
+                .unwrap_or_else(|| panic!("«{kind}» is on the new board"));
+            assert_eq!(
+                landed.config,
+                without(config, gone),
+                "«{kind}» did not survive the move intact"
+            );
+        }
     }
 }

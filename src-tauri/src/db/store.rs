@@ -903,7 +903,7 @@ pub async fn replace_widgets(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::{should_quarantine, AppError};
+    use crate::error::{should_quarantine, AppError, BootFaultKind};
 
     /// A pool over a temp-dir database file, fully migrated.
     async fn temp_pool() -> (SqlitePool, tempfile::TempDir) {
@@ -1721,6 +1721,237 @@ mod tests {
             .unwrap();
         assert_eq!(rows.len(), 1, "the layout survived the downgrade attempt");
         assert_eq!(rows[0].id, "w1");
+    }
+
+    // ── ADR-013's consequence, now that 0006/0007 have shipped (R7) ─────────
+    //
+    // ADR-013 said the third door — `ExecuteMigration`, "while migration n was
+    // running" — is deliberately left out of `should_quarantine`, and that the
+    // price is a permanently degraded boot for a file whose damage is first
+    // noticed there. It also said that price was "purely theoretical: the last
+    // migration is 0005", and asked that the roll-out of 0006 include what a
+    // real broken file DOES. v0.6.0-beta.1 shipped 0006 and 0007 against
+    // existing files; these two tests are that check, on real files.
+    //
+    // The synthesised half (an `ExecuteMigration` carrying SQLITE_CORRUPT is
+    // still not quarantined) is pinned in
+    // `error::tests::a_failing_migration_statement_never_quarantines`. What
+    // could not be reached from a real file is a corruption CODE out of this
+    // door: 0006/0007 are `ALTER TABLE … ADD COLUMN` with constant defaults,
+    // which touch the schema record and never a data page, and a file damaged
+    // badly enough to answer SQLITE_CORRUPT announces itself one door earlier
+    // (sqlx's own `_sqlx_migrations` bookkeeping — the `Execute` door, which
+    // DOES quarantine, as `a_file_that_is_not_a_database_is_quarantined`
+    // shows). So the real-file case here is the reachable one: a file whose
+    // actual shape and whose migration ledger disagree.
+
+    /// A file at an OLDER schema with a teacher's work in it, built with the
+    /// app's own connection options and the house partial-migrator technique.
+    ///
+    /// The rows go in as raw SQL rather than through `insert_class` and
+    /// friends, and that is not fussiness: those functions are written for
+    /// TODAY's columns (`scene.theme` since 0006), so using them here would
+    /// fail on the very shape this helper exists to reproduce.
+    async fn file_at_schema(path: &Path, version: i64) {
+        let pool = SqlitePool::connect_with(connect_options(path))
+            .await
+            .expect("raw pool");
+        let full = sqlx::migrate!();
+        let older = sqlx::migrate::Migrator {
+            migrations: full
+                .migrations
+                .iter()
+                .filter(|m| m.version <= version)
+                .cloned()
+                .collect::<Vec<_>>()
+                .into(),
+            ..full
+        };
+        older.run(&pool).await.expect("the older migrations apply");
+        sqlx::query(
+            "INSERT INTO class (id, name, sort_index, created_at) VALUES ('c1','7B',0,1.0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO scene (id, class_id, name, sort_index, created_at)
+             VALUES ('default-c1','c1','7B',0,1.0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO widget_instance
+               (id, scene_id, kind, x, y, w, h, z, config, created_at)
+             VALUES ('w1','default-c1','text',0.1,0.1,0.3,0.2,0,'{\"kind\":\"text\"}',1.0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+    }
+
+    /// THE check ADR-013 asked for. A 0005-era file whose real shape no longer
+    /// matches its own ledger — the `theme` column 0006 is about to add is
+    /// already there, while `_sqlx_migrations` still ends at 5. That is what a
+    /// half-rescued or hand-edited database looks like, and it is only
+    /// discovered while migration 0006 runs.
+    ///
+    /// What must happen: the boot is degraded with the `schemaUpdateStopped`
+    /// sentence, the file is not renamed, not partly migrated, and not touched
+    /// at all — and it stays that way on every later start, because nothing
+    /// heals it by itself. That last part is the cost ADR-013 accepted with
+    /// open eyes; it is pinned here so nobody can pay it by accident.
+    #[tokio::test]
+    async fn a_file_the_schema_update_trips_over_is_left_exactly_as_it_was() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sundayscreen.sqlite");
+        file_at_schema(&path, 5).await;
+
+        // The damage. Applied through SQL rather than by scribbling on bytes
+        // so the file stays a perfectly healthy DATABASE — the point is that
+        // its contents disagree with its ledger, not that SQLite cannot read
+        // it.
+        {
+            let pool = SqlitePool::connect_with(connect_options(&path))
+                .await
+                .unwrap();
+            sqlx::query("ALTER TABLE scene ADD COLUMN theme TEXT NOT NULL DEFAULT 'standard'")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
+        let before = std::fs::read(&path).expect("the bytes as the teacher left them");
+
+        let err = open_pool(&path)
+            .await
+            .expect_err("migration 0006 cannot add a column that is already there");
+        assert!(
+            matches!(
+                err,
+                AppError::Migration(sqlx::migrate::MigrateError::ExecuteMigration(_, 6))
+            ),
+            "the failure has to come through the ExecuteMigration door: {err}"
+        );
+
+        // 1. The file keeps its name. This is the whole of ADR-013.
+        assert!(
+            !should_quarantine(&err),
+            "our own SQL failing may never rename a teacher's database: {err}"
+        );
+        assert!(
+            quarantined_files(dir.path()).is_empty(),
+            "nothing may have been moved aside: {:?}",
+            quarantined_files(dir.path())
+        );
+
+        // 2. And the sentence on the chip is the promised one, ending in the
+        //    path — «Skjemaoppdateringen stoppet. Fila er urørt: …».
+        let fault = BootFault::from_open_error(&err, &path);
+        assert_eq!(fault.kind, BootFaultKind::SchemaUpdateStopped);
+        assert_eq!(
+            fault.schema_version,
+            Some(6),
+            "diagnostics, never a sentence"
+        );
+        assert_eq!(fault.db_path, path.display().to_string());
+
+        // 3. «Fila er urørt» is a claim about BYTES, so it is checked as one.
+        let after = std::fs::read(&path).expect("the file is still there");
+        assert!(
+            after == before,
+            "the database file changed under a failed schema update ({} → {} bytes)",
+            before.len(),
+            after.len()
+        );
+
+        // 4. Nothing was half-applied: the ledger still ends at 5, so a fixed
+        //    build starts the upgrade from where it stood.
+        let ledger = SqlitePool::connect_with(connect_options(&path))
+            .await
+            .unwrap();
+        let highest: i64 = sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations")
+            .fetch_one(&ledger)
+            .await
+            .unwrap();
+        assert_eq!(highest, 5, "migration 0006 must not be recorded as applied");
+        // …and the teacher's work is all still in there, which is what makes
+        // "leave it alone" the right answer rather than merely the safe one.
+        assert_eq!(list_classes(&ledger).await.unwrap()[0].name, "7B");
+        ledger.close().await;
+
+        // 5. It never heals by itself: every later start ends the same way.
+        //    ADR-013 accepted exactly this, and the alternative it rejected
+        //    was renaming the file over a bug of ours.
+        let again = open_pool(&path).await.expect_err("still stopped");
+        assert!(matches!(
+            again,
+            AppError::Migration(sqlx::migrate::MigrateError::ExecuteMigration(_, 6))
+        ));
+        assert!(quarantined_files(dir.path()).is_empty());
+    }
+
+    /// 0007 is the app's first migration with MORE THAN ONE statement, and
+    /// that makes atomicity a property with teeth: if its second `ALTER TABLE`
+    /// fails, the first must not stand. A half-applied schema is the one state
+    /// nothing downstream can reason about — `week_slot` would have a column
+    /// the ledger says does not exist yet, so the retry on the next start
+    /// would fail on THAT instead, one migration earlier than the real fault.
+    #[tokio::test]
+    async fn a_multi_statement_migration_that_fails_leaves_none_of_itself_behind() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sundayscreen.sqlite");
+        file_at_schema(&path, 6).await;
+
+        // The damage: the table 0007's SECOND statement alters is gone, so its
+        // FIRST statement succeeds and the migration fails halfway.
+        {
+            let pool = SqlitePool::connect_with(connect_options(&path))
+                .await
+                .unwrap();
+            sqlx::query("DROP TABLE date_override")
+                .execute(&pool)
+                .await
+                .unwrap();
+            pool.close().await;
+        }
+
+        let err = open_pool(&path).await.expect_err("0007 cannot complete");
+        assert!(
+            matches!(
+                err,
+                AppError::Migration(sqlx::migrate::MigrateError::ExecuteMigration(_, 7))
+            ),
+            "the file trips on migration 7: {err}"
+        );
+        assert!(!should_quarantine(&err));
+        assert_eq!(
+            BootFault::from_open_error(&err, &path).kind,
+            BootFaultKind::SchemaUpdateStopped
+        );
+
+        let pool = SqlitePool::connect_with(connect_options(&path))
+            .await
+            .unwrap();
+        let columns: Vec<String> = sqlx::query("PRAGMA table_info(week_slot)")
+            .fetch_all(&pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|r| r.get::<String, _>("name"))
+            .collect();
+        assert!(
+            !columns.contains(&"merged_with_next".to_string()),
+            "0007's first statement was left standing after its second failed: {columns:?}"
+        );
+        let highest: i64 = sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(highest, 6);
+        pool.close().await;
     }
 
     /// The other half of the decision, with a REAL sqlite error rather than a

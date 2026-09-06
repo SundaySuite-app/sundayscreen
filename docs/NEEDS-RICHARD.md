@@ -71,6 +71,23 @@ sikkerhetskopi finnes uansett — se docs/ROLLBACK.md.
      et lyst klasserom? De fire andre (Standard, Papir, Varm, Kjølig) er
      lyse og mindre risikable.
 
+- [ ] **Riggtest skjemaoppdateringen på en ekte fil (ADR-013):** ett punkt,
+      og det trenger en maskin som allerede HAR kjørt en eldre versjon —
+      v0.6.0-beta.1 er den første som legger til kolonner (0006/0007) i en
+      base som står der fra før.
+
+  1. **Oppgrader en maskin som har data fra v0.5, og se at klassene står.**
+     Normalveien skal være kjedelig: appen starter, alt er som du forlot det.
+     Det som skal SJEKKES er den unormale: skulle en base være skadet slik at
+     det først merkes mens skjemaet oppdateres, står det
+     «**Skjemaoppdateringen stoppet. Fila er urørt: …**» øverst — og da er
+     det viktige at fila virkelig ER urørt (samme navn, ingen
+     `.corrupt-…`-fil ved siden av) og at setningen kommer HVER gang, ikke
+     bare første. Skjer det, ikke rør fila: send meg stien i setningen. Dette
+     er med vilje bygd slik at appen ALDRI døper om basen din når det er vår
+     egen SQL som feiler (ADR-013), og prisen er at den blir stående til vi
+     fikser den.
+
 - [ ] **Riggtest Runde 5 «Terningen i rommet»:** fire punkter, alle
       på ekte projektor. Terningen er nå en ekte 3D-modell — og det er
       nøyaktig det ingen test kan se etter.

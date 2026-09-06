@@ -441,3 +441,93 @@ test("an enlarged timer is readable from the back of the room", async ({
   await expect.poll(() => fontSizePx(face)).toBeGreaterThanOrEqual(200);
   expect(await fontSizePx(face)).toBeGreaterThan(before * 2);
 });
+
+test("an enlarged QR code actually gets bigger — it is what the code is FOR", async ({
+  page,
+}) => {
+  // The whole classroom value of the QR is «Vis stort»: the back row cannot
+  // scan a code drawn at 115 px on a shared board, and scanning is the only
+  // thing the code does. Nothing else in the tier measures it — the link
+  // journeys assert that a code is DRAWN and that its quiet zone is right,
+  // both of which stay true at postage-stamp size. A CSS regression in focus
+  // mode (the code sizes off container queries, and the `@container` family
+  // has already broken a prod build once) would leave all of that green.
+  //
+  // A FLOOR, not a pin: the code lands at 405 px on this viewport today, from
+  // 115 on the ordinary card. 340 is where «scannable from the back» stops
+  // being a claim this test defends.
+  await installFixtures(page);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/");
+  await addWidget(page, "Lenke");
+
+  const card = page.locator('[data-widget-kind="link"]');
+  // The address lives in the shell's hover row (the link journeys' pattern).
+  await card.hover();
+  await card.getByLabel("https://…").fill("https://sundaysuite.app");
+
+  const qr = card.locator("svg[data-qr]");
+  // `toBeVisible` waits for the lazy encoder chunk too, so this is a real
+  // wait on the loading boundary rather than on a timeout.
+  await expect(qr).toBeVisible();
+  const before = (await qr.boundingBox())!;
+
+  await card.hover();
+  await card.getByRole("button", { name: "Vis stort" }).click();
+  await expect
+    .poll(async () => (await qr.boundingBox())!.height)
+    .toBeGreaterThanOrEqual(340);
+
+  const after = (await qr.boundingBox())!;
+  // SQUARE, and grown. A code stretched on one axis still passes a height
+  // floor and does not scan — the modules have to stay modules.
+  expect(after.width).toBeCloseTo(after.height, 0);
+  expect(after.height).toBeGreaterThan(before.height * 2);
+
+  // …and it still fits the card it grew into: a code cropped by the card edge
+  // loses its quiet zone, which is exactly the failure that reads as «the
+  // scanner is broken» from the back of the room.
+  await assertContained(
+    after,
+    (await card.boundingBox())!,
+    "the enlarged code",
+  );
+});
+
+test("an enlarged picture actually gets bigger", async ({ page }) => {
+  // «Vis stort» on a picture is how a class photograph, a map or a diagram
+  // gets read from the back — the same journey the die and the timer have,
+  // and the picture card had none. The fixture backend answers with a 1×1
+  // PNG, so what is measured here is the BOX the layout gives the picture,
+  // which is the half a CSS regression would take away.
+  //
+  // A FLOOR, not a pin: the box lands at 561 px today, from 243 on the
+  // ordinary card.
+  await installFixtures(page);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.goto("/");
+  await addWidget(page, "Bilde");
+
+  const card = page.locator('[data-widget-kind="image"]');
+  await card.getByRole("button", { name: "Velg bilde …" }).click();
+  const img = card.locator("img");
+  await expect(img).toBeVisible();
+  const before = (await img.boundingBox())!;
+
+  await card.hover();
+  await card.getByRole("button", { name: "Vis stort" }).click();
+  await expect
+    .poll(async () => (await img.boundingBox())!.height)
+    .toBeGreaterThanOrEqual(460);
+
+  const after = (await img.boundingBox())!;
+  expect(after.height).toBeGreaterThan(before.height * 1.8);
+  // `min-height: 0` on the picture is what lets it take the card's height
+  // instead of pushing the caption off the bottom edge — so containment is
+  // the assertion that keeps that line honest at the size it matters.
+  await assertContained(
+    after,
+    (await card.boundingBox())!,
+    "the enlarged picture",
+  );
+});

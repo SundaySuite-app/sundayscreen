@@ -11,9 +11,11 @@ visningsflaten: verktøylinja nederst legger til widgets som flyttes, skaleres
 og lukkes. Klasseprofiler bytter navneliste + layout atomisk med to klikk.
 Helt offline i drift; updater er eneste nettfunksjon og feiler stille.
 
-**Widgets (Runde 2):** klokke · timer/stoppeklokke · tekst · trafikklys ·
+**Widgets:** klokke · timer/stoppeklokke · tekst · trafikklys ·
 arbeidssymboler · navnetrekker · gruppegenerator · terning · dagens time ·
-dagen i dag · frist · sjekkliste. **Skjermbibliotek:** navngitte, globale
+dagen i dag · frist · sjekkliste (Runde 2) · lenke · bilde (Runde 6). Lista
+er `WidgetConfig`-variantene i `layout.rs` og `WIDGET_REGISTRY` — tell dem
+DER, aldri her. **Skjermbibliotek:** navngitte, globale
 oppsett per time; klassens standardskjerm består. **Planlegger:**
 timeoppsett → ukeplan → datoavvik → agenda/beskjeder; forslag-banner +
 valgfritt auto-bytte ved timestart.
@@ -99,23 +101,38 @@ widget_instance GJENOPPBYGD scene-nøklet. `0004`: `period`, `week_slot`,
 `date_override`, `agenda_item`, `day_note` (tid = minutter siden midnatt,
 dato = frontend-myntet `YYYY-MM-DD`). `0005`: `class_member.absent_on` — en
 DATOSTEMPEL (ikke en boolean), overskrevet aldri akkumulert; ingen
-fraværshistorikk lagres (ADR-010). Konvensjoner: TEXT UUID v7, REAL
-epoch-ms, FK håndhevet. Migrasjonsfiler er APPLIED-FOREVER — aldri rediger
-en anvendt fil (checksum-avvik leses som korrupsjon).
+fraværshistorikk lagres (ADR-010). `0006`: `scene.theme` (TEXT NOT NULL
+DEFAULT `'standard'`) — et NAVNGITT vokabular eid av
+`sundayscreen_core::theme::SceneTheme`, lest lempelig (ukjent staving →
+`standard`). `0007`: `week_slot.merged_with_next` (INTEGER NOT NULL,
+default 0) og `date_override.merged_with_next` (INTEGER, NULLBAR og dermed
+TRI-STATE: NULL = arv fra uka, 1 = slå sammen i dag, 0 = del opp i dag) —
+dobbelttimen er et FLAGG, ikke en ny radform. Konvensjoner: TEXT UUID v7,
+REAL epoch-ms, FK håndhevet. Migrasjonsfiler er APPLIED-FOREVER — aldri
+rediger en anvendt fil (checksum-avvik leses som korrupsjon). 0006 og 0007
+er de første som har kjørt mot EKSISTERENDE filer (v0.6.0-beta.1); begge er
+rene `ALTER TABLE ADD COLUMN`, så en eldre build ser dem ikke (løfte 3), og
+hva en fil som snubler UNDER migrasjonen gjør, står i ADR-013.
 
 ## IPC-flate
+
+Sannhetskilden er `generate_handler!`-lista i `src-tauri/src/lib.rs`; denne
+seksjonen skal speile den kommando for kommando (47 i dag):
 
 `app_info` · `boot_fault` · `settings_get/save/set_window` ·
 `class_ensure_active → ActiveContext` ·
 `class_list/create/rename/delete/switch` · `members_get/set` ·
-`attendance_set` · `layout_load/save` (scene-nøklet) · `scene_list/create/
-rename/delete/duplicate` · `lesson_switch → ClassSnapshot` ·
+`attendance_set` · `layout_load/save` (scene-nøklet) · `image_pick/load` ·
+`link_open` (tar en WIDGET-ID, aldri en URL — ADR-017) · `scene_list/get/
+create/rename/delete/duplicate` · `scene_set_theme` · `scene_usage` ·
+`lesson_switch → ClassSnapshot` ·
 `picker_draw_many/reset` · `groups_split` · `planner_periods_get/set` ·
 `planner_week_get` · `planner_slot_set` · `planner_override_set` ·
 `planner_day_get → DayPlan` · `planner_agenda_set/check` ·
 `planner_notes_set` · `transfer_export/import` · `update_check/install` ·
 `update_pending` · `window_set_fullscreen` · `window_is_fullscreen`. Alle
-gjennom api-shimmen; skriv REJECTer.
+gjennom api-shimmen; skriv REJECTer. `boot_fault`, `update_pending` og
+`window_*` er med vilje Db-frie, så de svarer også i en degradert boot.
 
 ## Faseplan
 
@@ -179,3 +196,34 @@ overlevde). Full gjennomgang i docs/REVISJON-R3.md.
   oppstart.
 
 → v0.3.0-beta.1 ✅
+
+### Runde 4 «Veien tilbake» (2026-08-31)
+
+Ingen ny migrasjon. Boot-stien bygd om: en nedgradering RØRER ALDRI fila
+(`should_quarantine` — kun bevist ødelagte bytes, ADR-013), roterende
+sikkerhetskopi ved hver oppstart, og fem ærlige feiltekster i stedet for en
+panikk uten vindu. «Flytt oppsettet» (ADR-012, `transfer.rs` i krateret +
+`commands/transfer.rs`) og updateren som installerer ved LUKKING (ADR-014).
+
+→ v0.4.0-beta.1…3 ✅
+
+### Runde 5 «Terningen i rommet» (2026-08-31)
+
+Terningen ble en ekte 3D-modell i tre rene kjerner (ADR-015), og registeret
+fikk `WidgetDef.Overlay` for paneler som må ut av kortet. «Vis stort» gir
+faktisk stor terning — e2e måler pikslene (`e2e/readability.spec.ts`).
+
+→ v0.5.0-beta.1…3 ✅
+
+### Runde 6 «Skjermen er planen» (2026-09-05)
+
+- **Designøkta er en LÅNT TAVLE** (ADR-016): den ekte editoren, i miniatyr,
+  som skriver til timens scene mens veggen står urørt. Flush-rekkefølgen er
+  den farlige linja, begge veier.
+- **Dobbelttimen er et FELT** (migrasjon 0007), ikke en ny radform — alt
+  nedstrøms utledes av `resolve_day`.
+- **Skjermfarge** (migrasjon 0006), navngitt vokabular, lempelig lest.
+- **Lenke** (ADR-017: knappen er aldri et anker, URL-en kommer fra
+  databasen) og **Bilde** (ADR-018: filer i app-data, boot-sweep-GC).
+
+→ v0.6.0-beta.1 ✅

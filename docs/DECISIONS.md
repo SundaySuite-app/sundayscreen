@@ -178,6 +178,23 @@ annen maskin uten sky og uten konto. Valgene som er låst:
   kjenner røres ALDRI: vi vet ikke hvilke av deres felter som er navn, og å
   gjette på en ukjent form er akkurat det denne funksjonen nekter å gjøre med
   en kjent.
+
+  **R7: hvilke felter det er, står ikke lenger i en liste ved siden av
+  enumet.** Fram til nå var skrubben en håndholdt tabell på to rader, enig
+  med `WidgetConfig` av HUKOMMELSE. Den dagen en kind med elevnavn i configen
+  ble lagt til uten en tilsvarende rad, ville eksporten gått grønn mens den
+  skrev gårsdagens klasse ut på en minnepenn — nøyaktig den skjøtefeilen
+  huset jakter. Nå er `classify(&WidgetConfig) -> NameClass` en UTTØMMENDE
+  match uten wildcard: en ny variant KOMPILERER IKKE før noen har svart
+  «bærer denne navn?». Eksporten når svaret gjennom `default_for(kind)`, så
+  det finnes bare ÉN beslutning å drifte fra, og bare én bro å teste
+  (`the_stored_kind_string_reaches_the_same_classification_as_the_type`).
+  Tabelltesten `every_kind_travels_whole_except_the_fields_that_hold_names`
+  kjører HVER kind, med hvert felt satt bort fra sin default, gjennom
+  `export_payload → parse → import_setup → layout_load` og krever at NØYAKTIG
+  de klassifiserte feltene forsvant — verken flere (en innstilling læreren
+  ville mistet i stillhet) eller færre (en lekkasje).
+
 - **Fila inneholder ALDRI `absent_on` — og ikke dagens gruppedeling.** Det
   første er betalt strukturelt: `TransferClass::members` er `Vec<String>`, så
   kolonnen har ingen steder å reise. Det andre er kirurgien over, og den er
@@ -230,13 +247,48 @@ eneste gang, for alltid, til noen fjerner eller redder fila for hånd.
 Symptomet er «Skjemaoppdateringen stoppet. Fila er urørt: …» som ikke går bort
 av seg selv.
 
-I dag er dette utelukkende teoretisk: siste migrasjon er 0005, en fersk
-installasjon kjører alle på en tom fil, og en eksisterende installasjon har
-ingen ventende migrasjon å snuble i. Første gang vi legger til 0006 blir det
-en reell mulighet. Da er avveiningen fortsatt den samme — permanent degradert
-boot med en forklaring på skjermen er bedre enn en automatisk omdøping som
-kan ha vært vår egen feil — men den skal tas med åpne øyne, og
-utrullingssjekken av 0006 bør inkludere hva en ekte korrupt fil gjør.
+Da dette ble skrevet var det utelukkende teoretisk: siste migrasjon var 0005,
+en fersk installasjon kjører alle på en tom fil, og en eksisterende
+installasjon hadde ingen ventende migrasjon å snuble i. Første gang vi legger
+til 0006 blir det en reell mulighet. Da er avveiningen fortsatt den samme —
+permanent degradert boot med en forklaring på skjermen er bedre enn en
+automatisk omdøping som kan ha vært vår egen feil — men den skal tas med åpne
+øyne, og utrullingssjekken av 0006 bør inkludere hva en ekte korrupt fil gjør.
+
+### Tillegg (R7, 2026-09-06) — 0006/0007 er ute, og sjekken er kjørt
+
+`v0.6.0-beta.1` (2026-09-05) sendte **0006_scene_theme** og
+**0007_double_lessons** mot eksisterende filer. Konsekvensen over er dermed
+ikke lenger teoretisk, og utrullingssjekken ADR-en ba om er nå to
+integrasjonstester på EKTE filer i `db/store.rs`:
+
+- `a_file_the_schema_update_trips_over_is_left_exactly_as_it_was` — en fil på
+  skjema 0005 hvis virkelige form ikke lenger stemmer med dens egen
+  hovedbok (kolonnen 0006 skal legge til står der alt; slik ser en
+  halvreddet eller håndredigert base ut). Feilen oppdages FØRST mens 0006
+  kjører. Testen pinner hele det lovede utfallet: feilen kommer gjennom
+  `ExecuteMigration(_, 6)`-døra, `should_quarantine` sier nei, ingen fil er
+  døpt om, `BootFault` er `schemaUpdateStopped` med stien i seg, fila er
+  BYTE-identisk etterpå, hovedboka står fortsatt på 5 (ingen delvis
+  migrasjon), klasselista er urørt inni — og neste oppstart ender likt, for
+  ingenting helbreder dette av seg selv.
+- `a_multi_statement_migration_that_fails_leaves_none_of_itself_behind` —
+  0007 er husets første migrasjon med TO setninger, og atomisiteten er
+  dermed en påstand med tenner: feiler den andre `ALTER TABLE`, står ikke
+  den første igjen.
+
+Én ærlig begrensning, verdt å skrive ned så ingen tror hullet er tettet
+større enn det er: den EKTE fila kan ikke nå oss med en korrupsjons-KODE
+gjennom denne døra. 0006/0007 er rene `ALTER TABLE … ADD COLUMN` med
+konstant default — de rører skjemaposten og aldri en datapage — og en fil
+som er ødelagt nok til å svare `SQLITE_CORRUPT` melder seg én dør tidligere,
+i sqlx' egen bokføring (`Execute`, som SKAL kvarantene). At en
+`ExecuteMigration` med kode 11 likevel ikke kvarantenes, er derfor pinnet på
+en syntetisk feil i `error.rs`
+(`a_failing_migration_statement_never_quarantines`) — og det er den testen
+som blir rød om noen legger døra inn i `should_quarantine`. Riggpunktet i
+`docs/NEEDS-RICHARD.md` er den siste biten: en ekte maskin, en ekte
+oppgradering.
 
 ## ADR-014 — Appen oppdaterer seg selv: last ned ved oppstart, installer ved LUKKING (2026-08-31)
 
@@ -475,7 +527,7 @@ backdropen. Det er rotårsak #3 i samme familie som R3s to
 Svaret er `WidgetDef.Overlay`: en valgfri slot i registeret. Skjermlaget slår
 opp def-en og rendrer panelet på Shell-nivå, der `fixed` betyr viewporten
 igjen, plassert av en ren, tabelltestet `popover-core`. Registeret forblir
-eneste koblingspunkt (CLAUDE.md), så evnen arves av alle tolv kinds i stedet
+eneste koblingspunkt (CLAUDE.md), så evnen arves av alle kinds i stedet
 for å være en ledning trukket til én mappe. `createPortal` er forkastet (den
 bor i `preact/compat`, som bundlen bevisst ikke bærer), og en direkte
 Shell-import av terningens panel er forkastet fordi den ville virket i dag og
@@ -529,7 +581,8 @@ To beslutninger fra samme runde, samlet fordi de deler premiss: **planen og
 tavla skal aldri bli to sannheter.**
 
 **Lånt tavle, ikke en parameterisert store.** «Rediger skjermen for onsdag, 3. time» kunne vært løst med en andre, parameterisert layout-store — en
-kontekst trædd gjennom tolv widget-mapper, to persistere, to angre-stabler,
+kontekst trædd gjennom hver eneste widget-mappe, to persistere, to
+angre-stabler,
 to sannheter. Den er forkastet. Dette er en ETT-VINDUS-app, så «å designere
 rører aldri det klassen ser» er uansett ikke en pikselinvariant; det er tre
 TILSTANDS-invarianter, og de er akkurat det en lånt tavle gjør testbare:
@@ -553,7 +606,8 @@ mutasjonstesten på begge to den første testen i `design-session.test.ts`.
 minitavla trekker dagens klasse, og «Dagens time» skriver i dagens plan —
 fordi klassepekeren med vilje ikke lånes ut (medlemmene hører til timen på
 veggen, ikke til skjermen som tegnes). Alternativet er en forhåndsvisnings-
-modus, altså en andre sannhet om hva en widget er, i tolv mapper. Prisen er
+modus, altså en andre sannhet om hva en widget er, i hver eneste
+widget-mappe. Prisen er
 lavere enn det.
 
 ⚠️ **Theme-løgnen i den syntetiserte default-scenen — nedgradert til

@@ -208,6 +208,7 @@
     "disabled": "Oppdatering er slått av i denne builden",
     "pending": "v{v} klar",
     "pendingTitle": "Versjon {v} er klar — hent den under «Administrer klasser».",
+    "notesTitle": "Hva er nytt",
     "auto": "Installer oppdateringer automatisk",
     "autoHint": "Lastes ned i bakgrunnen og installeres når du lukker appen — aldri midt i en time.",
     "pendingAuto": "v{v} installeres når du lukker appen"

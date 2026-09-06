@@ -208,6 +208,7 @@
     "disabled": "Updates are disabled in this build",
     "pending": "v{v} ready",
     "pendingTitle": "Version {v} is ready — get it under “Manage classes”.",
+    "notesTitle": "What’s new",
     "auto": "Install updates automatically",
     "autoHint": "Downloads in the background and installs when you close the app — never mid-lesson.",
     "pendingAuto": "v{v} installs when you close the app"

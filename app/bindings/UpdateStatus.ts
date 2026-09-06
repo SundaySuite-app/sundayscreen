@@ -3,4 +3,10 @@
 /**
  * What a manual check answers.
  */
-export type UpdateStatus = { "phase": "upToDate" } | { "phase": "available", version: string, } | { "phase": "downloaded", version: string, } | { "phase": "disabled" } | { "phase": "error", message: string, };
+export type UpdateStatus = { "phase": "upToDate" } | { "phase": "available", version: string, 
+/**
+ * What is new, in the release author's own words — see
+ * [`release_notes`]. `None` on every release built before the note
+ * mechanism, which is every release out there today.
+ */
+notes: string | null, } | { "phase": "downloaded", version: string, notes: string | null, } | { "phase": "disabled" } | { "phase": "error", message: string, };

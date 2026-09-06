@@ -1,6 +1,16 @@
 # Changelog
 
-## [0.6.0-beta.1] — 2026-09-05
+## Ikke sluppet ennå
+
+- **Oppdateringen sier hva den er.** Appen har lastet ned releasenotatet ved
+  hver eneste oppdateringssjekk siden slutten av august — og kastet det. Alt du
+  fikk se var «Versjon 9.9.9 er klar» og en knapp, så du oppdaterte i blinde.
+  Nå står notatet under «Hva er nytt» i Administrer klasser, både når du søker
+  selv og når appen har lastet ned oppdateringa på forhånd — og den siste er
+  den viktigste: står automatisk oppdatering på, er det den eneste beskjeden du
+  får om versjonen appen blir til når du lukker den. Utgivelser fra før
+  notatene ble innført har ingen tekst å vise, og da vises det ingenting — ikke
+  en tom ramme (ADR-019).
 
 Runde 6 «Skjermen er planen». Planleggeren har visst siden runde 2 hvilken
 skjerm hver time skal ha, og det har vært umulig å GJØRE noe med det uten å

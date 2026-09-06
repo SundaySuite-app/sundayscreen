@@ -88,6 +88,21 @@ sikkerhetskopi finnes uansett — se docs/ROLLBACK.md.
      egen SQL som feiler (ADR-013), og prisen er at den blir stående til vi
      fikser den.
 
+- [ ] **Riggtest tastaturet på projektormaskinen (Runde 7, ADR-020):** ett
+      punkt, og det handler om plattformen, ikke om koden — alt her er målt
+      i Chromium, men skolemaskinen er Windows med WebView2.
+
+  1. **Flytt og skaler et kort med piltastene, uten mus.** Klikk på et kort,
+     trykk piltaster (flytter 1 % om gangen), hold Shift (ti ganger så langt),
+     og trykk piler mens «Endre størrelse»-knappen har fokus (skalerer).
+     Se etter tre ting: flytter kortet seg **på veggen** like glatt som med
+     musa; **ser du fokusringen** (mørk ring med hvit glød) rundt kortet og
+     rundt knappene — også på den mørke Tavle-fargen; og går Shift+pil
+     gjennom uten at Windows eller projektorprogramvaren stjeler tastene.
+     Åpne så planleggeren og trykk Tab mange ganger: fokus skal holde seg
+     inne i panelet, og Escape skal sette det tilbake på knappen du åpnet
+     med. Går noe av dette galt på Windows, er det WebView2 — si fra hvilken.
+
 - [ ] **Riggtest Runde 5 «Terningen i rommet»:** fire punkter, alle
       på ekte projektor. Terningen er nå en ekte 3D-modell — og det er
       nøyaktig det ingen test kan se etter.

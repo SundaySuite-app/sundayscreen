@@ -399,7 +399,7 @@
   },
   "transfer": {
     "title": "Flytt oppsettet",
-    "note": "Eksport lager én fil med klassene dine, elevnavnene i klartekst, skjermene med bildene du har lagt på dem, timeoppsettet og ukeplanen — hvilken klasse, hvilket fag og hvilken skjerm hver økt har. Fraværsmarkeringer blir aldri med.",
+    "note": "Eksport lager én fil med klassene dine, elevnavnene i klartekst, skjermene med bildene du har lagt på dem, timeoppsettet og ukeplanen — hvilken klasse, hvilket fag og hvilken skjerm hver time har. Fraværsmarkeringer blir aldri med.",
     "export": "Eksporter oppsett …",
     "import": "Importer oppsett …",
     "exportDialog": "Lagre oppsettet — fila inneholder elevnavn og bilder",

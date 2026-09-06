@@ -286,9 +286,14 @@ export async function acquire(
 export function release(imageId: string, urls: UrlFactory): void {
   const entry = cache.get(imageId);
   if (!entry) return;
+  // A release with nothing left to release is the SAME no-op as one for an
+  // id never acquired — and it must be, because the fall-through below charges
+  // the retention budget: a second release of an already-retained picture
+  // would book its bytes twice, and the next screen switch would evict a
+  // picture that was within budget (R7 sluttgransking S3-2).
+  if (entry.refs <= 0) return;
   entry.refs -= 1;
   if (entry.refs > 0) return;
-  entry.refs = 0;
   // Still loading: the entry stays so the in-flight continuation can see
   // `refs === 0` and clean up after itself. Nothing to revoke yet.
   if (entry.result && !entry.settled) return;

@@ -109,6 +109,26 @@ describe("blob-cache", () => {
     expect(refCount("pic")).toBe(1);
   });
 
+  it("a second release of the same card charges the budget once, not twice", async () => {
+    // Three pictures at a third of the budget each fit exactly. Releasing the
+    // first one TWICE used to book its bytes twice, so the third arrival
+    // pushed the total over and evicted a picture that was within budget —
+    // the very reload the retention queue exists to avoid.
+    const third = RETAINED_BYTES_MAX / 3;
+    const first = await acquire("a", async () => sizedBlob(third), f.urls);
+    release("a", f.urls);
+    release("a", f.urls);
+    for (const id of ["b", "c"]) {
+      await acquire(id, async () => sizedBlob(third), f.urls);
+      release(id, f.urls);
+    }
+    expect(f.revoked).toHaveLength(0);
+
+    const reload = vi.fn(async () => sizedBlob(third));
+    expect(await acquire("a", reload, f.urls)).toEqual(first);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
   it("evicts the OLDEST retained picture when the budget is spent, and revokes it", async () => {
     // Three pictures at half the budget each: retaining the third pushes the
     // total to 1.5×, so exactly one — the oldest — has to go.

@@ -176,7 +176,17 @@ describe("the camera", () => {
 
   it("emits nothing outside [EDGE_PAD, GRID − EDGE_PAD]", () => {
     const rand = seeded(4242);
+    // The emitted strings are rounded to hundredths, so the bound gets exactly
+    // that much slack and not a unit more.
+    const lo = EDGE_PAD - 0.005;
+    const hi = GRID - EDGE_PAD + 0.005;
     for (const solid of all) {
+      // One assertion per body, not one per value: this loop walks a few
+      // hundred thousand coordinates, and an `expect` costs more than the
+      // projection it checks — three of them per value put the test past
+      // vitest's 5 s ceiling on a loaded machine. The offenders list says
+      // everything a per-value failure would have said.
+      const offenders: string[] = [];
       for (let i = 0; i < 120; i++) {
         const view = projectDie(solid, randomQuat(rand));
         const coords = [
@@ -185,13 +195,12 @@ describe("the camera", () => {
         ];
         expect(coords.length).toBeGreaterThan(0);
         for (const value of coords) {
-          expect(Number.isFinite(value)).toBe(true);
-          // The emitted strings are rounded to hundredths, so the bound gets
-          // exactly that much slack and not a unit more.
-          expect(value).toBeGreaterThanOrEqual(EDGE_PAD - 0.005);
-          expect(value).toBeLessThanOrEqual(GRID - EDGE_PAD + 0.005);
+          if (!Number.isFinite(value) || value < lo || value > hi) {
+            offenders.push(`d${solid.sides} orientation ${i}: ${value}`);
+          }
         }
       }
+      expect(offenders).toEqual([]);
     }
   });
 });

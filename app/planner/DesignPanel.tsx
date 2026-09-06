@@ -108,11 +108,14 @@ export function DesignPanel() {
           </button>
           {open && (
             <>
-              {/* A real button, so the keyboard and a screen reader reach the
-                  way out too — the same dismiss layer the toolbar's menu and
-                  the widget popovers use, with the same accessible name. */}
+              {/* A real button, so a pointer, a screen reader and an AT click
+                  all reach the way out — the same dismiss layer the toolbar's
+                  menu and the widget popovers use, with the same accessible
+                  name and the same `tabIndex={-1}` (AddMenu.tsx carries the
+                  argument). */}
               <button
                 class={styles.backdrop}
+                tabIndex={-1}
                 aria-label={t("manage.close")}
                 onClick={() => {
                   addMenuOpen.value = false;

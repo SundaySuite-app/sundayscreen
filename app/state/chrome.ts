@@ -108,6 +108,30 @@ export function closeWidgetOverlay(): void {
 }
 
 /**
+ * The three panels that OWN THE SCREEN while they are open — a scrim, a
+ * dialog, and nothing behind it a teacher may reach.
+ *
+ * ONE list, and it is read from three places that must never disagree: the
+ * Escape chain's «overlay» rung (screen/keyboard.ts), the shell's `inert`
+ * (Shell.tsx) and [`anyOverlayOpen`] below. Two of those had their own copy
+ * before this signal existed, and the shell's had already drifted past the
+ * planner and attendance — a panel missing from a list like this reads as
+ * «nothing is open», which is how Escape ends up leaving FULLSCREEN with the
+ * dialog still on the board.
+ *
+ * The MENUS are deliberately not in here. A menu's dismiss layer lives inside
+ * the chrome that would be made inert, so inerting the board behind an open
+ * class menu would disable the menu's own way out — and a menu is not a
+ * conversation that owns the screen in the first place.
+ */
+export const modalPanelOpen = computed(
+  () =>
+    managePanelOpen.value ||
+    attendancePanelOpen.value ||
+    plannerPanelOpen.value,
+);
+
+/**
  * Is any panel or menu open? ONE list, because it is read from two places
  * that must never disagree: the idle ticker (which may not hide the chrome
  * out from under an open panel) and Shell's reveal handle (which may not
@@ -118,11 +142,9 @@ export function closeWidgetOverlay(): void {
  */
 export const anyOverlayOpen = computed(
   () =>
-    managePanelOpen.value ||
-    attendancePanelOpen.value ||
+    modalPanelOpen.value ||
     classMenuOpen.value ||
     sceneMenuOpen.value ||
-    plannerPanelOpen.value ||
     addMenuOpen.value ||
     // The CROSSED one, so a panel whose card has gone cannot pin the chrome
     // open for the rest of the day with nothing on screen to explain it.

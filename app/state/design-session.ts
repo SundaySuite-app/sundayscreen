@@ -4,8 +4,8 @@
 // projector — the class is watching the one that is already there. But the
 // editor the teacher gets has to be the REAL one: Surface, WidgetShell,
 // useDrag, the add menu, the layout store's undo slot and its serialised
-// persister. So instead of a second, parameterised store (twelve widget
-// folders threaded with a context, two persisters, two undo stacks, two
+// persister. So instead of a second, parameterised store (EVERY widget
+// folder threaded with a context, two persisters, two undo stacks, two
 // truths), the session borrows the GLOBALS for as long as the planner panel
 // covers the screen, and hands them back on the way out.
 //

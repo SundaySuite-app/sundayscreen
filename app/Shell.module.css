@@ -4,6 +4,19 @@
   background: var(--bg);
 }
 
+/* THE WALL: the board and the chrome that belongs to it — everything a modal
+   panel is drawn over, wrapped so it can be made `inert` with one attribute
+   (Shell.tsx).
+
+   `display: contents` is the whole rule and it is load-bearing: everything
+   inside is positioned against `.shell`, so a wrapper that generated a box
+   would become their containing block and move the board. Inert is a DOM
+   property rather than a painted one, so it reaches the subtree through a box
+   that is not there. */
+.wall {
+  display: contents;
+}
+
 .splash {
   height: 100%;
   display: flex;

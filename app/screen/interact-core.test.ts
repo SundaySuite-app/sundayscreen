@@ -3,8 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { PxRect } from "./coords-core";
 import {
   DRAG_THRESHOLD_PX,
+  NUDGE_COARSE_FACTOR,
+  arrowDirection,
   dragMove,
   isDrag,
+  nudgeMove,
+  nudgeResize,
+  nudgeStep,
   resizeSE,
   snapRect,
   snapResize,
@@ -244,5 +249,114 @@ describe("isDrag", () => {
     expect(isDrag(DRAG_THRESHOLD_PX, 0)).toBe(true);
     // Diagonal distance counts, not per-axis.
     expect(isDrag(3, 3)).toBe(true);
+  });
+});
+
+describe("the arrow keys", () => {
+  const MIN = { w: 120, h: 80 };
+  const START: PxRect = { x: 300, y: 200, w: 200, h: 100 };
+
+  it("a non-arrow key is not a nudge at all", () => {
+    // The DOM half leans on this: `null` is what lets Enter on «Fjern» and
+    // Escape on the ladder reach the control they were pressed on.
+    expect(arrowDirection("Enter")).toBeNull();
+    expect(nudgeMove(START, " ", SURFACE, false)).toBeNull();
+    expect(nudgeResize(START, "Escape", MIN, SURFACE, false)).toBeNull();
+  });
+
+  it("one press is one percent of the surface's OWN axis", () => {
+    // A fraction, not a pixel count: the coordinates are normalised, so the
+    // same press has to mean the same thing on every projector.
+    expect(nudgeStep(SURFACE, false)).toEqual({ w: 10, h: 6 });
+    expect(nudgeStep({ w: 1920, h: 1080 }, false)).toEqual({
+      w: 19.2,
+      h: 10.8,
+    });
+  });
+
+  it("Shift is a BIGGER STEP, never a different gesture", () => {
+    const fine = nudgeStep(SURFACE, false);
+    const coarse = nudgeStep(SURFACE, true);
+    expect(coarse.w / fine.w).toBe(NUDGE_COARSE_FACTOR);
+    expect(coarse.h / fine.h).toBe(NUDGE_COARSE_FACTOR);
+  });
+
+  it("moves the card one step per press, in the key's direction", () => {
+    expect(nudgeMove(START, "ArrowRight", SURFACE, false)).toEqual({
+      ...START,
+      x: 310,
+    });
+    expect(nudgeMove(START, "ArrowLeft", SURFACE, false)).toEqual({
+      ...START,
+      x: 290,
+    });
+    expect(nudgeMove(START, "ArrowDown", SURFACE, false)).toEqual({
+      ...START,
+      y: 206,
+    });
+    expect(nudgeMove(START, "ArrowUp", SURFACE, false)).toEqual({
+      ...START,
+      y: 194,
+    });
+    expect(nudgeMove(START, "ArrowRight", SURFACE, true)).toEqual({
+      ...START,
+      x: 400,
+    });
+  });
+
+  it("cannot walk a card off the surface, however long the key is held", () => {
+    // Inherited from `dragMove` rather than re-clamped here — the point of
+    // reusing it. Normalised, the committed rect stays inside 0..1.
+    let rect: PxRect = START;
+    for (let i = 0; i < 200; i++) {
+      rect = nudgeMove(rect, "ArrowLeft", SURFACE, true)!;
+      rect = nudgeMove(rect, "ArrowUp", SURFACE, true)!;
+    }
+    expect(rect).toMatchObject({ x: 0, y: 0 });
+    for (let i = 0; i < 200; i++) {
+      rect = nudgeMove(rect, "ArrowRight", SURFACE, true)!;
+      rect = nudgeMove(rect, "ArrowDown", SURFACE, true)!;
+    }
+    expect(rect.x + rect.w).toBe(SURFACE.w);
+    expect(rect.y + rect.h).toBe(SURFACE.h);
+  });
+
+  it("scales from the SE corner: right/down grow, left/up shrink", () => {
+    expect(nudgeResize(START, "ArrowRight", MIN, SURFACE, false)).toEqual({
+      ...START,
+      w: 210,
+    });
+    expect(nudgeResize(START, "ArrowDown", MIN, SURFACE, false)).toEqual({
+      ...START,
+      h: 106,
+    });
+    expect(nudgeResize(START, "ArrowLeft", MIN, SURFACE, false)).toEqual({
+      ...START,
+      w: 190,
+    });
+    // The position is FIXED — the same corner the pointer drags.
+    expect(nudgeResize(START, "ArrowUp", MIN, SURFACE, false)).toMatchObject({
+      x: START.x,
+      y: START.y,
+      h: 94,
+    });
+  });
+
+  it("stops at the pixel minimum, and at the surface edge", () => {
+    let rect: PxRect = START;
+    for (let i = 0; i < 200; i++) {
+      rect = nudgeResize(rect, "ArrowLeft", MIN, SURFACE, true)!;
+      rect = nudgeResize(rect, "ArrowUp", MIN, SURFACE, true)!;
+    }
+    expect(rect.w).toBe(MIN.w);
+    expect(rect.h).toBe(MIN.h);
+    for (let i = 0; i < 200; i++) {
+      rect = nudgeResize(rect, "ArrowRight", MIN, SURFACE, true)!;
+      rect = nudgeResize(rect, "ArrowDown", MIN, SURFACE, true)!;
+    }
+    // The `clamp_rect` FIXPOINT, the invariant `resizeSE` owes the app: a
+    // committed rect never reaches past the edge, so no restart teleports it.
+    expect(rect.x + rect.w).toBe(SURFACE.w);
+    expect(rect.y + rect.h).toBe(SURFACE.h);
   });
 });

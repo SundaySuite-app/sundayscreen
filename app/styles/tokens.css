@@ -227,6 +227,18 @@
      control. Blue would import a palette this app does not have, and gold
      never reaches 3:1 against the surfaces it would sit on. */
   --focus: #23272f;
+  /* …and the ring's SECOND tone, because one tone cannot be visible on every
+     ground this app draws. `--focus` against the `tavle` backdrop measures
+     1.06:1 — «Velg et verktøy» on an empty blackboard-green screen got a
+     focus ring nobody could see, on the one control that board has. A darker
+     ink is not the answer: the same ring has to stay visible on --surface and
+     on the four light boards. So the ring is TWO tones, and the pair is
+     chosen so at least one of them clears 3:1 on any ground (pinned in
+     `tokens.test.ts`, which also pins that --focus ALONE does not — that
+     number is why this token exists). White rather than a fifth grey: it is
+     the maximum available separation from --ink, and on a light board it is
+     invisible against the paper, which is exactly what it should be there. */
+  --focus-halo: #ffffff;
 
   /* Traffic-light lamps — their own tokens so the widget's red/yellow/green
      can be tuned without touching the semantic states.

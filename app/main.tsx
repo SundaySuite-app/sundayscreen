@@ -37,6 +37,7 @@ import { managePanelOpen } from "./state/classes";
 import { initChrome } from "./state/chrome";
 import { activeClass, initLayout } from "./state/layout";
 import { hydrateSettings, settings } from "./state/settings";
+import { trackDialogOpeners } from "./ui/dialog-focus";
 import { toast } from "./ui/toast";
 import { Toasts } from "./ui/Toasts";
 
@@ -64,9 +65,12 @@ render(<Shell />, host);
 render(<Toasts />, overlayHost);
 
 // The chrome's global listeners — idempotent installs whose cleanups we
-// never need (the shell lives as long as the window).
+// never need (the shell lives as long as the window). The focus tracker has
+// to be installed BEFORE anything can be clicked: it is what a modal panel
+// hands the keyboard back to, and it cannot recover a focus it never saw.
 installKeyboard();
 initChrome();
+trackDialogOpeners();
 
 void boot();
 

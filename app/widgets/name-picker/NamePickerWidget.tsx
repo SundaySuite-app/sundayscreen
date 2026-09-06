@@ -278,6 +278,19 @@ export function NamePickerWidget({ widget }: { widget: WidgetInstance }) {
       <div
         class={styles.display}
         data-display
+        // The drawn name is the widget's whole ANSWER, and it arrives without
+        // anything on screen moving to the keyboard — so a screen-reader user
+        // pressed «Trekk navn» and was told nothing at all (WCAG 4.1.3). The
+        // region is the display itself, which is mounted from the first
+        // render (it holds «Klar til å trekke» before any draw), so the very
+        // first result is a change INSIDE a region that already existed.
+        //
+        // `aria-busy` while the spin runs is not decoration: the tease
+        // rewrites this text every SPIN_STEP_MS for 700 ms, and a polite
+        // region left unguarded would read a dozen names the draw never
+        // landed on before reaching the one it did.
+        aria-live="polite"
+        aria-busy={spinning || undefined}
         data-empty={shown.length === 0 || undefined}
         data-spinning={spinning || undefined}
         style={displayVars(shown)}

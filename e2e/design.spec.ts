@@ -317,7 +317,7 @@ test("designing a class's default screen draws its REAL backdrop (F4)", async ({
   // The board on the wall IS the class default — recolour it there.
   await page.getByRole("button", { name: "Bytt skjerm" }).click();
   await page.getByRole("button", { name: "Tavle", exact: true }).click();
-  await expect(page.locator("main > [data-theme]")).toHaveAttribute(
+  await expect(page.locator("[data-wall] > [data-theme]")).toHaveAttribute(
     "data-theme",
     "tavle",
   );
@@ -334,7 +334,7 @@ test("designing a class's default screen draws its REAL backdrop (F4)", async ({
   await panel.getByRole("button", { name: "Lukk" }).click();
   await page.getByRole("button", { name: "Bytt skjerm" }).click();
   await page.getByRole("menuitem", { name: "Bibliotekskjerm" }).click();
-  await expect(page.locator("main > [data-theme]")).toHaveAttribute(
+  await expect(page.locator("[data-wall] > [data-theme]")).toHaveAttribute(
     "data-theme",
     "standard",
   );

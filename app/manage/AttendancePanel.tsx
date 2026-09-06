@@ -15,16 +15,23 @@
 // it back, which drops her id in `replace_members` and RESETS her no-repeat
 // round. This panel is that workaround's replacement.
 
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 
 import { t, tn } from "../i18n";
 import { localDateStr } from "../planner/date-core";
 import { classMenuOpen, members } from "../state/classes";
 import { attendancePanelOpen, presentOn, setAway } from "../state/attendance";
+import { useDialogFocus } from "../ui/dialog-focus";
 import { Icon } from "../ui/Icon";
 import styles from "./AttendancePanel.module.css";
 
 export function AttendancePanel() {
+  const panelRef = useRef<HTMLElement>(null);
+  // Same contract as the other two panels: focus in on opening, back to the
+  // class switcher's trigger on closing (ClassSwitcher.tsx puts the keyboard
+  // there before the menu item that opened this one is unmounted), and the
+  // board behind is `inert` meanwhile.
+  useDialogFocus(panelRef);
   const [failed, setFailed] = useState(false);
   // Minted per render, like every other `today` in the frontend (ADR-009: JS
   // owns the wall clock). No new date helper: `localDateStr(new Date())` is
@@ -46,7 +53,11 @@ export function AttendancePanel() {
 
   return (
     <div class={styles.scrim}>
-      <section class={styles.panel} aria-label={t("attendance.title")}>
+      <section
+        ref={panelRef}
+        class={styles.panel}
+        aria-label={t("attendance.title")}
+      >
         <header class={styles.header}>
           <h2 class={styles.title}>{t("attendance.title")}</h2>
           <button

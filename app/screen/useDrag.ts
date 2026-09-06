@@ -1,7 +1,7 @@
 // The thin DOM half of the interaction layer: pointer capture, the
-// click-vs-drag threshold, and committing the result. All the math lives in
-// interact-core.ts; render state lives in the `activeDrag` signal so the
-// component tree simply draws what the signal says.
+// click-vs-drag threshold, the ARROW KEYS, and committing the result. All the
+// math lives in interact-core.ts; render state lives in the `activeDrag`
+// signal so the component tree simply draws what the signal says.
 
 import { signal } from "@preact/signals";
 
@@ -18,6 +18,8 @@ import { fromNorm, toNorm, type PxRect } from "./coords-core";
 import {
   dragMove,
   isDrag,
+  nudgeMove,
+  nudgeResize,
   resizeSE,
   snapRect,
   snapResize,
@@ -180,4 +182,51 @@ export function startResize(e: PointerEvent, widget: WidgetInstance): void {
     const sized = resizeSE(startPx, dx, dy, min, surface);
     return snap ? snapResize(sized, siblings, surface, min) : { rect: sized };
   });
+}
+
+/**
+ * One arrow press on a card the keyboard is inside — the whole of WCAG 2.1.1
+ * for the board (funn 1).
+ *
+ * `mode` is decided by WHERE the keyboard is: on the resize handle the arrows
+ * scale from the SE corner, anywhere else in the card they move it. That is
+ * the alternative to a «resize mode» the handle toggles, and it was chosen
+ * for two reasons. A mode needs a rung on the Escape ladder — the one place
+ * in this app where a forgotten layer means Escape silently does nothing
+ * (chrome-core.ts) — and it needs somewhere to announce itself, on a board
+ * that stands in front of a class. Focus on the handle IS the mode, it is
+ * already announced by the button's own name, and Tab is already the way out
+ * of it.
+ *
+ * NOT raised with `bringToFront` the way a pointer press is: raising writes
+ * `z` to disk, and a teacher stepping a card one percent to the left has not
+ * asked for the stack to be reordered. The pointer raises because the press
+ * is also a grab; a key is not.
+ */
+export function nudgeWidget(
+  e: KeyboardEvent,
+  widget: WidgetInstance,
+  mode: "move" | "resize",
+): void {
+  // The same freeze the pointer obeys, for the same reason: while one card is
+  // shown large the board is a view, and the enlarged card's rect on screen
+  // is not its stored one.
+  if (frozenForFocus()) return;
+  const surface = surfaceSize.peek();
+  const start = fromNorm(widget.rect, surface);
+  const next =
+    mode === "resize"
+      ? nudgeResize(
+          start,
+          e.key,
+          WIDGET_REGISTRY[widget.config.kind].minSizePx,
+          surface,
+          e.shiftKey,
+        )
+      : nudgeMove(start, e.key, surface, e.shiftKey);
+  if (!next) return;
+  // Only once the key IS an arrow: every other key must still reach the
+  // control it was pressed on (Enter on «Fjern», Escape on the ladder).
+  e.preventDefault();
+  commitWidgetRect(widget.id, toNorm(next, surface), { debounce: true });
 }

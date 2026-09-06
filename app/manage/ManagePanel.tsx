@@ -44,6 +44,7 @@ import {
   transferMessage,
 } from "../state/transfer";
 import styles from "./ManagePanel.module.css";
+import { useDialogFocus } from "../ui/dialog-focus";
 import { Icon } from "../ui/Icon";
 import { namesToText, parseNameList, rawNameCount } from "./name-list-core";
 
@@ -80,6 +81,12 @@ function UpdateNotes({ notes }: { notes: string | null | undefined }) {
 }
 
 export function ManagePanel() {
+  const panelRef = useRef<HTMLElement>(null);
+  // Focus in on opening, back to the class switcher's trigger on closing, and
+  // the board behind is `inert` while this is up (Shell.tsx). The trigger is
+  // the remembered opener because ClassSwitcher puts the keyboard there before
+  // it unmounts the menu item that opened this panel.
+  useDialogFocus(panelRef);
   const current = activeClass.value;
   /** Is the list on screen an actual READ of the class on screen? The whole
    *  names column hangs off this: what is rendered, and whether the save
@@ -261,7 +268,11 @@ export function ManagePanel() {
 
   return (
     <div class={styles.scrim}>
-      <section class={styles.panel} aria-label={t("manage.title")}>
+      <section
+        ref={panelRef}
+        class={styles.panel}
+        aria-label={t("manage.title")}
+      >
         <header class={styles.header}>
           <h2 class={styles.title}>{t("manage.title")}</h2>
           <button
@@ -468,11 +479,17 @@ export function ManagePanel() {
                       {tf("manage.tooManyNames", { n: LIMITS.MEMBERS_MAX })}
                     </span>
                   )}
-                  {savedReceipt && (
-                    <span class={styles.receipt}>
-                      {t("manage.savedReceipt")}
-                    </span>
-                  )}
+                  {/* MOUNTED EMPTY, not rendered on demand: `role="status"`
+                      is a polite live region, and assistive technology
+                      announces changes INSIDE one it was already watching. A
+                      span that arrives together with the word «Lagret» is a
+                      new subtree, not a change, so the one confirmation that
+                      a replace-all of the whole class list actually landed
+                      was never spoken. `.receipt` is text styling only, so an
+                      empty span draws nothing and occupies nothing. */}
+                  <span class={styles.receipt} role="status">
+                    {savedReceipt ? t("manage.savedReceipt") : ""}
+                  </span>
                   {/* Disabled until the names have LANDED: the draft is empty
                       until then, and saving it would be a replace-all with a
                       list nobody read. And disabled over the limit: a write

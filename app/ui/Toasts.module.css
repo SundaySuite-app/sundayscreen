@@ -7,6 +7,10 @@
   flex-direction: column;
   gap: var(--sp-2);
   max-width: min(420px, calc(100vw - 2 * var(--sp-4)));
+  /* The host is mounted even with nothing in it (Toasts.tsx: a polite live
+     region has to exist BEFORE its first message), so the box must never be
+     something the board can collide with. The toasts hand themselves back. */
+  pointer-events: none;
 }
 
 /* Below the enlarged card's collapse button (R4-funn F7). That button is the
@@ -21,6 +25,7 @@
 }
 
 .toast {
+  pointer-events: auto;
   display: flex;
   align-items: flex-start;
   gap: var(--sp-2);

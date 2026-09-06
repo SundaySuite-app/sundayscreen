@@ -6,7 +6,7 @@
 // CONTAINING BLOCK for `position: fixed`. So a backdrop a widget renders with
 // `fixed; inset: 0` covers the card and nothing else, and a panel that sticks
 // out past the card's edge is simply clipped away. Neither is a bug in any
-// one widget — it is the shape of the box all twelve live in, which is why
+// one widget — it is the shape of the box they ALL live in, which is why
 // the way out is a slot in the registry (`WidgetDef.Overlay`) and a host up
 // here, mounted as a sibling of the surface where `fixed` means the viewport
 // again.
@@ -81,7 +81,7 @@ export function WidgetOverlay() {
     // font arriving, a section an overlay fills in on its second render. The
     // host cannot know which overlay does that, so it watches instead of
     // assuming: measured once and never again is how a panel ends up half off
-    // the bottom of a 768-tall screen for one widget out of twelve.
+    // the bottom of a 768-tall screen for one widget kind out of all of them.
     const ro = new ResizeObserver(place);
     ro.observe(el);
     return () => {
@@ -96,10 +96,16 @@ export function WidgetOverlay() {
   return (
     <>
       {/* Same dismiss layer as the add menu's, and the same accessible name:
-          one click anywhere puts the panel away. It is a real button so the
-          keyboard and a screen reader can reach the way out too. */}
+          one click anywhere puts the panel away. It is a real button so a
+          pointer, a screen reader and an AT click all reach the way out — and
+          `tabIndex={-1}` for the same reason as the other four (AddMenu.tsx
+          carries the argument). Here it also protected an overlay that MOVES
+          focus in on opening: without it, the first Tab out of the die's
+          appearance panel landed on an invisible full-screen control whose
+          Enter shut the panel again. */}
       <button
         class={styles.backdrop}
+        tabIndex={-1}
         data-elevated={elevated}
         aria-label={t("manage.close")}
         onClick={closeWidgetOverlay}
@@ -107,8 +113,8 @@ export function WidgetOverlay() {
       {/* No `role` and no `aria-label` here on purpose: the host owns the
           BOX (its layer, its placement, its frame), and the overlay owns what
           the box is — a menu, a group of radios, a form. A wrapper role
-          chosen up here would have to be right for all twelve kinds, and
-          would sit between a screen reader and the one the widget declares. */}
+          chosen up here would have to be right for EVERY kind, and would sit
+          between a screen reader and the one the widget declares. */}
       <div
         class={styles.panel}
         ref={panelRef}

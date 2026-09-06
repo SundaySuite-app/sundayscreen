@@ -7,13 +7,16 @@ import { installFixtures } from "./harness";
 // (promise 2), and the colour belongs to the SCREEN rather than to the app, so
 // switching screens switches boards.
 
-/** The board itself. `main > …` rather than a bare `[data-theme]`: the five
- *  swatches in the menu carry the attribute too (each one paints itself in the
- *  board it stands for), and they live deep inside the toolbar — the surface is
- *  the shell's own direct child. A CSS-module class name is not an option: it
- *  is hashed, and differently in dev and in a build. */
+/** The board itself. `[data-wall] > …` rather than a bare `[data-theme]`: the
+ *  five swatches in the menu carry the attribute too (each one paints itself
+ *  in the board it stands for), and they live deep inside the toolbar. The
+ *  hook is the shell's WALL wrapper — the thing a modal panel makes `inert` —
+ *  and the surface is its direct child; it says «the board the class is
+ *  looking at» rather than «whatever happens to sit one level under <main>»,
+ *  which is what this used to say. A CSS-module class name is not an option:
+ *  it is hashed, and differently in dev and in a build. */
 const surface = (page: import("@playwright/test").Page) =>
-  page.locator("main > [data-theme]");
+  page.locator("[data-wall] > [data-theme]");
 
 async function openSceneMenu(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Bytt skjerm" }).click();

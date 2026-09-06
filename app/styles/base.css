@@ -64,12 +64,31 @@ button {
  * outside the control, not a sixth colour. It is `:focus-visible`, so a mouse
  * click on a button never paints it.
  *
+ * ## TWO TONES, and the number that forced the second one
+ *
+ * A single ink ring is only visible on grounds it contrasts with, and since
+ * R6 a screen can be `tavle` — a near-black board (--scene-tavle-bg). There
+ * --focus measured 1.06:1, so the empty board's «Velg et verktøy» — the ONLY
+ * control on that screen — took the keyboard with no visible sign at all.
+ * The box-shadow paints --focus-halo from the control's edge out to 5 px and
+ * the outline is drawn ON TOP of it at 2–4 px, so what renders is a light
+ * band, the ink ring, and a light hairline: on a light board the ink half is
+ * the ring, on a dark board the halo half is. `tokens.test.ts` holds the pair
+ * to «one of the two clears 3:1» on every ground the app draws.
+ *
+ * The shadow is in the SAME rule as the outline and not a separate one, so a
+ * component that opts out of the ring opts out of both halves at once — a
+ * halo left standing without its ink ring would be a mark nobody designed.
+ *
  * The selector list is the real controls and NOT `[tabindex]`. Nothing in the
- * app uses tabindex today, and including it would be a standing invitation
- * for this ring to appear one day on the board itself, in front of a class.
+ * app puts a positive tabindex on anything, and including the attribute would
+ * be a standing invitation for this ring to appear one day on the board
+ * itself, in front of a class. (`tabindex="-1"` is used — on the five dismiss
+ * backdrops — and is deliberately NOT matched: those are never focused.)
  * :where() keeps specificity at zero so any component can still opt out.
  */
 :where(button, a, input, textarea, select, summary):focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--focus-halo);
 }

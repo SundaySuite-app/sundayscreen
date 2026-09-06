@@ -205,7 +205,7 @@ export function addWidget(kind: WidgetKind): void {
  * objects (`items`, `manualItems`, `lastResult`, `lastRoll`, `extra`); a
  * shallow copy would leave the two cards sharing them, which turns "no
  * widget mutates its config in place" from a convention into a load-bearing
- * assumption spread across twelve folders. It also breaks promise 2 the
+ * assumption spread across every widget folder. It also breaks promise 2 the
  * moment one is violated: tick an item on the copy, and the original's
  * stored config changed without ever being saved.
  */
@@ -282,10 +282,26 @@ export function undoRemove(): void {
   saveNow();
 }
 
-/** Commit a finished drag/resize (pointerup) — an immediate save. */
-export function commitWidgetRect(id: string, rect: NormRect): void {
+/**
+ * Commit a finished drag/resize — an immediate save, because a pointerup IS
+ * the discrete end of a gesture.
+ *
+ * `debounce` is the KEYBOARD's door (screen/useDrag.ts). An arrow press is
+ * not the end of anything: a teacher lining a card up holds the key down, and
+ * every repeat would be its own replace-all of the whole scene — a write
+ * storm on a machine that is also drawing the board. The debounce makes one
+ * key sequence one write, exactly like the text widget's typing, and
+ * `flushPending` still catches it before a class or scene switch. Same signal
+ * update either way: the card moves on screen at once, only the disk waits.
+ */
+export function commitWidgetRect(
+  id: string,
+  rect: NormRect,
+  opts: { debounce?: boolean } = {},
+): void {
   widgets.value = widgets.value.map((w) => (w.id === id ? { ...w, rect } : w));
-  saveNow();
+  if (opts.debounce) saveSoon();
+  else saveNow();
 }
 
 /** Select and raise a widget. Saves only when the stacking actually

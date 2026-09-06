@@ -5,8 +5,10 @@
 // The attendance panel is a dialog in the SHELL, beside ManagePanel and
 // PlannerPanel. This file only opens it.
 
+import { useRef } from "preact/hooks";
+
 import { openAttendanceFromMenu } from "../manage/AttendancePanel";
-import { t } from "../i18n";
+import { t, tf } from "../i18n";
 import { classes, classMenuOpen, managePanelOpen } from "../state/classes";
 import { activeClass } from "../state/layout";
 import { switchClassKeepingScreen } from "../state/scenes";
@@ -17,12 +19,41 @@ import styles from "./ClassSwitcher.module.css";
 export function ClassSwitcher() {
   const open = classMenuOpen.value;
   const current = activeClass.value;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  /**
+   * Open a DIALOG from this menu — and hand the keyboard back to the trigger
+   * on the way (funn 2's other half).
+   *
+   * The menu item the teacher pressed is unmounted by the very click that
+   * opens the panel, so it is not somewhere `useDialogFocus` can return focus
+   * to when the panel closes. The trigger IS: it survives the whole journey,
+   * it is where the eye already is, and it is the door back into the menu she
+   * came from. Focusing it BEFORE the signals flip is what makes it the
+   * remembered opener — the tracker records the last real focus, and the menu
+   * disappears in the same commit.
+   */
+  const openDialog = (run: () => void) => {
+    triggerRef.current?.focus();
+    run();
+  };
 
   return (
     <div class={styles.wrap}>
       <button
+        ref={triggerRef}
         class={styles.trigger}
-        aria-label={t("manage.switchClass")}
+        // The accessible name CONTAINS the visible one (WCAG 2.5.3, the
+        // ADR-017 pattern): the button reads «7B» on the toolbar, so a
+        // voice-control user says «klikk 7B» — and a fixed «Bytt klasse»
+        // would leave her no way to say the name of the most used control in
+        // the app. The plain wording survives as the FALLBACK for the frame
+        // before the first class has landed, where there is no name to say.
+        aria-label={
+          current
+            ? tf("manage.switchClassNamed", { name: current.name })
+            : t("manage.switchClass")
+        }
         aria-expanded={open}
         onClick={() => {
           classMenuOpen.value = !open;
@@ -38,8 +69,13 @@ export function ClassSwitcher() {
       </button>
       {open && (
         <>
+          {/* `tabIndex={-1}`: see AddMenu.tsx for the whole argument — the
+              dismiss layer fills the viewport, so its focus ring is drawn off
+              screen, and as the first tab stop it made Enter close the menu
+              the teacher had just opened. */}
           <button
             class={styles.backdrop}
+            tabIndex={-1}
             aria-label={t("manage.close")}
             onClick={() => {
               classMenuOpen.value = false;
@@ -68,17 +104,19 @@ export function ClassSwitcher() {
             <button
               role="menuitem"
               class={styles.manage}
-              onClick={openAttendanceFromMenu}
+              onClick={() => openDialog(openAttendanceFromMenu)}
             >
               {t("attendance.title")}
             </button>
             <button
               role="menuitem"
               class={styles.manage}
-              onClick={() => {
-                classMenuOpen.value = false;
-                managePanelOpen.value = true;
-              }}
+              onClick={() =>
+                openDialog(() => {
+                  classMenuOpen.value = false;
+                  managePanelOpen.value = true;
+                })
+              }
             >
               {t("manage.open")}
             </button>

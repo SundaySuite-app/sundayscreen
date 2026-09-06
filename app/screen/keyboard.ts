@@ -12,6 +12,7 @@ import {
   activeWidgetOverlay,
   addMenuOpen,
   closeWidgetOverlay,
+  modalPanelOpen,
 } from "../state/chrome";
 import { designSession, exitDesign } from "../state/design-session";
 import {
@@ -21,9 +22,34 @@ import {
   undoSlot,
 } from "../state/layout";
 import { sceneMenuOpen } from "../state/scenes";
-import { closePlanner, plannerPanelOpen } from "../state/planner";
+import { closePlanner } from "../state/planner";
 import { chromeActivity, fullscreen, toggleFullscreen } from "../state/chrome";
 import { escapeTarget } from "./chrome-core";
+
+/**
+ * Does this element own its own keys?
+ *
+ * A focused text field eats Escape (it leaves the field), Cmd/Ctrl+Z (the
+ * browser's text undo belongs to the field) and — since funn 1 — the ARROWS,
+ * which move the caret while a teacher is writing a message, not the card the
+ * message is written on. One definition, read from both places: two copies of
+ * «what counts as typing» is how a card starts sliding under someone's hands
+ * halfway through a sentence.
+ *
+ * A checkbox or a radio has nothing to leave and nothing to type into
+ * (F-funn C17), so they are deliberately outside it. `<select>` is too, and
+ * that is worth naming: it DOES use the arrows, but no widget renders one —
+ * the only selects in the app are inside the planner's tabs, which no card
+ * contains. The day a widget grows one, it belongs in this list.
+ */
+export function isTextEntry(el: Element | null): boolean {
+  return (
+    el instanceof HTMLElement &&
+    (el.tagName === "TEXTAREA" ||
+      (el instanceof HTMLInputElement &&
+        !["checkbox", "radio", "button", "submit"].includes(el.type)))
+  );
+}
 
 export function installKeyboard(): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
@@ -39,13 +65,7 @@ export function installKeyboard(): () => void {
     // A focused text field owns its own Escape — and its own Cmd/Ctrl+Z:
     // the browser's text undo belongs to the field, not to the board.
     const active = document.activeElement;
-    // A checkbox/radio has nothing to "leave" — Escape there should close a
-    // layer, not be swallowed (F-funn C17).
-    const isTextField =
-      active instanceof HTMLElement &&
-      (active.tagName === "TEXTAREA" ||
-        (active instanceof HTMLInputElement &&
-          !["checkbox", "radio", "button", "submit"].includes(active.type)));
+    const isTextField = isTextEntry(active);
 
     // Cmd/Ctrl+Z puts back the widget the snackbar is offering — and ONLY
     // that. The `undoSlot` guard is the whole point: with nothing to take
@@ -84,11 +104,11 @@ export function installKeyboard(): () => void {
       // EVERY overlay belongs in here. An overlay the chain does not know
       // about reads as "nothing is open", and Escape then leaves
       // FULLSCREEN — the projector view goes away while the panel the
-      // teacher meant to dismiss stays on the board.
-      overlayOpen:
-        managePanelOpen.peek() ||
-        plannerPanelOpen.peek() ||
-        attendancePanelOpen.peek(),
+      // teacher meant to dismiss stays on the board. The list itself now
+      // lives in `state/chrome.ts`, next to the `inert` that has to answer
+      // the same question: two hand-kept copies of «which panels are modal»
+      // is the drift this chain has already been bitten by once.
+      overlayOpen: modalPanelOpen.peek(),
       // The CROSSED signal, not the raw id: a focus id left pointing at a
       // card that is no longer on the board would swallow this press and
       // do nothing visible — Escape would simply stop working once.

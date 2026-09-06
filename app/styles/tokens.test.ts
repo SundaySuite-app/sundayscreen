@@ -465,6 +465,61 @@ describe("the focus ring is the system's own ink", () => {
   });
 });
 
+/**
+ * The ring is TWO tones (base.css), and this is the arithmetic that forced
+ * the second one.
+ *
+ * A focus indicator is only an indicator against the thing it is drawn ON,
+ * and since R6 the thing it is drawn on can be a near-black board. Every
+ * ground the app actually paints a control against is listed below, and the
+ * rule is: at least ONE of the two tones clears 3:1 there. Not both — that is
+ * unachievable in one palette, and it is the whole reason a single-tone ring
+ * failed on `tavle`.
+ */
+describe("the focus ring is visible on every ground the app draws", () => {
+  /** A control can stand on a card, on the app's own ground, or — the empty
+   *  board's signpost — directly on a screen's backdrop. */
+  const RING_GROUNDS = [
+    "--surface",
+    "--raised",
+    "--bg",
+    ...SCENE_THEMES.map((theme) => theme.bg),
+  ];
+
+  /** WCAG 2.1 §1.4.11 for a non-text indicator. */
+  const INDICATOR_FLOOR = 3;
+
+  for (const ground of RING_GROUNDS) {
+    it(`one of the two tones clears ${INDICATOR_FLOOR}:1 on ${ground}`, () => {
+      const g = paint(ground).rgb;
+      const best = Math.max(
+        contrast(paint("--focus").rgb, g),
+        contrast(paint("--focus-halo").rgb, g),
+      );
+      expect(best).toBeGreaterThanOrEqual(INDICATOR_FLOOR);
+    });
+  }
+
+  it("the two tones are told apart from EACH OTHER", () => {
+    // They are painted 1 px apart. A halo that reads as the ink half is not a
+    // second tone, it is a thicker ring — and a thicker ring on `tavle` is
+    // still invisible.
+    expect(
+      contrast(paint("--focus").rgb, paint("--focus-halo").rgb),
+    ).toBeGreaterThanOrEqual(INDICATOR_FLOOR);
+  });
+
+  it("--focus ALONE does NOT clear it on tavle — hence the halo", () => {
+    // Not a wish: the number is why `--focus-halo` exists at all. The measured
+    // value is ~1.06:1 — a ring the teacher cannot see on the one control an
+    // empty blackboard screen has. If a future palette ever makes this pass,
+    // retire the halo deliberately rather than discovering it by accident.
+    expect(
+      contrast(paint("--focus").rgb, paint("--scene-tavle-bg").rgb),
+    ).toBeLessThan(INDICATOR_FLOOR);
+  });
+});
+
 describe("the guard's own arithmetic", () => {
   // A contrast checker that is silently wrong is the most expensive kind of
   // green tick, so it is pinned to values anyone can look up.

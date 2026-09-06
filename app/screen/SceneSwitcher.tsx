@@ -5,7 +5,7 @@
 
 import { useState } from "preact/hooks";
 
-import { t, tDyn, tn } from "../i18n";
+import { t, tDyn, tf, tn } from "../i18n";
 import { localDateStr } from "../planner/date-core";
 import { activeClass, activeScene } from "../state/layout";
 import {
@@ -128,12 +128,28 @@ export function SceneSwitcher() {
       });
   };
 
+  // What the button SAYS on the toolbar — computed once, because the
+  // accessible name has to contain it (WCAG 2.5.3) and two spellings of «what
+  // is written on this button» is how they drift apart.
+  const visibleName = isDefault
+    ? t("scene.defaultLabel")
+    : (scene?.name ?? null);
+  // The ADR-017 pattern, ordrett: «Bytt skjerm — «Norsktavla»». A fixed «Bytt
+  // skjerm» over the visible «Norsktavla» left a voice-control user with no
+  // way to say the name of the control she is looking at. The plain wording
+  // survives as the fallback for the frame before the first scene has landed,
+  // where there is no name to say.
+  const switchName =
+    visibleName === null
+      ? t("scene.switch")
+      : tf("scene.switchNamed", { name: visibleName });
+
   return (
     <div class={styles.wrap}>
       <button
         class={styles.trigger}
-        aria-label={t("scene.switch")}
-        title={t("scene.switch")}
+        aria-label={switchName}
+        title={switchName}
         aria-expanded={open}
         onClick={() => {
           closeEditors();
@@ -149,15 +165,15 @@ export function SceneSwitcher() {
          * screens freely, the toolbar is one row on a 1024×768 projector, and
          * an unbounded name is the one input that can wrap it. The full name
          * is a click away in the menu below. */}
-        <span class={styles.triggerLabel}>
-          {isDefault ? t("scene.defaultLabel") : (scene?.name ?? "…")}
-        </span>
+        <span class={styles.triggerLabel}>{visibleName ?? "…"}</span>
         <Icon name="chevron-down" size="sm" class={styles.chevron} />
       </button>
       {open && (
         <>
+          {/* `tabIndex={-1}` — AddMenu.tsx carries the argument. */}
           <button
             class={styles.backdrop}
+            tabIndex={-1}
             aria-label={t("manage.close")}
             onClick={() => {
               sceneMenuOpen.value = false;
@@ -235,10 +251,17 @@ export function SceneSwitcher() {
                     </button>
                   ) : (
                     <>
+                      {/* The ROW's name is interpolated in (funn 8). Both
+                          controls are icon-only, so their whole accessible
+                          name used to be «Gi nytt navn»/«Slett» — and a
+                          screen-reader user in the button list heard «Slett,
+                          Slett, Slett» with no way to tell which screen was
+                          about to go. The visible chrome is untouched; the
+                          pattern is `checklist.checkNamed`'s. */}
                       <button
                         class={styles.rowAction}
-                        aria-label={t("manage.rename")}
-                        title={t("manage.rename")}
+                        aria-label={tf("scene.renameNamed", { name: s.name })}
+                        title={tf("scene.renameNamed", { name: s.name })}
                         onClick={() => {
                           setRenamingId(s.id);
                           setRenameDraft(s.name);
@@ -249,8 +272,8 @@ export function SceneSwitcher() {
                       </button>
                       <button
                         class={styles.rowAction}
-                        aria-label={t("manage.delete")}
-                        title={t("manage.delete")}
+                        aria-label={tf("scene.deleteNamed", { name: s.name })}
+                        title={tf("scene.deleteNamed", { name: s.name })}
                         onClick={() => arm(s.id)}
                       >
                         <Icon name="trash" size="sm" />

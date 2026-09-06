@@ -10,6 +10,20 @@ async function openSceneMenu(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Bytt skjerm" }).click();
 }
 
+/**
+ * A library row's trash button, BY THE ROW IT BELONGS TO.
+ *
+ * It used to be `{ name: "Slett", exact: true }` — exact because the plain
+ * «Slett» is a prefix of the confirmation's «Slett skjermen». Since R7-funn 8
+ * the name carries the screen («Slett «Skriveøkt»»), which is the whole fix:
+ * a screen-reader user in the button list heard «Slett, Slett, Slett» with no
+ * way to tell which setup was about to go. Asserting the real name here is
+ * what keeps that from quietly reverting.
+ */
+function trashFor(page: import("@playwright/test").Page, name: string) {
+  return page.getByRole("button", { name: `Slett «${name}»`, exact: true });
+}
+
 test("save-as creates a library scene and edits land in the copy", async ({
   page,
 }) => {
@@ -91,7 +105,7 @@ test("deleting the active scene lands on the class default", async ({
   );
 
   await openSceneMenu(page);
-  await page.getByRole("button", { name: "Slett", exact: true }).click();
+  await trashFor(page, "Midlertidig").click();
   // The confirmation is inert for CONFIRM_ARM_MS (400 ms) so a double-click
   // cannot walk through it — a deliberate second click waits.
   await page.waitForTimeout(500);
@@ -194,7 +208,7 @@ test("deleting the screen mid-save does not blame the teacher for it", async ({
   await page.locator("textarea").fill("Prøve i morgen");
 
   await openSceneMenu(page);
-  await page.getByRole("button", { name: "Slett", exact: true }).click();
+  await trashFor(page, "Midlertidig").click();
   await page.waitForTimeout(500); // CONFIRM_ARM_MS
   const pressedAt = await page.evaluate(() => Date.now());
   await page.getByRole("button", { name: "Slett skjermen" }).click();
@@ -318,7 +332,7 @@ test("a double-click on Slett does NOT delete the screen", async ({ page }) => {
   await openSceneMenu(page);
   // «Slett skjermen» renders exactly where the trash (and pencil) stood, so
   // the second half of a double-click lands on the confirmation itself.
-  const trash = page.getByRole("button", { name: "Slett", exact: true });
+  const trash = trashFor(page, "Dyrebar");
   const box = (await trash.boundingBox())!;
   await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
 
@@ -390,7 +404,7 @@ test("the delete confirmation says how many lessons still point at the screen", 
   // The screen the plan needs: the confirmation names the cost of pressing it.
   await openSceneMenu(page);
   const used = sceneRow(page, "Skriveøkt");
-  await used.getByRole("button", { name: "Slett", exact: true }).click();
+  await used.getByRole("button", { name: "Slett «Skriveøkt»" }).click();
   await expect(
     used.getByRole("button", { name: "Brukes av 1 time — slett likevel?" }),
   ).toBeVisible();
@@ -400,7 +414,7 @@ test("the delete confirmation says how many lessons still point at the screen", 
   // is what makes this assertion about the answer rather than about the
   // moment before it arrived.
   const unused = sceneRow(page, "Ubrukt");
-  await unused.getByRole("button", { name: "Slett", exact: true }).click();
+  await unused.getByRole("button", { name: "Slett «Ubrukt»" }).click();
   await page.waitForTimeout(500);
   await expect(
     unused.getByRole("button", { name: "Slett skjermen", exact: true }),

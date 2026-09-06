@@ -11,15 +11,17 @@
 // lives in the seam BETWEEN the tabs, and a 1 400-line file is where a
 // granskning stops reading the seam as a seam.
 
+import { useRef } from "preact/hooks";
+
 import { t, tDyn } from "../i18n";
 import { designSession } from "../state/design-session";
 import {
   closePlanner,
   plannerHydrated,
-  plannerPanelOpen,
   plannerTab,
   refreshPlanner,
 } from "../state/planner";
+import { useDialogFocus } from "../ui/dialog-focus";
 import { Icon } from "../ui/Icon";
 import { DayTab } from "./DayTab";
 import { DesignPanel } from "./DesignPanel";
@@ -27,14 +29,27 @@ import { PeriodsTab } from "./PeriodsTab";
 import { WeekTab } from "./WeekTab";
 import styles from "./PlannerPanel.module.css";
 
+/** Mounted by the shell only while `plannerPanelOpen` — the gate used to be an
+ *  early `return null` here, which ran the hooks below on the SHELL's mount
+ *  instead of on the panel's. */
 export function PlannerPanel() {
-  if (!plannerPanelOpen.value) return null;
+  const panelRef = useRef<HTMLElement>(null);
+  // The keyboard comes IN when the panel opens and goes back to whatever
+  // opened it when it closes; the shell makes the board behind `inert` for as
+  // long as it is up. A design session lives inside this panel, so the panel
+  // stays mounted across it and the keyboard is never taken from the little
+  // board (ADR-016).
+  useDialogFocus(panelRef);
   const tab = plannerTab.value;
   const designing = designSession.value !== null;
 
   return (
     <div class={styles.scrim}>
-      <section class={styles.panel} aria-label={t("planner.title")}>
+      <section
+        ref={panelRef}
+        class={styles.panel}
+        aria-label={t("planner.title")}
+      >
         <header class={styles.header}>
           <h2 class={styles.title}>{t("planner.title")}</h2>
           {/* The tabs go away while a design session runs. Not decoration: a

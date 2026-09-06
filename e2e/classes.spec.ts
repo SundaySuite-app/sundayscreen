@@ -521,9 +521,13 @@ test("a long class name is capped instead of wrapping the toolbar", async ({
   // over nothing: lift it and the row measurably breaks in two. Without this
   // the test above would keep passing the day the ceiling is deleted and the
   // name happens to be short enough anyway.
+  // `^=`, not `=`: the trigger's accessible name CONTAINS the class name now
+  // (WCAG 2.5.3 — «Bytt klasse — «10B …»»), so an exact-attribute selector
+  // here would match nothing and the mutation half would pass by doing
+  // nothing at all.
   await page.addStyleTag({
     content:
-      'footer button[aria-label="Bytt klasse"] span { max-width: none !important; }',
+      'footer button[aria-label^="Bytt klasse"] span { max-width: none !important; }',
   });
   const uncapped = await rowMetrics(page);
   expect(uncapped.height, JSON.stringify(uncapped)).toBeGreaterThan(

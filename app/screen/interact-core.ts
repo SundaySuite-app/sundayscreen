@@ -207,6 +207,91 @@ export function isDrag(dx: number, dy: number): boolean {
   return Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX;
 }
 
+// ── The keyboard's half of the same layer ───────────────────────────────────
+//
+// A teacher without a mouse — RSI, a switch, a dead battery in the middle of
+// a lesson — could add, copy, delete and enlarge a card but never PLACE one,
+// and the «Endre størrelse» button was focusable, announced, and inert
+// (WCAG 2.1.1). The keys reuse `dragMove`/`resizeSE` rather than growing a
+// second set of clamps: one arrow press is one pointer delta, so the surface
+// edge, the pixel minimum and the `clamp_rect` fixpoint are inherited whole.
+//
+// NO SNAPPING here, and that is a decision rather than an omission. A nudge is
+// an EXACT amount the teacher asked for; a snap that swallows it makes the key
+// look broken, and the guides it draws belong to a gesture that is still in
+// the hand. Snapping stays what the pointer does.
+
+/**
+ * How far one arrow press travels, as a fraction of the surface's OWN axis.
+ *
+ * A fraction rather than a pixel count because the coordinates are normalised
+ * (ADR: 0..1 per axis): the same press has to mean the same thing on a
+ * 1024×768 projector and on a 4K panel, and «6 px» does not. One percent is
+ * ~13 px on an ordinary board — fine enough to line two cards up by eye, and
+ * a hundred presses from edge to edge, which is what [`NUDGE_COARSE_FACTOR`]
+ * is for.
+ */
+export const NUDGE_FRACTION = 0.01;
+
+/** Shift's multiplier: ten presses cross the board instead of a hundred.
+ *  Shift means A BIGGER STEP and never «resize» — scaling is what the arrows
+ *  do while the resize handle has the keyboard, so the modifier is free to
+ *  mean the one thing a modifier on a movement key normally means. */
+export const NUDGE_COARSE_FACTOR = 10;
+
+/** Which way an arrow key points, in unit steps — `null` for every other key,
+ *  which is what lets the DOM half be a single `if`. */
+export function arrowDirection(key: string): { x: number; y: number } | null {
+  switch (key) {
+    case "ArrowLeft":
+      return { x: -1, y: 0 };
+    case "ArrowRight":
+      return { x: 1, y: 0 };
+    case "ArrowUp":
+      return { x: 0, y: -1 };
+    case "ArrowDown":
+      return { x: 0, y: 1 };
+    default:
+      return null;
+  }
+}
+
+/** The px step one press takes on `surface`, per axis. */
+export function nudgeStep(surface: Size, coarse: boolean): Size {
+  const f = NUDGE_FRACTION * (coarse ? NUDGE_COARSE_FACTOR : 1);
+  return { w: surface.w * f, h: surface.h * f };
+}
+
+/** Move `rect` by one arrow press, kept fully on the surface. `null` when the
+ *  key is not an arrow. */
+export function nudgeMove(
+  rect: PxRect,
+  key: string,
+  surface: Size,
+  coarse: boolean,
+): PxRect | null {
+  const dir = arrowDirection(key);
+  if (!dir) return null;
+  const step = nudgeStep(surface, coarse);
+  return dragMove(rect, dir.x * step.w, dir.y * step.h, surface);
+}
+
+/** Scale `rect` from the SE corner by one arrow press: left/up shrink,
+ *  right/down grow — the same corner the pointer drags, so the two gestures
+ *  cannot disagree about which edges move. `null` for a non-arrow key. */
+export function nudgeResize(
+  rect: PxRect,
+  key: string,
+  minPx: Size,
+  surface: Size,
+  coarse: boolean,
+): PxRect | null {
+  const dir = arrowDirection(key);
+  if (!dir) return null;
+  const step = nudgeStep(surface, coarse);
+  return resizeSE(rect, dir.x * step.w, dir.y * step.h, minPx, surface);
+}
+
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(Math.max(v, lo), hi);
 }

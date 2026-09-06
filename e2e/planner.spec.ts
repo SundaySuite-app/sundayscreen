@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { installFixtures } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The planner journey: define the day template, fill a weekly slot, override
 // a date, plan an agenda — and everything survives a reload.
@@ -50,6 +50,14 @@ test("template → week → override → agenda, all persisted", async ({ page }
   await page.getByRole("button", { name: "Lagre", exact: true }).click();
   await expect(page.getByText("Avvik", { exact: true })).toBeVisible();
   await expect(page.getByText("Prøve")).toBeVisible();
+  // The class came along: the form opened ON the weekly lesson, so a title
+  // and a new subject refined «7B Norsk» rather than replacing it with a
+  // classless row (R7 skjøt S1-1).
+  await expect(
+    page
+      .getByRole("region", { name: "Planlegger" })
+      .getByText("7B", { exact: true }),
+  ).toHaveCount(1);
 
   await page.getByRole("button", { name: "Legg til aktivitet" }).click();
   await page.getByPlaceholder("Hva skal skje …").fill("Del ut prøven");
@@ -352,6 +360,116 @@ test("a cancelled lesson SAYS it is cancelled — and Lagre does not resurrect i
   // It survives a reload too — this is a stored decision, not panel state.
   await page.goto("/?goto=planner:day");
   await expect(page.getByText("Utgår", { exact: true })).toHaveCount(1);
+});
+
+test("«Overstyr» on a weekly lesson keeps class, subject and screen", async ({
+  page,
+}) => {
+  // R7 skjøt S1-1 — the F-R6-1 family's last three fields. `planner_override_set`
+  // is a replace and the resolver copies a non-carrier row RAW (no per-field
+  // fallback to the weekly slot), so an editor that opened EMPTY for a weekly
+  // lesson wrote `classId: null, subject: "", sceneId: null` the moment a
+  // title was saved: the day card lost 7B, Norsk and the screen, «Dagens
+  // time» lost the class, and the suggestion banner skipped the period (it
+  // needs a class). `kind` and `mergedWithNext` were taught to round-trip in
+  // R7-A1/R6; this journey pins the other three, at every surface they reach.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+
+  // A library screen, so «the screen» is a NAMED one and not the default
+  // that a null would silently pass for.
+  await page.goto("/");
+  await page.getByRole("button", { name: "Bytt skjerm" }).click();
+  await page.getByRole("menuitem", { name: "Lagre som ny skjerm …" }).click();
+  await page.getByPlaceholder("Navn på skjermen …").fill("Skriveøkt");
+  await page.getByPlaceholder("Navn på skjermen …").press("Enter");
+  await expect(page.getByRole("button", { name: "Bytt skjerm" })).toContainText(
+    "Skriveøkt",
+  );
+
+  const panel = page.getByRole("region", { name: "Planlegger" });
+  await page.goto("/?goto=planner:periods");
+  await page.waitForLoadState("networkidle");
+  await panel.getByRole("button", { name: "Legg til time" }).click();
+  await panel.getByRole("button", { name: "Lagre timeoppsett" }).click();
+  await expect(panel.getByText("Lagret")).toBeVisible();
+  await panel.getByRole("button", { name: "Ukeplan" }).click();
+  await panel.locator("button:has-text('—')").first().click();
+  await panel
+    .getByLabel("Klasse", { exact: true })
+    .selectOption({ label: "7B" });
+  await panel.getByLabel("Fag").fill("Norsk");
+  await panel
+    .getByLabel("Skjerm", { exact: true })
+    .selectOption({ label: "Skriveøkt" });
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+
+  await panel.getByRole("button", { name: "I dag", exact: true }).click();
+  await expect(panel.getByText("7B", { exact: true })).toHaveCount(1);
+  await expect(panel.getByText("Skriveøkt")).toHaveCount(1);
+
+  // The form opens ON the lesson: class, subject and screen filled in, the
+  // title blank (a weekly lesson never has one).
+  await panel.getByRole("button", { name: "Overstyr" }).click();
+  await expect(panel.getByLabel("Klasse", { exact: true })).toHaveValue("c1");
+  await expect(panel.getByLabel("Fag")).toHaveValue("Norsk");
+  await expect(
+    panel.getByLabel("Skjerm", { exact: true }).locator("option:checked"),
+  ).toHaveText("Skriveøkt");
+  await expect(panel.getByLabel("Tittel")).toHaveValue("");
+
+  // The most common override there is: a title, and nothing else touched.
+  await panel.getByLabel("Tittel").fill("Prøve");
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+
+  // Surface 1 — the day card: a deviation, and still 7B on Skriveøkt.
+  await expect(panel.getByText("Avvik", { exact: true })).toHaveCount(1);
+  await expect(panel.getByText("Prøve")).toBeVisible();
+  await expect(panel.getByText("7B", { exact: true })).toHaveCount(1);
+  await expect(panel.getByText("Skriveøkt")).toHaveCount(1);
+  // The subject is behind the title on the card; it is still in the row.
+  await panel.getByRole("button", { name: "Rediger avvik" }).click();
+  await expect(panel.getByLabel("Fag")).toHaveValue("Norsk");
+  await panel.getByRole("button", { name: "Avbryt" }).click();
+
+  // Surface 2 — the STORED row, read straight out of the fixture store: the
+  // screen id is the slot's own, not null passing for «Standard».
+  const stored = await page.evaluate(() => {
+    const db = JSON.parse(localStorage.getItem("__e2e_db__") ?? "{}") as {
+      slots?: Record<string, { sceneId: string | null }>;
+      overrides?: Record<
+        string,
+        {
+          kind: string;
+          classId: string | null;
+          subject: string;
+          sceneId: string | null;
+          title: string;
+        }
+      >;
+    };
+    return {
+      slotSceneId: Object.values(db.slots ?? {})[0]?.sceneId ?? null,
+      overrides: Object.values(db.overrides ?? {}),
+    };
+  });
+  expect(stored.overrides).toHaveLength(1);
+  expect(stored.overrides[0]).toMatchObject({
+    kind: "lesson",
+    classId: "c1",
+    subject: "Norsk",
+    title: "Prøve",
+  });
+  expect(stored.slotSceneId).not.toBeNull();
+  expect(stored.overrides[0].sceneId).toBe(stored.slotSceneId);
+
+  // Surface 3 — «Dagens time» on the board: the title, WITH the class.
+  await panel.getByRole("button", { name: "Lukk" }).click();
+  await expect(panel).toHaveCount(0);
+  await addWidget(page, "Dagens time");
+  const agenda = page.locator('[data-widget-kind="agenda"]');
+  await expect(agenda).toContainText("Prøve");
+  await expect(agenda).toContainText("7B");
 });
 
 /** Let a journey kill `planner_day_get` on demand — the spec-local init

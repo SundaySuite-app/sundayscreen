@@ -405,6 +405,10 @@ test("editing a deviation does not silently undo the day's merge choice", async 
   await expect(panel.getByText("Prøve")).toBeVisible();
   await expect(panel.getByText("Dobbelttime")).toHaveCount(1);
   await expect(panel.getByText("fortsettelse")).toHaveCount(1);
+  // …and so did the class: the row was rewritten FROM the resolved lesson,
+  // not from an empty form (R7 skjøt S1-1 — the same replace, three fields
+  // to the right). One head card, one tail line: exactly one «7B».
+  await expect(panel.getByText("7B", { exact: true })).toHaveCount(1);
 
   // The mirror image: a weekly double lesson split for today, then refined —
   // the split must survive too (Some(false) is as much a choice as
@@ -427,4 +431,79 @@ test("editing a deviation does not silently undo the day's merge choice", async 
   // Still split — the rewrite preserved Some(false) against the merged week.
   await expect(panel.getByText("Dobbelttime")).toHaveCount(0);
   await expect(panel.getByText("fortsettelse")).toHaveCount(0);
+});
+
+test("«Fjern avvik» is not offered on a carrier row the card calls «Overstyr»", async ({
+  page,
+}) => {
+  // R7 skjøt S1-6. «Slå sammen med neste i dag» stores a FLAG CARRIER — a row
+  // with nothing but the tri-state — and ADR-016 says a carrier is never a
+  // deviation: the card keeps saying «Overstyr», no «Avvik» badge. The
+  // editor, though, offered «Fjern avvik» unconditionally, and that button
+  // deletes the ROW: the merge choice went with it, on a card that had just
+  // told the teacher there was nothing here to remove. R6/R7-A1 taught Lagre
+  // to round-trip the flag; «Fjern» had gone round it. Now the editor reads
+  // the card's own predicate — «Fjern avvik» exists exactly where «Rediger
+  // avvik» does.
+  await installFixtures(page);
+  await page.clock.install({ time: new Date("2026-08-31T08:35:00") });
+
+  const panel = await buildSchoolDay(page);
+  await fillWeekCell(panel, {
+    cell: 0,
+    title: "Mandag · Time 1 08:30",
+    subject: "Norsk",
+  });
+  await fillWeekCell(panel, {
+    cell: 5,
+    title: "Mandag · Time 2 09:30",
+    subject: "Matte",
+  });
+
+  // A plain weekly lesson first: no row at all, nothing to remove.
+  await panel.getByRole("button", { name: "I dag", exact: true }).click();
+  await panel
+    .getByRole("button", { name: "Overstyr", exact: true })
+    .first()
+    .click();
+  await expect(panel.getByRole("button", { name: "Fjern avvik" })).toHaveCount(
+    0,
+  );
+  await panel.getByRole("button", { name: "Avbryt" }).first().click();
+
+  // The carrier: merged today, card still says «Overstyr».
+  await panel
+    .getByRole("button", { name: "Slå sammen med neste i dag" })
+    .first()
+    .click();
+  await expect(panel.getByText("Dobbelttime")).toHaveCount(1);
+  await expect(
+    panel.getByRole("button", { name: "Rediger avvik" }),
+  ).toHaveCount(0);
+  await panel.getByRole("button", { name: "Overstyr", exact: true }).click();
+
+  // THE FINDING: the button the card denies there is a use for is not there.
+  await expect(panel.getByRole("button", { name: "Fjern avvik" })).toHaveCount(
+    0,
+  );
+  await expect(
+    panel.getByRole("button", { name: "Lagre", exact: true }),
+  ).toBeVisible();
+  await panel.getByRole("button", { name: "Avbryt" }).click();
+  await expect(panel.getByText("Dobbelttime")).toHaveCount(1);
+
+  // A REAL deviation on the same row: now the card says «Rediger avvik», and
+  // «Fjern avvik» is offered — and removes the row it names, flag and all.
+  // That row IS the deviation, so the day falls back to the week: two single
+  // lessons, Time 2's own Matte back.
+  await panel.getByRole("button", { name: "Overstyr", exact: true }).click();
+  await panel.getByLabel("Tittel").fill("Prøve");
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(panel.getByText("Prøve")).toBeVisible();
+  await panel.getByRole("button", { name: "Rediger avvik" }).click();
+  await panel.getByRole("button", { name: "Fjern avvik" }).click();
+  await expect(panel.getByText("Prøve")).toHaveCount(0);
+  await expect(panel.getByText("Avvik", { exact: true })).toHaveCount(0);
+  await expect(panel.getByText("Dobbelttime")).toHaveCount(0);
+  await expect(panel.getByText("Matte")).toBeVisible();
 });

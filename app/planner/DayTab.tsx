@@ -163,6 +163,21 @@ function DayLesson(props: { date: string; entry: DayEntry; plan: DayPlan }) {
    * below: the badge, the button's wording, and what the editor opens with.
    */
   const cancelled = props.entry.overrideKind === "cancelled";
+  /**
+   * Is there a DEVIATION standing on this period — something «Fjern avvik»
+   * could remove?
+   *
+   * ONE predicate for the card's button wording and for whether the editor
+   * offers «Fjern avvik» at all (R7 skjøt S1-6). A flag carrier — «Slå
+   * sammen med neste i dag», nothing else — is a stored row with
+   * `overridden` false, and ADR-016 is explicit that it never counts as a
+   * deviation. When the two surfaces read different predicates, the card said
+   * «Overstyr» («nothing here») while the editor's «Fjern avvik» deleted the
+   * carrier, and the day's merge choice went with it in silence. The card's
+   * own merge buttons are the way to change a flag; the editor does not
+   * offer a third.
+   */
+  const deviation = lesson?.overridden === true || cancelled;
   // The BLOCK's span: across a double lesson the head card has to say
   // 08:30–10:00, or the card names a lesson that is still running after the
   // time it prints. Collapses to the period's own times for a single lesson.
@@ -268,9 +283,7 @@ function DayLesson(props: { date: string; entry: DayEntry; plan: DayPlan }) {
             an overridden one does — «Overstyr» invited the teacher to create
             what was already there. */}
         <button class={styles.secondary} onClick={() => setEditing(!editing)}>
-          {lesson?.overridden || cancelled
-            ? t("planner.editOverride")
-            : t("planner.override")}
+          {deviation ? t("planner.editOverride") : t("planner.override")}
         </button>
         {error && <span class={styles.error}>{t("manage.actionFailed")}</span>}
       </div>
@@ -278,8 +291,8 @@ function DayLesson(props: { date: string; entry: DayEntry; plan: DayPlan }) {
         <OverrideEditor
           date={props.date}
           periodId={period.id}
-          existing={lesson?.overridden ? lesson : null}
-          lessonClassId={lesson?.classId ?? null}
+          seed={lesson}
+          clearable={deviation}
           storedMergedWithNext={props.entry.overrideMergedWithNext ?? null}
           storedCancelled={cancelled}
           onDone={() => setEditing(false)}
@@ -295,18 +308,34 @@ function DayLesson(props: { date: string; entry: DayEntry; plan: DayPlan }) {
 function OverrideEditor(props: {
   date: string;
   periodId: string;
-  /** The override already on this lesson, so editing REFINES it instead of
-   *  silently replacing it with blanks (F-funn F12). */
-  existing: LessonInfo | null;
   /**
-   * The RESOLVED lesson's class — whose default screen «Standard» means here.
-   * Read-only context for the picture and for «Design skjermen»: it is never
-   * written. A fresh override starts with an empty class field on purpose (an
-   * override the teacher did not ask for is not written by opening the form),
-   * and without this the one screen she is most likely to want to design — the
-   * one the class is on all week — would have no name to look up.
+   * The lesson the day RESOLVES to in this period — the override already
+   * standing here, or the weekly lesson — and the form opens filled from it,
+   * so «Overstyr» and «Rediger avvik» both REFINE what the card shows.
+   *
+   * F12 established this for a real override (editing must not replace it
+   * with blanks). R7 skjøt S1-1 was the same shape one row earlier: the form
+   * started EMPTY for a weekly lesson, and since `planner_override_set` is a
+   * replace with no per-field fallback to the slot (schedule.rs
+   * `effective_lesson` copies a non-carrier row raw), writing a title for
+   * «7B Norsk» stored `classId: null, subject: "", sceneId: null` — the card
+   * lost the class, «Dagens time» lost it too, and the suggestion banner and
+   * auto-switch skipped the period (`suggest-core` needs a class). Seeding
+   * the form writes nothing: the row is only written when Lagre is pressed,
+   * and it then carries what the teacher saw. A weekly lesson's `title` is
+   * always empty (the resolver never invents one), so the title field still
+   * starts blank for a fresh override.
+   *
+   * `null` for a cancelled or free period: the form starts blank there, and
+   * «Utgår» comes from `storedCancelled`, not from here.
    */
-  lessonClassId: string | null;
+  seed: LessonInfo | null;
+  /**
+   * Does the card say a deviation stands here? Decides whether «Fjern avvik»
+   * is offered — see `deviation` in `DayLesson` for why the editor must not
+   * carry a delete the card denies there is anything to delete.
+   */
+  clearable: boolean;
   /**
    * The override ROW's own stored tri-state (`DayEntry.overrideMergedWithNext`
    * — RAW, not the resolved answer). `planner_override_set` is a replace, so
@@ -328,10 +357,10 @@ function OverrideEditor(props: {
   onDone: () => void;
 }) {
   const [cancelled, setCancelled] = useState(props.storedCancelled);
-  const [classId, setClassId] = useState(props.existing?.classId ?? "");
-  const [subject, setSubject] = useState(props.existing?.subject ?? "");
-  const [sceneId, setSceneId] = useState(props.existing?.sceneId ?? "");
-  const [title, setTitle] = useState(props.existing?.title ?? "");
+  const [classId, setClassId] = useState(props.seed?.classId ?? "");
+  const [subject, setSubject] = useState(props.seed?.subject ?? "");
+  const [sceneId, setSceneId] = useState(props.seed?.sceneId ?? "");
+  const [title, setTitle] = useState(props.seed?.title ?? "");
   const [error, setError] = useState(false);
 
   const save = async (clear: boolean): Promise<boolean> => {
@@ -340,6 +369,9 @@ function OverrideEditor(props: {
       await window.api.plannerOverrideSet(
         props.date,
         props.periodId,
+        // «Fjern avvik» deletes the ROW, flag included: it is only offered
+        // where the card says «Rediger avvik», and that row IS the deviation
+        // — the day then falls back to the week, merge choice and all.
         clear
           ? null
           : {
@@ -365,9 +397,11 @@ function OverrideEditor(props: {
     if (await save(clear)) props.onDone();
   };
 
-  /** Whose default screen «Standard» is on this date: what the teacher typed
-   *  into the form, else the lesson the day already resolves to. */
-  const defaultOwner = classId || props.lessonClassId || null;
+  /** Whose default screen «Standard» is on this date: the class in the form,
+   *  else the lesson the day resolves to — so a teacher who picks «(ingen
+   *  klasse)» can still design the one screen she most likely wants, the one
+   *  the class is on all week. Read-only context, never written. */
+  const defaultOwner = classId || props.seed?.classId || null;
 
   /** Same rule as the week grid's: the deviation is WRITTEN before the board
    *  is borrowed, so the session cannot be the moment a half-typed override
@@ -449,9 +483,11 @@ function OverrideEditor(props: {
         <button class={styles.primary} onClick={() => void write(false)}>
           {t("planner.save")}
         </button>
-        <button class={styles.secondary} onClick={() => void write(true)}>
-          {t("planner.clearOverride")}
-        </button>
+        {props.clearable && (
+          <button class={styles.secondary} onClick={() => void write(true)}>
+            {t("planner.clearOverride")}
+          </button>
+        )}
         <button class={styles.secondary} onClick={props.onDone}>
           {t("manage.cancel")}
         </button>

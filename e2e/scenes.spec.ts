@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { addWidget, installFixtures } from "./harness";
+import {
+  addWidget,
+  installFixtures,
+  readSaveLog,
+  setFixtureKnobs,
+} from "./harness";
 
 // The scene library: save what is on screen as a named scene, switch
 // between the class default and library scenes, share a scene across
@@ -168,38 +173,17 @@ test("deleting the screen mid-save does not blame the teacher for it", async ({
     "Midlertidig",
   );
 
-  // Hold every save from here on, and TIMESTAMP it. The real store is a
-  // database on a school laptop; the fixture answers in a microtask, which is
-  // precisely why the race was invisible to this tier. `original` is called
-  // when the delay expires, so it sees the world AS IT IS THEN — a deleted
-  // scene included.
+  // Hold every save from here on. The real store is a database on a school
+  // laptop; the fixture answers in a microtask, which is precisely why the
+  // race was invisible to this tier. The held save commits when the delay
+  // expires, against the world AS IT IS THEN — a deleted scene included
+  // (harness `layout_save`).
   //
   // The delay is long on purpose. A shorter one turns this into a test about
   // how fast the machine is: with four seconds of margin the write is
   // guaranteed to be in flight when «Slett skjermen» is pressed, and the log
-  // below is what PROVES it was rather than assuming it.
-  await page.evaluate(() => {
-    const w = window as unknown as Record<string, unknown>;
-    const fixtures = w.__SUNDAYSCREEN_FIXTURES__ as Record<string, unknown>;
-    const original = fixtures.layout_save as (
-      args?: Record<string, unknown>,
-    ) => unknown;
-    const log: { event: string; at: number }[] = [];
-    w.__a2SaveLog = log;
-    fixtures.layout_save = (args?: Record<string, unknown>) => {
-      log.push({ event: "start", at: Date.now() });
-      return new Promise((resolve, reject) => {
-        setTimeout(() => {
-          log.push({ event: "end", at: Date.now() });
-          try {
-            resolve(original(args));
-          } catch (e) {
-            reject(e);
-          }
-        }, 4000);
-      });
-    };
-  });
+  // read below is what PROVES it was rather than assuming it.
+  await setFixtureKnobs(page, { saveDelayMs: 4000 });
 
   // Type on the board. Opening the screen menu blurs the field, which forces
   // the write — so by the time «Slett skjermen» is pressed it is in flight,
@@ -223,13 +207,7 @@ test("deleting the screen mid-save does not blame the teacher for it", async ({
   // teacher got to the confirmation, and no scene was ever saved to after it
   // was deleted. Started before the press, finished after it: the write was
   // in flight across the delete, which is the whole scenario.
-  const log = await page.evaluate(
-    () =>
-      (window as unknown as Record<string, unknown>).__a2SaveLog as {
-        event: string;
-        at: number;
-      }[],
-  );
+  const log = await readSaveLog(page);
   const started = log.filter((e) => e.event === "start").at(-1);
   const ended = log.filter((e) => e.event === "end").at(-1);
   expect(started, "no held layout_save at all").toBeDefined();

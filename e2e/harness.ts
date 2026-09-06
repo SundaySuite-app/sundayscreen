@@ -1158,19 +1158,19 @@ export async function installFixtures(
           layout_load: (args?: Record<string, unknown>) =>
             load().layouts[String(arg(args, "sceneId"))] ?? [],
           layout_save: (args?: Record<string, unknown>) => {
-            const db = load();
-            // The real command REJECTS a save to a scene that is gone
-            // (commands/layout.rs: NotFound) — a fixture that quietly
-            // recreated the layout key let a flush racing a deletion go
-            // green on the wrong semantics (R7 robusthet M7).
             const target = String(arg(args, "sceneId"));
-            if (!db.scenes.some((s) => s.id === target))
-              throw new Error("not_found");
             const widgets = (arg(args, "widgets") as unknown[]) ?? [];
-            // Re-read at COMMIT time, never from the snapshot above: with the
-            // delay knob on, other commands may have written in between.
+            // Everything happens at COMMIT time, against a fresh read — the
+            // existence check included. The real command is one transaction
+            // (commands/layout.rs): it REJECTS a save to a scene that is gone
+            // (NotFound) as of the moment it runs, and a fixture that judged
+            // the scene at call time, then quietly recreated the layout key
+            // when the delay expired, let a flush racing a deletion go green
+            // on the wrong semantics (R7 robusthet M7).
             const commit = () => {
               const fresh = load();
+              if (!fresh.scenes.some((s) => s.id === target))
+                throw new Error("not_found");
               fresh.layouts[target] = widgets;
               save(fresh);
             };
@@ -1182,11 +1182,24 @@ export async function installFixtures(
             // A SLOW transaction. Every fixture here is synchronous, which
             // means the persister always wins races it loses on a real
             // machine — where `layout_save` is a WAL transaction and the next
-            // command's SELECT runs on a different pool connection.
-            return new Promise<void>((resolve) =>
+            // command's SELECT runs on a different pool connection. Start and
+            // end are TIMESTAMPED (`readSaveLog`) so a journey can prove the
+            // write really was in flight across the gesture under test,
+            // instead of passing vacuously on a machine where it had landed.
+            const w = window as unknown as {
+              __e2eSaveLog?: { event: "start" | "end"; at: number }[];
+            };
+            const log = (w.__e2eSaveLog ??= []);
+            log.push({ event: "start", at: Date.now() });
+            return new Promise<void>((resolve, reject) =>
               setTimeout(() => {
-                commit();
-                resolve();
+                log.push({ event: "end", at: Date.now() });
+                try {
+                  commit();
+                  resolve();
+                } catch (e) {
+                  reject(e);
+                }
               }, wait),
             );
           },
@@ -1350,6 +1363,21 @@ export async function setFixtureKnobs(
     const w = window as unknown as { __e2eKnobs?: FixtureKnobs };
     w.__e2eKnobs = { ...w.__e2eKnobs, ...v };
   }, values);
+}
+
+/** Every held `layout_save` since the page loaded (the `saveDelayMs` knob
+ *  stamps `start` when the command is called and `end` when it commits). */
+export async function readSaveLog(
+  page: Page,
+): Promise<{ event: "start" | "end"; at: number }[]> {
+  return page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __e2eSaveLog?: { event: "start" | "end"; at: number }[];
+        }
+      ).__e2eSaveLog ?? [],
+  );
 }
 
 /**

@@ -8,11 +8,22 @@
 //   node scripts/promote-release.mjs --resume beta
 //   node scripts/promote-release.mjs --status
 //
-// Rules enforced Worker-side and mirrored here: a `-beta.N` tag may only go
-// to `beta`, a plain `vX.Y.Z` only to `stable`. Before promoting, the tag's
-// published `latest.json` is fetched and must carry the platform keys our
-// updater looks up — promoting a manifest the fleet cannot read is a no-op
-// outage.
+//   An official release (a plain vX.Y.Z tag) is promoted to BOTH rings —
+//   run it twice, once per channel:
+//   node scripts/promote-release.mjs stable vX.Y.Z
+//   node scripts/promote-release.mjs beta   vX.Y.Z
+//
+// THE RULE, enforced Worker-side and mirrored here (ASYMMETRIC since
+// 2026-09, sunday-telemetry#11): a `-beta.N` tag may only go to `beta`; a
+// plain `vX.Y.Z` tag may go to `stable` AND/OR `beta`. A beta tester must
+// never end up running something older than the fleet, so an
+// already-official release is always fair game for the beta ring too. The
+// reverse stays closed: a `-beta.N` build is untested by definition, and
+// letting one reach `stable` would put every classroom in front of it, not
+// just the testers who signed up for that risk. Before promoting, the
+// tag's published `latest.json` is fetched and must carry the platform
+// keys our updater looks up — promoting a manifest the fleet cannot read
+// is a no-op outage.
 //
 // The admin key comes from the macOS Keychain (never an env var, never an
 // argument):
@@ -31,7 +42,10 @@ export const KEYCHAIN_SERVICE = "SundayRec telemetry admin key";
  *  `windows-x86_64-msi` is deliberately NOT required (betas are NSIS-only). */
 export const REQUIRED_PLATFORMS = ["darwin-aarch64", "windows-x86_64"];
 
-/** Which ring a tag belongs to — the rule, in one exported place. */
+/** Which ring a tag's shape maps to by default: "beta" for a `-beta.N`
+ *  tag, "stable" for a plain `vX.Y.Z` tag. Since 2026-09 this is no longer
+ *  the full promotion rule — see tagChannelProblem() below for which
+ *  ring(s) a tag may actually be promoted to. */
 export function channelForTag(tag) {
   return tag.includes("-beta.") ? "beta" : "stable";
 }
@@ -39,6 +53,23 @@ export function channelForTag(tag) {
 /** A tag we could have cut: `vX.Y.Z` or `vX.Y.Z-beta.N`. */
 export function isReleaseTag(tag) {
   return /^v\d+\.\d+\.\d+(-beta\.\d+)?$/.test(tag);
+}
+
+/** Whether `tag` may be promoted to `channel` — the rule, in one exported,
+ *  pure place. Returns a problem string, or `null` when it's fine. Checked
+ *  locally, before any network call or even a Keychain read, so a typo
+ *  never costs a round trip. See THE RULE at the top of this file for why
+ *  a plain tag clears BOTH channels but a beta tag clears only one. */
+export function tagChannelProblem(channel, tag) {
+  if (!isReleaseTag(tag)) {
+    return `«${tag}» is not a release tag (vX.Y.Z or vX.Y.Z-beta.N).`;
+  }
+  if (channelForTag(tag) === "beta" && channel !== "beta") {
+    return `«${tag}» is a beta tag — it can only be promoted to the beta ring, not ${channel}.`;
+  }
+  // A plain vX.Y.Z tag clears either ring — main() already checked
+  // `channel` is "stable" or "beta" before getting here.
+  return null;
 }
 
 /** The published manifest URL for a tag. */
@@ -153,14 +184,9 @@ async function main() {
     );
     process.exit(1);
   }
-  if (!isReleaseTag(tag)) {
-    console.error(`✗ «${tag}» is not a release tag (vX.Y.Z or vX.Y.Z-beta.N).`);
-    process.exit(1);
-  }
-  if (channelForTag(tag) !== channel) {
-    console.error(
-      `✗ «${tag}» belongs to the ${channelForTag(tag)} ring, not ${channel}.`,
-    );
+  const problem = tagChannelProblem(channel, tag);
+  if (problem) {
+    console.error(`✗ ${problem}`);
     process.exit(1);
   }
 

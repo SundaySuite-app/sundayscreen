@@ -21,16 +21,33 @@ er stille. Sjekken ved boot svelger ALLE feil — offline er normaltilstanden.
    macOS (aarch64 DMG) + Windows (NSIS; stable-tags også MSI) og lager et
    **utkast** til GitHub-release med `latest.json`.
 4. Publiser utkastet manuelt på GitHub.
-5. `node scripts/promote-release.mjs beta v0.9.0-beta.1` (eller `stable v1.0.0`)
-   — preflighter manifestet (plattformnøkler + versjon) og promoterer ringen.
-   `--pause <ring>` er kill-switchen; `--status` viser tilstanden.
+5. **Beta-bygg** (`vX.Y.Z-beta.N`): `node scripts/promote-release.mjs beta v0.9.0-beta.1`.
+   **Offisiell utgivelse** (rent `vX.Y.Z`-tagg): promoter til BEGGE ringer —
+   `node scripts/promote-release.mjs stable v1.0.0` og deretter
+   `node scripts/promote-release.mjs beta v1.0.0`. Hvert kall preflighter
+   manifestet (plattformnøkler + versjon) først. `--pause <ring>` er
+   kill-switchen; `--status` viser tilstanden — les den tilbake etter en
+   offisiell utgivelse og bekreft at BÅDE `stable` og `beta` nå viser det
+   nye tagget.
+6. **Byte-verifiser feeden** — for en offisiell utgivelse, begge:
+   `https://updates.sundaysuite.app/v1/update/sundayscreen/stable` og
+   `.../beta` (for et beta-bygg holder det med `/beta`). Sammenlign hver mot
+   taggens `latest.json` på GitHub-releasen (versjon, `pub_date`, hver
+   plattforms `url` + `signature`). Readback over beviser bare at
+   Worker-en har notert riktig TAGG per ring; dette beviser at ringen
+   faktisk serverer riktige BYTE — se «Verifisere feeden» under.
 
 Skal en publisert release trekkes helt tilbake (ikke bare pauses)? Det er
 ikke dette skriptet — se docs/ROLLBACK.md.
 
-Regler (håndhevet både i skriptet og Worker-side): `-beta.N`-tags kun til
-beta-ringen, rene tags kun til stable. Windows-beta er NSIS-only (MSI takler
-ikke `-beta.N` i ProductVersion).
+Regler (håndhevet både i skriptet og Worker-side, ASYMMETRISK siden 2026-09
+— sunday-telemetry#11): `-beta.N`-tags kun til beta-ringen; rene tags til
+stable OG/ELLER beta. En offisiell utgivelse skal nå BEGGE ringer, så ingen
+betatester sitter igjen på en eldre build enn resten av flåten — det er
+derfor steg 5 over kjører skriptet to ganger. Den andre halvparten av
+regelen er uendret: et beta-bygg er utestet per definisjon og kan aldri nå
+`stable`. Windows-beta er fortsatt NSIS-only (MSI takler ikke `-beta.N` i
+ProductVersion).
 
 ## Nøkler og secrets
 

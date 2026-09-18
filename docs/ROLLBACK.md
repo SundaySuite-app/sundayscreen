@@ -25,6 +25,22 @@ setter ringen i pause hos suitens update-Worker. Gjenåpne med
 suitens delte admin-nøkkel fra macOS-Keychain (aldri argument, aldri env —
 se docs/DISTRIBUTION.md).
 
+**En dårlig OFFISIELL utgivelse (rent `vX.Y.Z`-tagg) kan ligge på BEGGE
+ringer samtidig** (2026-09: `docs/DISTRIBUTION.md` steg 5 promoterer nå et
+rent tagg til både `stable` og `beta`, se `scripts/promote-release.mjs`s
+«THE RULE»). Sjekk `--status` først — viser begge ringer det dårlige
+tagget, pause begge:
+
+    node scripts/promote-release.mjs --pause stable
+    node scripts/promote-release.mjs --pause beta
+
+En dårlig BETA (`-beta.N`-tagg) kan derimot fortsatt bare ligge på `beta`
+alene — den halvparten av regelen er uendret. Og fiksen for en dårlig beta
+trenger ikke lenger være et nytt `-beta.N`-bygg: et godt, rent `vX.Y.Z`-tagg
+kan nå promoteres rett til `beta` også, med samme
+`node scripts/promote-release.mjs beta vX.Y.Z`-kommando som steg 5 i
+DISTRIBUTION.md bruker for en offisiell utgivelse.
+
 Pause er IKKE avpublisering: den stopper KUN updater-SVARET (Workeren
 svarer 204 — «ingenting promotert»). GitHub-releasen består urørt, så en
 lærer med en direktelenke eller nettsidas nedlastingsknapp kan fortsatt

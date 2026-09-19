@@ -125,8 +125,12 @@ export function ManagePanel() {
       : null;
   });
   const [namesDraft, setNamesDraft] = useState(mountSeed?.text ?? "");
-  /** Which class the draft belongs to. */
-  const draftFor = useRef<string | null>(mountSeed?.id ?? null);
+  /** Which class the draft belongs to: the class on screen at mount, READ OR
+   *  NOT. It used to start at `null` whenever the list had not landed yet, so
+   *  the first run of the effect below saw «another class» and reset — which
+   *  wiped a name typed in the frame between mount and that run, and reset
+   *  `edited` with it, so the seed then won over the teacher's typing. */
+  const draftFor = useRef<string | null>(activeClass.peek()?.id ?? null);
   /** Has this class's draft been seeded from a read list? */
   const seeded = useRef(mountSeed !== null);
   /** Has the teacher typed since then? */

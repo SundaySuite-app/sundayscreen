@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { addWidget, installFixtures, settleEffects } from "./harness";
+import { addWidget, installFixtures } from "./harness";
 
 // The F9 robustness journeys: the failure shapes a classroom actually
 // produces — a projector swap mid-lesson, a whole school year pasted into
@@ -119,19 +119,35 @@ test("names that land while the panel is open fill an untouched textarea", async
 test("a name typed before the list lands is never overwritten by the seed", async ({
   page,
 }) => {
+  // A mocked clock the test can FREEZE: Preact runs effects after paint (a
+  // requestAnimationFrame, then a setTimeout), so a paused clock holds a
+  // freshly mounted panel's effects while its textarea is already there.
+  await page.clock.install({ time: new Date("2026-09-18T09:00:00") });
   await installFixtures(page, { memberNames: ["Kari", "Ola"] });
   await deferMembersGet(page);
   await page.goto("/");
 
+  // One open and close first, so the panel's lazily loaded chunk is cached
+  // (ui/lazy-panel.tsx) and the reopen below mounts the panel in the click's
+  // own commit. That is what lets a keystroke land deterministically BEFORE
+  // the panel's mount effects — the exact moment this test is about. It used
+  // to be reached with `settleEffects` and luck: on a loaded CI runner the
+  // chunk arrived after the settle, and the flake was the bug below.
   await openManage(page);
-  // The panel's clear-draft effect fires once on MOUNT, deferred (see
-  // harness.ts::settleEffects) — a fill inside that window is wiped along
-  // with the `edited` guard, and this test's own seed would then win: the
-  // exact opposite of what it proves. Let the mount settle; the deferred
-  // read is still being held, so the race under test is untouched.
-  await settleEffects(page);
   const area = page.getByPlaceholder(/Ett navn per linje/);
+  await expect(area).toBeVisible();
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await expect(area).toBeHidden();
+
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(new Date(now + 1_000));
+  await openManage(page);
   await area.fill("Nils");
+  // Only now may the reopened panel's mount effect run. It used to treat the
+  // mount as a class switch (the draft's owner started at `null` while the
+  // list had not landed), and wiped the draft AND the `edited` guard, so the
+  // seed below then won.
+  await page.clock.resume();
 
   // The read lands AFTER the first keystroke: the seed must lose. A draft
   // that jumped back to the stored list under the teacher's hands would be

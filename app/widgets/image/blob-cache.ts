@@ -38,7 +38,10 @@ export const browserUrls: UrlFactory = {
 
 /** base64 in, bytes out. Injected so BOTH implementations below are node
  *  testable, on a runtime that has only one of them. */
-export type Base64Decoder = (b64: string) => Uint8Array;
+// `Uint8Array<ArrayBuffer>`, not bare `Uint8Array` (= `<ArrayBufferLike>`): a
+// `Blob` only takes bytes on a plain ArrayBuffer, and both decoders below make
+// exactly that. TypeScript 7's DOM lib enforces it.
+export type Base64Decoder = (b64: string) => Uint8Array<ArrayBuffer>;
 
 /**
  * The decoder every runtime has: `atob` plus a copy loop.
@@ -49,7 +52,7 @@ export type Base64Decoder = (b64: string) => Uint8Array;
  * PC. That is the board frozen mid-lesson, so it is the fallback and not the
  * first choice.
  */
-export function decodeBase64Loop(b64: string): Uint8Array {
+export function decodeBase64Loop(b64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
@@ -61,7 +64,7 @@ export function decodeBase64Loop(b64: string): Uint8Array {
  *  method is newer than the TypeScript version this repo pins, and a global
  *  declaration would make it look present to every other file. */
 export interface Base64Capable {
-  fromBase64?: (b64: string) => Uint8Array;
+  fromBase64?: (b64: string) => Uint8Array<ArrayBuffer>;
 }
 
 /** The real constructor, seen through that hole. */

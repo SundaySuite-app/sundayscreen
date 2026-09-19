@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.2] — 2026-09-19
+
+- **Klasser og navn.** Når panelet åpnet seg før navnelista var lest,
+  tolket det monteringen som et klassebytte. Utkastet ble tømt og vernet mot
+  å overskrive det læreren skriver ble slått av, så den lagrede lista kunne
+  erstatte et navn som rakk å bli skrevet. Vinduet var én ramme, men feilen
+  var ekte. E2e-testen som skjulte den, er nå deterministisk (#6).
+- **Avhengigheter.** Nyeste minor og patch (Vite 8.3, @preact/signals
+  2.11.2, Playwright 1.63 med flere), vitest 5 og `cargo update` innenfor
+  semver, med 24 timers karenstid for nye versjoner (#8).
+- **CI.** Dependabot er slått på, Rust er pinnet til 1.98.1, og
+  upload-artifact er løftet til v7 (#7).
+
 ## [0.7.1] — 2026-09-19
 
 Sikkerhetsoppdatering. Ingen endringer i klasserommet.

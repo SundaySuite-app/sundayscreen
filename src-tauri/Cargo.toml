@@ -54,7 +54,7 @@ serde_json = "1"
 # JSON has no byte-string, so base64 is the encoding both roads use. Already
 # in `Cargo.lock` transitively (the updater's dependency tree pulls the same
 # 0.22 line), so naming it here adds a NAME, not a build.
-base64 = "0.22"
+base64 = "0.23"
 tokio = { version = "1", features = ["full"] }
 thiserror = "2"
 tracing = "0.1"

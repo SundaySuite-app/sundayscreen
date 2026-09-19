@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.1] — 2026-09-19
+
+Sikkerhetsoppdatering. Ingen endringer i klasserommet.
+
+- **Sikkerhet.** rustls 0.23.43 → 0.23.45 (RUSTSEC-2026-0285: TLS
+  1.3-håndtrykksmeldinger godtatt på tvers av krypteringsnivå). rustls er
+  TLS-stakken under oppdatereren, så rettelsen når installerte apper med
+  denne versjonen (#4).
+- **Utgivelse.** En offisiell versjon promoteres nå til både stabil og beta.
+  Promote-skriptet, testen og runbooken følger den enveis ringregelen i den
+  delte Worker-en (#3).
+
 ## [0.7.0] — 2026-09-06
 
 Runde 7 «Fiksrunden». Ingen nye verktøy: seks granskere gikk gjennom

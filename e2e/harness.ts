@@ -1394,15 +1394,23 @@ export async function readSaveLog(
  * features — a half-typed line must not follow a lesson/class switch):
  * the agenda widget's draft (trace-proven: fill at t+22 ms → wipe → Enter
  * at t+28 ms → submit saw "") and the manage panel's name list (whose
- * `edited` guard the wipe also resets, letting the seed overwrite typing).
+ * `edited` guard the wipe also reset, letting the seed overwrite typing).
+ * The manage panel no longer wipes on MOUNT (2026-09): its draft's owner
+ * now starts at the class on screen, so only a real class switch clears it,
+ * and robustness.spec.ts proves the mount case with a paused clock instead.
  *
  * Awaiting one rAF and then a macrotask queues BEHIND the pending flush
  * chain in both schedulers Playwright runs us under — native timers
  * (registration-order FIFO per the HTML spec) and `page.clock`'s single
  * fake-timer queue — so when this resolves the effects have run. The one
  * assumption to keep true: the gesture before this call must have RENDERED
- * the component synchronously (widget-add and panel-open are pure signal
- * writes today); an IPC-gated mount would let this settle run too early.
+ * the component synchronously (widget-add is a pure signal write); an
+ * IPC-gated mount would let this settle run too early. So does a LAZY one:
+ * the planner, class and attendance panels load their chunk on first open
+ * (ui/lazy-panel.tsx), so the first open mounts a frame or a fetch later —
+ * on a loaded CI runner, after this has already resolved. That is exactly
+ * how the manage panel's name-list journey flaked in the production-build
+ * pass; wait for an element of the panel before calling this.
  *
  * The race is for `page.clock.pauseAt`: a PAUSED mocked clock freezes rAF
  * and setTimeout, so the in-page chain would hang forever — while Preact's

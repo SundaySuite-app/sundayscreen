@@ -8,7 +8,7 @@ viser verktøyene læreren trenger på projektoren: klokke, timer, beskjeder,
 trafikklys, arbeidssymboler, navnetrekker, gruppegenerator og terning. Alt
 lagres lokalt; ingenting krever internett i klasserommet.
 
-En del av [Sunday Suite](https://sundaysuite.app).
+En del av [SundaySuite](https://sundaysuite.app).
 
 ## Hvorfor ikke bare Classroomscreen?
 

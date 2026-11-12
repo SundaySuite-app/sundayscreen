@@ -22,13 +22,13 @@
 //! the page is exactly the shape this file exists to avoid.
 
 use base64::Engine as _;
-use sundayscreen_core::layout::{sanitized_image_id, IMAGE_FILE_MAX_BYTES};
+use sundayscreen_core::layout::{IMAGE_FILE_MAX_BYTES, sanitized_image_id};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::db::Db;
 use crate::db::images;
 use crate::db::store::new_id;
-use crate::db::Db;
 use crate::error::{AppError, AppResult};
 
 /// The file-type filter the pick dialog offers. Format names are proper nouns

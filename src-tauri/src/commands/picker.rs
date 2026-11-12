@@ -12,8 +12,8 @@ use tauri::State;
 use ts_rs::TS;
 
 use crate::commands::valid_date;
-use crate::db::store::{self, MemberRow};
 use crate::db::Db;
+use crate::db::store::{self, MemberRow};
 use crate::error::{AppError, AppResult};
 
 /// STABLE error messages the frontend distinguishes on. `AppError` has one
@@ -323,10 +323,12 @@ mod tests {
             assert!(!r.reshuffled);
             assert_eq!(r.remaining, 2);
         }
-        assert!(store::drawn_member_ids(&pool, &class_id)
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            store::drawn_member_ids(&pool, &class_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
@@ -535,10 +537,12 @@ mod tests {
             assert!(!r.reshuffled);
             assert_eq!(r.remaining, 3, "the present class, not a round");
         }
-        assert!(store::drawn_member_ids(&pool, &class_id)
-            .await
-            .unwrap()
-            .is_empty());
+        assert!(
+            store::drawn_member_ids(&pool, &class_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

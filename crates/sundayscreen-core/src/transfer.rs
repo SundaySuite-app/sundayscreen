@@ -44,7 +44,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::members::{CLASS_NAME_MAX_CHARS, MEMBERS_MAX, NAME_MAX_CHARS};
-use crate::schedule::{PeriodKind, LABEL_MAX_CHARS};
+use crate::schedule::{LABEL_MAX_CHARS, PeriodKind};
 
 /// The `kind` marker every SundayScreen setup file carries. Checked BEFORE
 /// anything else is read.
@@ -396,7 +396,7 @@ pub fn parse(raw: &str) -> Result<TransferFile, ImportRefusal> {
             None => {
                 return Err(ImportRefusal::Unreadable(
                     "schemaVersion is not a number".to_string(),
-                ))
+                ));
             }
         },
     };

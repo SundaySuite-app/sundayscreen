@@ -5,8 +5,8 @@
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use sundayscreen_core::settings::{Settings, MIN_WINDOW_H, MIN_WINDOW_W};
-use sundayscreen_core::window::{fit_to_monitor, restorable, MonitorRect};
+use sundayscreen_core::settings::{MIN_WINDOW_H, MIN_WINDOW_W, Settings};
+use sundayscreen_core::window::{MonitorRect, fit_to_monitor, restorable};
 use tauri::{LogicalPosition, LogicalSize, Manager, WebviewWindow};
 
 use crate::error::{AppError, AppResult};
@@ -209,11 +209,11 @@ pub fn restore_window_state(app: &tauri::AppHandle, settings: &Settings) -> bool
         }
     }
 
-    if state.fullscreen {
-        if let Err(e) = set_fullscreen(&window, true) {
-            tracing::warn!("restoring fullscreen failed — clearing the stored flag: {e}");
-            return true;
-        }
+    if state.fullscreen
+        && let Err(e) = set_fullscreen(&window, true)
+    {
+        tracing::warn!("restoring fullscreen failed — clearing the stored flag: {e}");
+        return true;
     }
     false
 }

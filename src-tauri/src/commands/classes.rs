@@ -5,13 +5,13 @@
 use serde::Serialize;
 use sqlx::SqlitePool;
 use sundayscreen_core::layout::WidgetInstance;
-use sundayscreen_core::members::{reconcile, CLASS_NAME_MAX_CHARS};
+use sundayscreen_core::members::{CLASS_NAME_MAX_CHARS, reconcile};
 use tauri::State;
 use ts_rs::TS;
 
 use crate::commands::layout as layout_cmd;
-use crate::db::store::{self, ClassRow, MemberRow, SceneRow};
 use crate::db::Db;
+use crate::db::store::{self, ClassRow, MemberRow, SceneRow};
 use crate::error::{AppError, AppResult};
 use crate::settings;
 

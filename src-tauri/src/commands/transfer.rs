@@ -43,20 +43,20 @@ use std::path::{Path, PathBuf};
 use base64::Engine as _;
 use serde::Serialize;
 use sqlx::SqlitePool;
-use sundayscreen_core::layout::{sanitized_image_id, WidgetConfig};
+use sundayscreen_core::layout::{WidgetConfig, sanitized_image_id};
 use sundayscreen_core::transfer::{
-    self, ImportRefusal, TransferClass, TransferFile, TransferImage, TransferScene, TransferSlot,
-    TransferWidget, TRANSFER_IMAGES_MAX, TRANSFER_IMAGE_BYTES_MAX,
+    self, ImportRefusal, TRANSFER_IMAGE_BYTES_MAX, TRANSFER_IMAGES_MAX, TransferClass,
+    TransferFile, TransferImage, TransferScene, TransferSlot, TransferWidget,
 };
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use ts_rs::TS;
 
+use crate::db::Db;
 use crate::db::images;
 use crate::db::import::{self, ImportOutcome, ImportReceipt};
 use crate::db::planner as pstore;
 use crate::db::store::{self, WidgetRow};
-use crate::db::Db;
 use crate::error::{AppError, AppResult};
 
 /// The one file-type filter both dialogs offer. "SundayScreen" is a proper

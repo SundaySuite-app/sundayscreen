@@ -148,12 +148,11 @@ pub fn collect_referenced(config: &str, out: &mut HashSet<String>) {
         match value {
             serde_json::Value::Object(map) => {
                 for (key, v) in map {
-                    if key == IMAGE_ID_KEY {
-                        if let Some(id) = v.as_str() {
-                            if !id.is_empty() {
-                                out.insert(id.to_string());
-                            }
-                        }
+                    if key == IMAGE_ID_KEY
+                        && let Some(id) = v.as_str()
+                        && !id.is_empty()
+                    {
+                        out.insert(id.to_string());
                     }
                     walk(v, out);
                 }

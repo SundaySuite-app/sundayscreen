@@ -477,7 +477,7 @@ async fn check_feed_update(
                     message: format!("feed url: {e}"),
                 },
                 None,
-            )
+            );
         }
     };
     let updater = match app
@@ -495,7 +495,7 @@ async fn check_feed_update(
                     message: format!("updater build: {e}"),
                 },
                 None,
-            )
+            );
         }
     };
     match updater.check().await {

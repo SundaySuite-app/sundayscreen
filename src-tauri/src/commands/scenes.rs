@@ -11,11 +11,11 @@ use sundayscreen_core::theme::SceneTheme;
 use tauri::State;
 use ts_rs::TS;
 
-use crate::commands::classes::{lesson_switch_for, ClassSnapshot};
+use crate::commands::classes::{ClassSnapshot, lesson_switch_for};
 use crate::commands::valid_date;
+use crate::db::Db;
 use crate::db::planner as pstore;
 use crate::db::store::{self, SceneRow, WidgetRow};
-use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::settings;
 
@@ -545,10 +545,12 @@ mod tests {
         crate::commands::classes::delete_for(&pool, &class.id)
             .await
             .unwrap();
-        assert!(store::get_scene(&pool, &default_id)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            store::get_scene(&pool, &default_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
         let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM widget_instance")
             .fetch_one(&pool)
             .await

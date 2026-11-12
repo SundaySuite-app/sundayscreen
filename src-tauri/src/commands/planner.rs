@@ -14,9 +14,9 @@ use ts_rs::TS;
 // itself is pure (`sundayscreen_core::schedule::is_valid_date`), the
 // AppError translation lives once in `commands/mod.rs`.
 use crate::commands::valid_date;
+use crate::db::Db;
 use crate::db::planner as pstore;
 use crate::db::store::new_id;
-use crate::db::Db;
 use crate::error::{AppError, AppResult};
 
 /// One period in a template save. `id = None` mints a fresh row; `Some`

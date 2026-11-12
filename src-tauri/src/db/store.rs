@@ -903,7 +903,7 @@ pub async fn replace_widgets(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::{should_quarantine, AppError, BootFaultKind};
+    use crate::error::{AppError, BootFaultKind, should_quarantine};
 
     /// A pool over a temp-dir database file, fully migrated.
     async fn temp_pool() -> (SqlitePool, tempfile::TempDir) {
@@ -1097,7 +1097,7 @@ mod tests {
 
     #[tokio::test]
     async fn replace_members_keeps_ids_and_their_draw_state() {
-        use sundayscreen_core::members::{reconcile, MemberSpec};
+        use sundayscreen_core::members::{MemberSpec, reconcile};
         let (pool, _d) = temp_pool().await;
         let class = insert_class(&pool, "7B").await.unwrap();
 
@@ -1248,7 +1248,7 @@ mod tests {
 
     #[tokio::test]
     async fn editing_the_name_list_does_not_un_mark_todays_absences() {
-        use sundayscreen_core::members::{reconcile, MemberSpec};
+        use sundayscreen_core::members::{MemberSpec, reconcile};
         let (pool, _d) = temp_pool().await;
         let class = insert_class(&pool, "7B").await.unwrap();
         let first = replace_members(

@@ -3,11 +3,11 @@
 //! wrappers only unwrap managed state.
 
 use sqlx::SqlitePool;
-use sundayscreen_core::layout::{clamp_layout, row_to_instance, WidgetInstance};
+use sundayscreen_core::layout::{WidgetInstance, clamp_layout, row_to_instance};
 use tauri::State;
 
-use crate::db::store::{self, WidgetRow};
 use crate::db::Db;
+use crate::db::store::{self, WidgetRow};
 use crate::error::{AppError, AppResult};
 
 /// A scene's renderable layout. Rows whose `kind` this build does not know

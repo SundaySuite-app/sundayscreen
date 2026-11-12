@@ -13,7 +13,7 @@
 //! away, and there is no visible way back. Same holding as [`restorable`]
 //! throughout: when we cannot tell, do nothing.
 
-use crate::settings::{WindowState, MIN_WINDOW_H, MIN_WINDOW_W};
+use crate::settings::{MIN_WINDOW_H, MIN_WINDOW_W, WindowState};
 
 /// One monitor's logical-pixel rectangle.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -119,11 +119,7 @@ pub fn fit_to_monitor(
 /// measure", and the honest value for that is zero — never a clamp built on
 /// a NaN.
 fn sane_chrome(v: f64) -> f64 {
-    if v.is_finite() && v > 0.0 {
-        v
-    } else {
-        0.0
-    }
+    if v.is_finite() && v > 0.0 { v } else { 0.0 }
 }
 
 /// Area of the intersection between a work area and an outer window rect.

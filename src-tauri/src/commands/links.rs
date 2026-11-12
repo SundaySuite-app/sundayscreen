@@ -20,8 +20,8 @@ use sundayscreen_core::layout::sanitized_url;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
-use crate::db::store;
 use crate::db::Db;
+use crate::db::store;
 use crate::error::{AppError, AppResult};
 
 /// What `link_open` would hand the system browser — the whole decision,

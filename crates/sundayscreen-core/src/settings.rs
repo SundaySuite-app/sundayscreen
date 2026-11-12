@@ -293,10 +293,10 @@ impl Settings {
             }
         }
         // An empty-string language means nothing was chosen.
-        if let Some(lang) = &self.language {
-            if lang.trim().is_empty() {
-                self.language = None;
-            }
+        if let Some(lang) = &self.language
+            && lang.trim().is_empty()
+        {
+            self.language = None;
         }
         self.lesson_minutes = self
             .lesson_minutes

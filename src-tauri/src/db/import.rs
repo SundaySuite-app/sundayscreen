@@ -275,10 +275,10 @@ fn first_shape_problem(file: &TransferFile) -> Option<String> {
         if class.name.trim().is_empty() {
             return Some(format!("class «{}» has an empty name", class.id));
         }
-        if let Some(scene) = &class.default_scene {
-            if let Some(p) = scene_problem(scene) {
-                return Some(p);
-            }
+        if let Some(scene) = &class.default_scene
+            && let Some(p) = scene_problem(scene)
+        {
+            return Some(p);
         }
     }
     for scene in &file.scenes {

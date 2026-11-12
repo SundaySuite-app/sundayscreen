@@ -74,7 +74,7 @@ pub async fn update(pool: &SqlitePool, mutate: impl FnOnce(&mut Settings)) -> Ap
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sundayscreen_core::settings::{WindowState, MIN_WINDOW_H, MIN_WINDOW_W};
+    use sundayscreen_core::settings::{MIN_WINDOW_H, MIN_WINDOW_W, WindowState};
 
     async fn temp_pool() -> (SqlitePool, tempfile::TempDir) {
         let dir = tempfile::tempdir().expect("tempdir");

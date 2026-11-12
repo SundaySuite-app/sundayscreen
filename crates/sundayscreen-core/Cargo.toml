@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Pure, GUI-free domain core for SundayScreen — settings, layout, timer, picker and group logic"
 authors = ["Richard Fossland"]
 license = "MIT"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

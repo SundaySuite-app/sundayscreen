@@ -240,5 +240,8 @@ test("a chunk that will not load says so, and never leaves the board modal", asy
   await opener.click();
   await expect(page.locator("[data-toast-stack] > *")).toHaveCount(2);
   await expect.poll(() => wallIsInert(page)).toBe(false);
-  expect(attempts).toBe(1);
+  // How many times the engine actually re-requests a failed module is the
+  // browser's business (older Chromium cached the failure and asked once;
+  // newer builds ask again), so only "at least once" is pinned here.
+  expect(attempts).toBeGreaterThanOrEqual(1);
 });
